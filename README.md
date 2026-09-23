@@ -27,10 +27,21 @@ combination works:
 | Claude | Claude (different model) | both `claude`, different `model.default` |
 | OpenAI | OpenAI (different model) | both `openai`, different `model.default` |
 
-**Models are configurable and can be dynamic.** Set a default model per role, and optionally enable
-**tiering**: a trivial textual/config change runs on a low-cost model, a large or complex change
-escalates to a high-capability one. Tier selection is **deterministic** (reuses the review router's
-change-size + path signal) — no extra model call.
+**Models are configurable, layered, and can be dynamic.** You don't have to specify a model at all:
+each role resolves one through a precedence chain — **per-request override › per-repo model ›
+org/account default › toolkit fallback** — so *providing a model overrides the default*, and omitting
+it inherits. Optionally enable **tiering**: a trivial textual/config change runs on a low-cost model,
+a large or complex change escalates to a high-capability one. Tier selection is **deterministic**
+(reuses the review router's change-size + path signal) — no extra model call. See
+[Model resolution](docs/CONFIGURATION.md#3a-model-resolution).
+
+**Simple by default, advanced when you want it.** The only required config is `version` + `roles`
+(each role's `provider`). A minimal file is a few lines; every other block is optional and falls back
+to a sensible default. Add configuration only to take finer control.
+
+**Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,
+username, or password), never stores them, and keeps them out of `.agentic/config.yml` — see
+[Secret handling](docs/CONFIGURATION.md#3b-secret-handling-non-negotiable).
 
 **Language-agnostic.** A repo declares what "green" means (`install` / `lint` / `test` /
 `typecheck`) via a preset (`python`, `maven`, `gradle`, `node`, `go`, `rust`, `dotnet`) or custom

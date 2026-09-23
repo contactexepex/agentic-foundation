@@ -50,6 +50,18 @@ defaults the workflows read; keep them unless you also update the rendered workf
 Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is validated against
 `install/config.schema.json`.
 
+**Simple by default, advanced when you want it.** The only required keys are `version` and `roles`
+(each role needs a `provider`). Everything else is optional and falls back to a documented default,
+so a minimal config is a few lines; add more blocks only to take finer control.
+
+```yaml
+# Minimal config — models resolve from defaults/org, no build gate.
+version: 1
+roles:
+  implementer: { provider: claude }
+  reviewer:    { provider: openai }
+```
+
 ### `repository`
 | Field | Meaning |
 |---|---|
@@ -63,12 +75,21 @@ Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is 
 | `human_merge` | A PR with this label is **never** auto-merged (human keeps merge authority). |
 | `dispatch` | Optional label that dispatches an implementation task from an issue. |
 
+### `defaults` (optional — org/account fallbacks)
+| Field | Meaning |
+|---|---|
+| `models.{claude,openai}.default` | Default model ID for that provider when a role does not set its own. Keep it here or seed it from an org-level shared config. |
+| `models.{claude,openai}.tiers.{trivial,standard,complex}` | Per-tier default model for that provider, used when `tiering.enabled: true`. |
+
 ### `roles.implementer` / `roles.reviewer`
 | Field | Meaning |
 |---|---|
-| `provider` | `claude` or `openai`. The two roles are independent — mix freely, including the same provider with different models. |
-| `model.default` | The model ID for this role. **Placeholders only in the template** — set your provider's current IDs; the toolkit never hardcodes model versions. |
-| `model.tiers.{trivial,standard,complex}` | Model IDs per change tier, used when `tiering.enabled: true`. |
+| `provider` | `claude` or `openai` — **the only required field per role.** The two roles are independent — mix freely, including the same provider with different models. |
+| `model` (optional) | Omit it to inherit from `defaults.models.<provider>`. Set it to override for this repo. **Placeholders only in the template** — set your provider's current IDs; the toolkit never hardcodes model versions. |
+| `model.default` (optional) | Override the resolved default model for this role. |
+| `model.tiers.{trivial,standard,complex}` (optional) | Override the per-tier model for this role. Set just one tier and the rest still inherit. |
+
+See **Model resolution** below for the full precedence order.
 
 ### `tiering`
 | Field | Meaning |
@@ -78,11 +99,13 @@ Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is 
 | `thresholds.trivial` | `max_files`, `max_lines`, `only_paths` — a change within these is `trivial`. |
 | `thresholds.complex` | `min_files`, `min_lines` — a change at/above these is `complex`. Anything in between is `standard`. |
 
-### `build`
+### `build` (optional)
 | Field | Meaning |
 |---|---|
 | `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `templates/presets/`. |
-| `commands.{install,lint,test,typecheck}` | What "green" means for this repo. The workflows run exactly these. Override any preset value. |
+| `commands.{install,lint,test,typecheck}` | What "green" means for this repo. The workflows run exactly these — **any language**. Override any preset value. |
+
+Omit `build` entirely (or leave `commands` empty) for a repo with no build gate, e.g. docs-only.
 
 ### `routing.fast_path`
 | Field | Meaning |
@@ -96,6 +119,62 @@ Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is 
 |---|---|
 | `auto_merge` | `true` installs the fail-closed foundation auto-merge gate. Default `false`. |
 | `sonar` | `true` wires SonarQube/SonarCloud as a required check. Default `false`. |
+
+---
+
+## 3a. Model resolution
+
+Each role's model is resolved per run, **most specific wins**. For a given role and change tier the
+toolkit walks this chain and uses the first model it finds:
+
+| # | Layer | Where it comes from |
+|---|---|---|
+| 1 | **Per-request override** | A model supplied at dispatch time (a `workflow_dispatch` input or a dispatch-comment command). Wins over everything. |
+| 2 | **Per-repo role model** | `roles.<role>.model.tiers.<tier>`, then `roles.<role>.model.default`. |
+| 3 | **Org/account default** | `defaults.models.<provider>.tiers.<tier>`, then `defaults.models.<provider>.default`. |
+| 4 | **Toolkit fallback** | The documented built-in for that provider. |
+
+Key points:
+
+- **Provide a model → it overrides the default.** Set one at any layer to override every layer below
+  it; leave it unset to inherit. You can override just one tier (e.g. `complex`) and let the rest
+  inherit.
+- **Tier** (`trivial` / `standard` / `complex`) comes from the deterministic classifier (change size
+  + paths) only when `tiering.enabled: true`; otherwise `default` is used.
+- **Fail loudly, never guess.** If no model resolves for a role/tier, the installer/run stops with a
+  clear error naming the role and which key to set — it never silently picks a model version.
+
+**Example** — org sets the defaults; one repo pins only its reviewer's complex tier:
+
+```yaml
+defaults:
+  models:
+    claude: { default: "<claude-default>" }
+    openai: { default: "<openai-default>", tiers: { complex: "<openai-complex>" } }
+roles:
+  implementer: { provider: claude }                         # -> <claude-default>
+  reviewer:
+    provider: openai
+    model: { tiers: { complex: "<openai-strong>" } }        # complex -> <openai-strong>; else <openai-default>
+```
+
+---
+
+## 3b. Secret handling (non-negotiable)
+
+The toolkit treats every credential as write-only and invisible:
+
+- **Never logged, never printed, never echoed.** No secret — API key, token, username, or password —
+  is written to workflow logs, step output, PR/issue comments, review text, error messages, or any
+  artifact. Commands that could surface a secret are masked or avoided.
+- **Passed only to the step that needs it,** via GitHub Actions secrets / `env`, scoped to the
+  minimal job — never interpolated into a shell string that gets logged, and never persisted to disk.
+- **The toolkit never creates or stores credentials.** The installer only checks a required secret
+  *exists* (by name) and fails loudly if one is missing — it does not read or emit the value.
+- **No secret in config.** `.agentic/config.yml` holds only non-sensitive settings; credentials live
+  in repo/environment secrets (section 2). Do not put tokens in the config file.
+
+If you ever see a secret value in a log or comment, treat it as compromised and rotate it.
 
 ---
 

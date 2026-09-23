@@ -1,14 +1,86 @@
 # =============================================================================
 # agentic-foundation — per-repository configuration (`.agentic/config.yml`)
 # -----------------------------------------------------------------------------
-# This single file is what makes the toolkit portable. The GitHub Actions
-# workflows read from it instead of hardcoding any language, provider, or model.
+# This single file makes the toolkit portable. The GitHub Actions workflows read
+# from it instead of hardcoding any language, provider, or model.
+#
+# EASY BY DEFAULT: only the SIMPLE section below is required. Everything under
+# ADVANCED is optional — unset values fall back to sensible defaults, then to
+# your org/account `defaults`, then to the toolkit's documented fallbacks.
 # Full reference: docs/CONFIGURATION.md
 # =============================================================================
 version: 1
 
+# ===========================================================================
+# SIMPLE — the minimum a repo needs. Bind each role to a provider and declare
+# what "green" means. Models are optional here: leave them out and they resolve
+# from `defaults.models` (below) or the org default. Set one only to override.
+# ===========================================================================
+roles:
+  implementer:
+    provider: claude          # claude | openai
+  reviewer:
+    provider: openai          # claude | openai
+
+build:
+  # Pick a preset to pre-fill commands, or set them directly. Language-agnostic:
+  # the workflows run exactly what is here. Omit `build` entirely for a repo with
+  # no build gate (e.g. docs-only).
+  #   preset: python | maven | gradle | node | go | rust | dotnet | custom
+  preset: custom
+  commands:
+    install: ""
+    lint: ""
+    test: ""
+    typecheck: ""
+
+# ===========================================================================
+# ADVANCED — everything below is OPTIONAL. Delete any block to accept defaults.
+# ===========================================================================
+
+# --- Model resolution --------------------------------------------------------
+# Precedence, highest first (most specific wins):
+#   1. Per-request override supplied at dispatch time (workflow input / command)
+#   2. This repo's per-role model  -> roles.<role>.model.(tiers.<tier> | default)
+#   3. Org/account default         -> defaults.models.<provider>.(tiers.<tier> | default)
+#   4. Toolkit built-in fallback   (installer fails loudly if nothing resolves)
+# Set a model at ANY layer to override the ones below it; leave it unset to
+# inherit. The toolkit ships placeholders, never hardcoded versions.
+# ---------------------------------------------------------------------------
+
+# Org/account-level defaults, by provider. Keep them here, or seed them from a
+# shared org-level config. A role with no model of its own resolves to these.
+defaults:
+  models:
+    claude:
+      default: "<claude-default-model>"
+      tiers:                       # used only when tiering.enabled = true
+        trivial:  "<claude-low-cost-model>"
+        standard: "<claude-default-model>"
+        complex:  "<claude-high-capability-model>"
+    openai:
+      default: "<openai-default-model>"
+      tiers:
+        trivial:  "<openai-low-cost-model>"
+        standard: "<openai-default-model>"
+        complex:  "<openai-high-capability-model>"
+
+# Per-role overrides. Uncomment ONLY the fields you want to pin for this repo;
+# anything omitted inherits from `defaults.models.<provider>` above.
+# roles:
+#   implementer:
+#     provider: claude
+#     model:
+#       default: "<override-model>"     # override just the default...
+#       tiers:
+#         complex: "<override-model>"   # ...or just one tier
+#   reviewer:
+#     provider: openai
+#     model:
+#       default: "<override-model>"
+
+# --- Access & merge authority ------------------------------------------------
 repository:
-  # Branch that PRs target and that the workflows treat as the trunk.
   default_branch: main
   # GitHub author_association values allowed to drive agentic changes.
   trusted_authors: [OWNER, MEMBER, COLLABORATOR]
@@ -22,42 +94,10 @@ labels:
   # Optional: label that dispatches an implementation task from an issue.
   dispatch: agentic-task
 
-# ---------------------------------------------------------------------------
-# Roles bound to providers. Any combination is valid, including the SAME
-# provider in both roles with DIFFERENT models.
-#   provider: claude | openai
-# Examples:
-#   Claude implements, Codex reviews   -> implementer.provider: claude / reviewer.provider: openai
-#   Codex implements, Claude reviews   -> implementer.provider: openai / reviewer.provider: claude
-#   Claude both (different models)      -> both provider: claude, different model.default
-#   OpenAI only (different models)      -> both provider: openai, different model.default
-# ---------------------------------------------------------------------------
-roles:
-  implementer:
-    provider: claude
-    model:
-      # Set to your provider's current model IDs (this file ships placeholders,
-      # never hardcoded versions — see CONFIGURATION.md "Models").
-      default: "<implementer-default-model>"
-      tiers:                       # used only when tiering.enabled = true
-        trivial:  "<low-cost-model>"
-        standard: "<implementer-default-model>"
-        complex:  "<high-capability-model>"
-  reviewer:
-    provider: openai
-    model:
-      default: "<reviewer-default-model>"
-      tiers:
-        trivial:  "<low-cost-model>"
-        standard: "<reviewer-default-model>"
-        complex:  "<high-capability-model>"
-
-# ---------------------------------------------------------------------------
-# Dynamic model selection. The deterministic classifier reuses the review
-# router's change-size + path signal, so tier selection costs NO extra model
-# call. A trivial textual/config change runs on the low-cost model; a large or
-# broad change escalates to the high-capability model.
-# ---------------------------------------------------------------------------
+# --- Dynamic model selection -------------------------------------------------
+# The deterministic classifier reuses the review router's change-size + path
+# signal, so tier selection costs NO extra model call. A trivial textual/config
+# change runs on the low-cost tier; a large or broad change escalates to complex.
 tiering:
   enabled: true
   classifier: deterministic        # v1: deterministic only
@@ -71,25 +111,9 @@ tiering:
       min_lines: 400
     # A change that is neither trivial nor complex is treated as "standard".
 
-# ---------------------------------------------------------------------------
-# What "green" means for THIS repository. Pick a preset and/or override the
-# individual commands. The workflows run whatever is defined here — they never
-# assume a language.
-#   preset: python | maven | gradle | node | go | rust | dotnet | custom
-# Presets live in templates/presets/ and only pre-fill the commands below.
-# ---------------------------------------------------------------------------
-build:
-  preset: custom
-  commands:
-    install: ""
-    lint: ""
-    test: ""
-    typecheck: ""
-
-# ---------------------------------------------------------------------------
-# Review routing: trivial textual changes are fast-path approved WITHOUT a
-# model review; everything else is routed to the configured reviewer.
-# ---------------------------------------------------------------------------
+# --- Review routing ----------------------------------------------------------
+# Trivial textual changes are fast-path approved WITHOUT a model review;
+# everything else is routed to the configured reviewer.
 routing:
   fast_path:
     globs: ["**/*.md", "docs/**"]
@@ -97,10 +121,9 @@ routing:
     max_lines: 200
     exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
 
-# ---------------------------------------------------------------------------
-# Optional add-on modules. Core (implement + review + routing + thread
-# resolution) is always installed; these are opt-in.
-# ---------------------------------------------------------------------------
+# --- Optional add-on modules -------------------------------------------------
+# Core (implement + review + routing + thread resolution) is always installed;
+# these are opt-in and off by default.
 modules:
   auto_merge: false                # fail-closed foundation auto-merge gate
   sonar: false                     # SonarCloud/SonarQube quality gate

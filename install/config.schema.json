@@ -2,18 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/contactexepex/agentic-foundation/install/config.schema.json",
   "title": "agentic-foundation repository configuration",
-  "description": "Schema for .agentic/config.yml — validated by the installer before rendering workflows.",
+  "description": "Schema for .agentic/config.yml — validated by the installer before rendering workflows. Everything except a minimal core is optional; unset values resolve from `defaults`, then the toolkit's documented fallbacks. See docs/CONFIGURATION.md.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "repository", "roles", "build"],
+  "required": ["version", "roles"],
   "properties": {
     "version": { "const": 1 },
     "repository": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["default_branch"],
       "properties": {
-        "default_branch": { "type": "string", "minLength": 1 },
+        "default_branch": { "type": "string", "minLength": 1, "default": "main" },
         "trusted_authors": {
           "type": "array",
           "items": { "enum": ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"] },
@@ -28,6 +27,21 @@
       "properties": {
         "human_merge": { "type": "string", "default": "human-merge" },
         "dispatch": { "type": "string", "default": "agentic-task" }
+      }
+    },
+    "defaults": {
+      "description": "Org/account-level fallbacks. A role that does not set its own model resolves here (by provider) before the toolkit's built-in fallback. Keep this in the per-repo file, or seed it from an org-level shared config/variables.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "claude": { "$ref": "#/$defs/modelBinding" },
+            "openai": { "$ref": "#/$defs/modelBinding" }
+          }
+        }
       }
     },
     "roles": {
@@ -71,9 +85,9 @@
       }
     },
     "build": {
+      "description": "What \"green\" means for THIS repository. Optional: omit it (or leave commands empty) for a repo with no build gate, e.g. a docs-only repo. Language-agnostic — the workflows run exactly what is set here and assume no language.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["commands"],
       "properties": {
         "preset": {
           "enum": ["python", "maven", "gradle", "node", "go", "rust", "dotnet", "custom"],
@@ -118,26 +132,28 @@
   },
   "$defs": {
     "role": {
+      "description": "A pipeline role. Only `provider` is required; the model resolves through the precedence chain (per-request override > this role's model > defaults.models.<provider> > toolkit fallback). See docs/CONFIGURATION.md \"Model resolution\".",
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider", "model"],
+      "required": ["provider"],
       "properties": {
         "provider": { "enum": ["claude", "openai"] },
-        "model": {
+        "model": { "$ref": "#/$defs/modelBinding" }
+      }
+    },
+    "modelBinding": {
+      "description": "Optional model binding. Every field is optional so a caller can override only what they need (e.g. just the `complex` tier) and let the rest resolve from lower-precedence layers.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": { "type": "string", "minLength": 1 },
+        "tiers": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["default"],
           "properties": {
-            "default": { "type": "string", "minLength": 1 },
-            "tiers": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "trivial": { "type": "string" },
-                "standard": { "type": "string" },
-                "complex": { "type": "string" }
-              }
-            }
+            "trivial": { "type": "string", "minLength": 1 },
+            "standard": { "type": "string", "minLength": 1 },
+            "complex": { "type": "string", "minLength": 1 }
           }
         }
       }
