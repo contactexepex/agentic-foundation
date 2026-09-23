@@ -1,38 +1,42 @@
 # =============================================================================
 # agentic-foundation — per-repository configuration (`.agentic/config.yml`)
 # -----------------------------------------------------------------------------
-# This single file makes the toolkit portable. The GitHub Actions workflows read
-# from it instead of hardcoding any language, provider, or model.
+# A platform-neutral contract for a graph of SDLC/STLC agent stages. One file
+# makes the toolkit portable: it never hardcodes a language, provider, model,
+# or SCM platform.
 #
-# EASY BY DEFAULT: only the SIMPLE section below is required. Everything under
-# ADVANCED is optional — unset values fall back to sensible defaults, then to
-# your org/account `defaults`, then to the toolkit's documented fallbacks.
-# Full reference: docs/CONFIGURATION.md
+# EASY BY DEFAULT: pick a `profile` and a `platform` and you're done — the
+# profile expands to a default stage graph. ADD `stages:` only when you want
+# granular control. Everything else is optional and falls back to defaults.
+# Full reference: docs/CONFIGURATION.md   Design: docs/ARCHITECTURE.md
 # =============================================================================
-version: 1
+version: 2
 
 # Optional: inherit base config(s) first; values in THIS file win. Layer an
-# org base, then a team base, then this repo. Each item is a path or URI the
-# installer can read. (String or list.)
+# org base, then a team base, then this repo. (String or list.)
 # extends:
 #   - org/agentic-base.yml
 #   - team/backend.yml
 
 # ===========================================================================
-# SIMPLE — the minimum a repo needs. Bind each role to a provider and declare
-# what "green" means. Models are optional here: leave them out and they resolve
-# from `defaults.models` (below) or the org default. Set one only to override.
+# SIMPLE — a newcomer needs only these two.
 # ===========================================================================
-roles:
-  implementer:
-    provider: claude          # claude | openai
-  reviewer:
-    provider: openai          # claude | openai
+
+# Onboarding shortcut. Expands to a default stage graph you can override below.
+#   minimal  = implement + review (advisory; humans merge)
+#   standard = implement + review (blocking) + security (advisory)   <- default
+#   full     = plan + implement + security + test + integration-test + review + docs
+#   custom   = no auto stages; you define them all under `stages:`
+profile: standard
+
+platform:
+  type: github                 # github | gitlab | azure_devops | bitbucket | gitea | other
+  # host: ""                   # self-hosted/enterprise host; blank = public host
+  default_branch: main
+  # auth: { token_secret: GITHUB_TOKEN }   # NAME of the platform token secret
 
 build:
-  # Pick a preset to pre-fill commands, or set them directly. Language-agnostic:
-  # the workflows run exactly what is here. Omit `build` entirely for a repo with
-  # no build gate (e.g. docs-only).
+  # What "green" means for THIS repo. Language-agnostic; omit for docs-only.
   #   preset: python | maven | gradle | node | go | rust | dotnet | custom
   preset: custom
   commands:
@@ -46,22 +50,22 @@ build:
 # ===========================================================================
 
 # --- Model resolution --------------------------------------------------------
-# Precedence, highest first (most specific wins):
+# Precedence per stage, highest first (most specific wins):
 #   1. Per-request override supplied at dispatch time (workflow input / command)
-#   2. This repo's per-role model  -> roles.<role>.model.(tiers.<tier> | default)
-#   3. Org/account default         -> defaults.models.<provider>.(tiers.<tier> | default)
+#   2. This stage's model      -> stages[].model.(tiers.<tier> | default)
+#   3. Org/account default     -> defaults.models.<provider>.(tiers.<tier> | default)
 #   4. Toolkit built-in fallback   (installer fails loudly if nothing resolves)
-# Set a model at ANY layer to override the ones below it; leave it unset to
-# inherit. The toolkit ships placeholders, never hardcoded versions.
+# A resolved value that matches a `models.aliases` name expands per provider.
+# The toolkit ships placeholders, never hardcoded versions.
 # ---------------------------------------------------------------------------
 
-# Org/account-level defaults, by provider. Keep them here, or seed them from a
-# shared org-level config. A role with no model of its own resolves to these.
+# Org/account-level defaults, keyed by provider id (any provider).
 defaults:
+  provider: claude             # default provider for stages that omit one
   models:
     claude:
       default: "<claude-default-model>"
-      tiers:                       # used only when tiering.enabled = true
+      tiers:
         trivial:  "<claude-low-cost-model>"
         standard: "<claude-default-model>"
         complex:  "<claude-high-capability-model>"
@@ -71,65 +75,80 @@ defaults:
         trivial:  "<openai-low-cost-model>"
         standard: "<openai-default-model>"
         complex:  "<openai-high-capability-model>"
+    # gemini: { default: "<gemini-default-model>" }
 
 # Provider-agnostic model aliases (optional). Reference these names anywhere a
-# model is expected (role/tier/default) instead of a raw ID; map each per
-# provider here so model-ID churn touches one place. Names are yours to choose.
+# model is expected; map each per provider so ID churn touches one place.
 # models:
 #   aliases:
-#     fast:     { claude: "<claude-fast>",     openai: "<openai-fast>" }
-#     balanced: { claude: "<claude-balanced>", openai: "<openai-balanced>" }
-#     strong:   { claude: "<claude-strong>",   openai: "<openai-strong>" }
+#     fast:     { claude: "<claude-fast>",   openai: "<openai-fast>",   gemini: "<gemini-fast>" }
+#     balanced: { claude: "<claude-bal>",    openai: "<openai-bal>" }
+#     strong:   { claude: "<claude-strong>", openai: "<openai-strong>" }
 
-# Provider connections (optional). Point at self-hosted / Azure OpenAI / proxy /
-# on-prem gateways. Supply only the NAME of the secret holding the key — never
-# the key itself. Everything is optional; omit to use the provider default.
+# Provider connections (optional). Point at self-hosted / Azure OpenAI / Vertex /
+# proxy / on-prem gateways. Supply only the NAME of the key secret, never the key.
 # providers:
-#   claude:
-#     base_url: ""                         # custom endpoint; blank = provider default
-#     api_key_secret: ANTHROPIC_API_KEY    # name of the secret to read
+#   claude:  { api_key_secret: ANTHROPIC_API_KEY }
 #   openai:
-#     base_url: ""                         # e.g. https://<resource>.openai.azure.com
-#     api_version: ""                      # e.g. Azure OpenAI api-version
-#     deployment: ""                       # Azure deployment name, if applicable
+#     base_url: ""                       # e.g. https://<resource>.openai.azure.com
+#     api_version: ""                    # e.g. Azure OpenAI api-version
+#     deployment: ""                     # Azure deployment name
 #     api_key_secret: OPENAI_API_KEY
 
-# Per-role overrides. Uncomment ONLY the fields you want to pin for this repo;
-# anything omitted inherits from `defaults.models.<provider>` above.
-# roles:
-#   implementer:
+# --- Stages (the agent graph) ------------------------------------------------
+# OPTIONAL. Omit to use the profile's stages. Anything you list here is merged
+# onto the profile (a stage with the same id overrides). Each stage is one agent
+# bound to a provider+model and a backend; any provider/model permutation works.
+#
+# Example: a fuller SDLC mixing providers, models, and backends.
+# stages:
+#   - id: plan
+#     type: plan
 #     provider: claude
-#     model:
-#       default: "<override-model>"     # override just the default...
-#       tiers:
-#         complex: "<override-model>"   # ...or just one tier
-#   reviewer:
+#     model: { default: strong }         # alias or literal id
+#     backend: { name: generic }
+#     triggers: [issue_labeled]
+#     gate: advisory
+#
+#   - id: implement
+#     type: implement
+#     provider: claude
+#     model: { tiers: { trivial: fast, standard: balanced, complex: strong } }
+#     backend: { name: claude-code-action }   # or: openhands | codex | swe-agent | generic
+#     depends_on: [plan]
+#     triggers: [issue_labeled, comment_command]
+#
+#   - id: security
+#     type: security
 #     provider: openai
-#     model:
-#       default: "<override-model>"
-
-# --- Access & merge authority ------------------------------------------------
-repository:
-  default_branch: main
-  # GitHub author_association values allowed to drive agentic changes.
-  trusted_authors: [OWNER, MEMBER, COLLABORATOR]
-  # true = act only on same-repo PR heads (no fork PRs). Keep true unless you
-  # deliberately accept and trust fork contributions (widens the threat model).
-  same_repo_only: true
-
-labels:
-  # A PR carrying this label is NEVER auto-merged (human keeps merge authority).
-  human_merge: human-merge
-  # Optional: label that dispatches an implementation task from an issue.
-  dispatch: agentic-task
+#     model: { default: strong }
+#     backend: { name: generic }
+#     depends_on: [implement]
+#     gate: blocking
+#     triggers: [pr_opened, pr_updated]
+#
+#   - id: integration-test
+#     type: integration-test
+#     backend: { name: generic }
+#     depends_on: [implement]
+#     gate: blocking
+#     triggers: [pr_opened, pr_updated]
+#
+#   - id: review
+#     type: review
+#     provider: openai                   # e.g. cross-provider review
+#     model: { default: balanced }
+#     backend: { name: pr-agent }        # compose a mature OSS reviewer
+#     depends_on: [implement]
+#     gate: blocking
+#     triggers: [pr_opened, pr_updated]
 
 # --- Dynamic model selection -------------------------------------------------
-# The deterministic classifier reuses the review router's change-size + path
-# signal, so tier selection costs NO extra model call. A trivial textual/config
-# change runs on the low-cost tier; a large or broad change escalates to complex.
+# Deterministic classifier reuses the review router's change-size + path signal,
+# so tier selection costs NO extra model call. A stage may set `tiering: false`.
 tiering:
   enabled: true
-  classifier: deterministic        # v1: deterministic only
+  classifier: deterministic
   thresholds:
     trivial:
       max_files: 5
@@ -138,11 +157,9 @@ tiering:
     complex:
       min_files: 20
       min_lines: 400
-    # A change that is neither trivial nor complex is treated as "standard".
 
 # --- Review routing ----------------------------------------------------------
-# Trivial textual changes are fast-path approved WITHOUT a model review;
-# everything else is routed to the configured reviewer.
+# Trivial textual changes are fast-path approved WITHOUT a model review.
 routing:
   fast_path:
     globs: ["**/*.md", "docs/**"]
@@ -151,40 +168,34 @@ routing:
     exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
 
 # --- Cost & token budgets ----------------------------------------------------
-# Optional ceilings. Set only what you want enforced; on_exceed decides the
-# action when a limit is hit.
+# Optional ceilings, global or per-stage. on_exceed decides the action.
 # budgets:
 #   enabled: true
-#   currency: USD
 #   per_run:    { max_usd: 2.00, max_tokens: 500000 }
 #   per_period: { window: monthly, max_usd: 200.00 }
-#   on_exceed: block               # block | downgrade (to a cheaper tier) | warn
+#   on_exceed: block               # block | downgrade | warn
 
 # --- Prompt-injection guardrails ---------------------------------------------
 # Treat content from PRs/issues/comments/diffs as data, not instructions.
 # guardrails:
 #   untrusted_inputs: [pr_body, issue_body, comments, diff, code_comments]
-#   ignore_inline_directives: true       # ignore "instructions" embedded in the above
-#   allowed_tools: []                    # optional allowlist of tools the agent may use
-#   max_context_files: 200
+#   ignore_inline_directives: true
+#   allowed_tools: []
 #   redact_secrets_in_context: true
 
 # --- Observability / audit trail ---------------------------------------------
-# Where run records go — adapt to YOUR stack. Endpoints come from a variable/
-# secret NAME (never hardcoded), and secrets are always redacted from output.
+# Where run records go — adapt to YOUR stack. Endpoints via variable/secret NAME
+# (never hardcoded); secrets always redacted.
 # observability:
 #   enabled: true
 #   format: json                   # json | text
-#   redact_secrets: true           # secrets are always redacted regardless
 #   sinks:
 #     - type: artifact             # none | artifact | file | webhook | otlp
 #     - type: otlp
-#       endpoint_var: OTEL_EXPORTER_OTLP_ENDPOINT   # name of a repo/org variable
-#       headers_secret: OTEL_EXPORTER_OTLP_HEADERS  # name of a secret
+#       endpoint_var: OTEL_EXPORTER_OTLP_ENDPOINT
+#       headers_secret: OTEL_EXPORTER_OTLP_HEADERS
 
 # --- Optional add-on modules -------------------------------------------------
-# Core (implement + review + routing + thread resolution) is always installed;
-# these are opt-in and off by default.
 modules:
   auto_merge: false                # fail-closed foundation auto-merge gate
   sonar: false                     # SonarCloud/SonarQube quality gate

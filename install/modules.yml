@@ -1,27 +1,37 @@
-# Module -> template files map. The installer copies `core` always, and each
-# opt-in module only when enabled in .agentic/config.yml (modules.*).
-# Paths are relative to templates/ ; workflows render into .github/workflows/.
+# Module -> template files map, per platform renderer. The installer always
+# renders `core` (the stage graph + router + hygiene) and adds each opt-in module
+# only when enabled in .agentic/config.yml (modules.*).
+#
+# Templates are grouped by platform under templates/workflows/<platform>/ so the
+# same neutral contract renders to whichever `platform.type` is set. The GitHub
+# renderer ships first; other platforms follow (see docs/ARCHITECTURE.md).
+# Paths are relative to templates/.
 core:
-  description: Implement + review + deterministic routing + Codex thread hygiene.
-  workflows:
-    - workflows/implementor.yml                 # runs the configured implementer role
-    - workflows/review-router.yml               # deterministic trivial/substantive + tier signal
-    - workflows/request-review-on-push.yml      # keep a comment-triggered reviewer bound to head
-    - workflows/resolve-fixed-review-threads.yml
+  description: Render enabled stages + deterministic routing/tiering + review-thread hygiene.
+  renderers:
+    github:
+      - workflows/github/stage-runner.yml           # renders each enabled stage (per its backend)
+      - workflows/github/review-router.yml           # deterministic trivial/substantive + tier signal
+      - workflows/github/request-review-on-push.yml  # keep a comment-triggered reviewer bound to head
+      - workflows/github/resolve-fixed-review-threads.yml
+    # gitlab:        [ ... ]        # M4
+    # azure_devops:  [ ... ]        # M4
   contract:
     - contract/AGENTS.md.tmpl
     - contract/CLAUDE.md.tmpl
   config:
-    - config/agentic.config.yml.tmpl            # rendered to .agentic/config.yml
+    - config/agentic.config.yml.tmpl                 # rendered to .agentic/config.yml
 
 auto_merge:
   description: Fail-closed foundation auto-merge gate (opt-in; off by default).
   requires: [core]
-  workflows:
-    - workflows/auto-merge.yml
+  renderers:
+    github:
+      - workflows/github/auto-merge.yml
 
 sonar:
   description: SonarQube/SonarCloud quality gate wired as a required check.
   requires: [core]
-  workflows:
-    - workflows/sonar-analysis.yml
+  renderers:
+    github:
+      - workflows/github/sonar-analysis.yml

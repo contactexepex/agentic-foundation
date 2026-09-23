@@ -1,43 +1,59 @@
 # agentic-foundation
 
-A reusable toolkit that drops an **AI implement → AI review → CI-gated pull request**
-workflow into *any* GitHub repository. It is the generic engineering core extracted from the
+A reusable toolkit that drops a configurable **graph of SDLC/STLC agent stages** — plan, implement,
+security, test, review, and more — into *any* repository, on *any* SCM platform, in *any* language,
+with *any* provider/model per stage. It is the generic engineering core extracted from the
 `permission-api` project, with everything product-specific (Azure deploy, the runtime app, the
 Permission-API domain) removed.
 
-After a small, one-file configuration step, a target repository gets the same agentic pipeline
-permission-api uses: one AI agent implements a change (docs or code), another AI agent reviews it,
-CI enforces "green", and a pull request is opened for human review.
+After a small, one-file configuration step, a target repository gets an agentic pipeline: each stage
+is an AI agent bound to the provider, model, and backend you choose; stages gate on CI; and a pull/
+merge request is opened for human review.
 
 ## What it is (and is not)
 
-- **Is:** GitHub Actions workflows + a per-repo config contract + a deterministic installer + a
-  Claude Code skill front door. Provider-, model-, and language-agnostic.
-- **Is not:** a deployment system, a runtime, or anything tied to one language or one AI vendor.
+- **Is:** a platform-neutral **config contract** + a deterministic installer/CLI + per-platform
+  renderers + pluggable agent backends + a Claude Code skill front door. Provider-, model-,
+  platform-, and language-agnostic.
+- **Is not:** an agent (it *composes* mature OSS agents), a deployment system, a runtime, or anything
+  tied to one language, one AI vendor, or one Git host.
+
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design and
+**[docs/LANDSCAPE.md](docs/LANDSCAPE.md)** for how it differs from existing tools.
 
 ## Flexible by design
 
-**Roles are abstract; providers plug in.** You bind each role to a provider and a model, so every
-combination works:
+**Stages are agents; anything plugs in.** A pipeline is an ordered, extensible graph of stages. Each
+stage binds a **role/type** (plan, implement, security, test, integration-test, review, docs, …) to a
+**provider + model** and a **backend** — so any permutation works:
 
-| Implementer | Reviewer | Config |
-|---|---|---|
-| Claude | Codex/OpenAI | `implementer.provider: claude`, `reviewer.provider: openai` |
-| Codex/OpenAI | Claude | `implementer.provider: openai`, `reviewer.provider: claude` |
-| Claude | Claude (different model) | both `claude`, different `model.default` |
-| OpenAI | OpenAI (different model) | both `openai`, different `model.default` |
+| Stage | Provider | Model | Backend |
+|---|---|---|---|
+| implement | claude | `strong` (alias) | `claude-code-action` |
+| security | openai | `complex` tier | `generic` |
+| review | gemini | `balanced` | `pr-agent` |
+| integration-test | — | — | `generic` |
 
-**Models are configurable, layered, and can be dynamic.** You don't have to specify a model at all:
-each role resolves one through a precedence chain — **per-request override › per-repo model ›
-org/account default › toolkit fallback** — so *providing a model overrides the default*, and omitting
-it inherits. Optionally enable **tiering**: a trivial textual/config change runs on a low-cost model,
-a large or complex change escalates to a high-capability one. Tier selection is **deterministic**
-(reuses the review router's change-size + path signal) — no extra model call. See
+Same provider with different models, multiple providers, or any frontier-model mix — all per stage.
+
+**Models are configurable, layered, and dynamic.** You need not specify a model at all: each stage
+resolves one through a precedence chain — **per-request override › stage model › org/account default ›
+toolkit fallback** — so *providing a model overrides the default*, and omitting it inherits.
+Optionally enable **tiering**: a trivial change runs on a low-cost model, a large/complex one
+escalates — selection is **deterministic** (change-size + path signal), no extra model call. See
 [Model resolution](docs/CONFIGURATION.md#3a-model-resolution).
 
-**Simple by default, advanced when you want it.** The only required config is `version` + `roles`
-(each role's `provider`). A minimal file is a few lines; every other block is optional and falls back
-to a sensible default. Add configuration only to take finer control.
+**Any platform.** `platform.type` (github | gitlab | azure_devops | bitbucket | gitea) selects a
+renderer that maps the same contract to that system (PR↔MR, roles, required checks). GitHub ships
+first; others follow.
+
+**Compose, don't reinvent.** A stage's `backend` wraps a mature OSS agent (OpenHands, PR-Agent,
+claude-code-action, Codex, SWE-agent) or the built-in `generic` runner — adopt one per stage without
+touching the rest.
+
+**Simple by default, advanced when you want it.** The only required key is `version`; a `profile`
+(`minimal`/`standard`/`full`) expands to a default stage graph and `platform` defaults to GitHub —
+so a minimal file is a few lines. Define `stages` only to take finer control.
 
 **Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,
 username, or password), never stores them, and keeps them out of `.agentic/config.yml` — see
@@ -47,53 +63,57 @@ username, or password), never stores them, and keeps them out of `.agentic/confi
 configurable, so an org, team, or individual can bend the toolkit to how they deploy, host, and
 observe:
 
+- **Profiles** (`minimal`/`standard`/`full`) — expand to a default stage graph; override any part.
 - **Config inheritance** (`extends`) — layer an org base → team base → repo; local values win.
-- **Model aliases** — reference `fast`/`balanced`/`strong` (your names) and map IDs centrally.
-- **Custom / self-hosted providers** — set a `base_url`, API version, deployment, and the *name* of
-  the key secret (Azure OpenAI, proxies, on-prem gateways).
-- **Cost & token budgets** — per-run and per-period caps; on exceed `block` / `downgrade` / `warn`.
+- **Model aliases** — reference `fast`/`balanced`/`strong` (your names) and map IDs per provider.
+- **Custom / self-hosted providers** — `base_url`, API version, deployment, and the *name* of the key
+  secret (Azure OpenAI, Vertex, proxies, on-prem gateways). Any provider id.
+- **Cost & token budgets** — per-run/per-period caps, global or per-stage; `block`/`downgrade`/`warn`.
 - **Prompt-injection guardrails** — treat PR/issue/comment/diff content as data, not instructions.
-- **Observability** — send run records to a file, CI artifact, webhook, or OTLP collector; endpoints
-  come from a variable/secret *name*, never hardcoded; secrets always redacted.
-- **`doctor` & `plan`** — validate config + secrets and dry-run the install before anything is applied.
+- **Observability** — run records to a file, CI artifact, webhook, or OTLP collector; endpoints from a
+  variable/secret *name*, never hardcoded; secrets always redacted.
+- **`doctor` & `plan`** — validate config + secrets and dry-run before anything is applied.
 
-**Language-agnostic.** A repo declares what "green" means (`install` / `lint` / `test` /
-`typecheck`) via a preset (`python`, `maven`, `gradle`, `node`, `go`, `rust`, `dotnet`) or custom
-commands. The workflows never assume a language.
+**Secrets stay secret.** Never logged, printed, stored, or placed in config — see
+[Secret handling](docs/CONFIGURATION.md#3b-secret-handling-non-negotiable).
+
+**Language-agnostic.** A repo declares what "green" means (`install`/`lint`/`test`/`typecheck`) via a
+preset (`python`, `maven`, `gradle`, `node`, `go`, `rust`, `dotnet`) or custom commands. Stages never
+assume a language.
 
 ## Modules
 
-- **core** (always): implementer + reviewer + deterministic review routing + review-thread hygiene.
-  Humans merge.
+- **core** (always): renders the enabled stage graph + deterministic routing/tiering + review-thread
+  hygiene. Humans merge.
 - **+auto_merge** (opt-in, off by default): the fail-closed foundation auto-merge gate.
 - **+sonar** (opt-in): SonarQube/SonarCloud quality gate as a required check.
 
 ## Quickstart
 
 1. In your target repo, add `.agentic/config.yml` (copy `templates/config/agentic.config.yml.tmpl`
-   and edit it — or let the Claude skill draft it for you).
-2. Create the required secrets/tokens for your chosen providers — see
-   [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for exact names and whether each must be a
-   **service account** or a **personal access token**.
+   — set a `profile` and `platform`; or let the Claude skill draft it).
+2. Create the secrets your stages/providers and platform require — see
+   [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for names and service-account vs PAT guidance.
 3. Run the installer (or invoke the skill). It validates the config against
-   `install/config.schema.json`, renders the module workflows into `.github/workflows/`, and opens a
-   bootstrap PR.
-4. Merge the bootstrap PR. The pipeline is live.
+   `install/config.schema.json`, renders the enabled stages for your `platform`, and opens a bootstrap
+   PR/MR.
+4. Merge it. The pipeline is live.
 
-Full field-by-field reference, provider→secret mapping, and troubleshooting:
+Full field reference, provider→secret mapping, and troubleshooting:
 **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 
 ## Layout
 
 ```
-templates/workflows/   tokenized GitHub Actions (rendered per config)
-templates/contract/    AGENTS.md / CLAUDE.md skeletons (domain-free)
-templates/config/      the .agentic/config.yml template
-templates/presets/     per-ecosystem command presets
-install/               config.schema.json, modules.yml, installer
-skill/                 the Claude Code front-door skill
-docs/                  CONFIGURATION.md and design notes
+templates/workflows/<platform>/  per-platform pipeline templates (github first)
+templates/contract/              AGENTS.md / CLAUDE.md skeletons (domain-free)
+templates/config/                the .agentic/config.yml template
+templates/presets/               per-ecosystem command presets
+install/                         config.schema.json, modules.yml, installer
+skill/                           the Claude Code front-door skill
+docs/                            ARCHITECTURE.md, CONFIGURATION.md, LANDSCAPE.md
 ```
 
-> Status: **M1 — contract layer.** Config schema, docs, and module map are in place; workflow
-> tokenization and the installer/skill are in progress.
+> Status: **M1 — contract layer (v2).** Platform-neutral stage-graph schema, profiles, provider/model
+> resolution, backends, and cross-cutting policy are defined; per-platform renderers, the generic
+> backend, and the installer/CLI are next (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).

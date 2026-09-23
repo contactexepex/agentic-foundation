@@ -1,63 +1,77 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/contactexepex/agentic-foundation/install/config.schema.json",
-  "title": "agentic-foundation repository configuration",
-  "description": "Schema for .agentic/config.yml — validated by the installer before rendering workflows. Everything except a minimal core is optional; unset values resolve from `extends` bases, then `defaults`, then the toolkit's documented fallbacks. Nothing about hosting, endpoints, or observability is hardcoded — an org/team/user configures it here. Secrets are referenced only by name; values never live in this file. See docs/CONFIGURATION.md.",
+  "title": "agentic-foundation repository configuration (v2)",
+  "description": "Schema for .agentic/config.yml — a platform-neutral contract for a graph of SDLC/STLC agent stages. Validated by the installer before rendering per-platform pipelines. Easy by default (a `profile` expands to a stage graph); granular when wanted (define `stages` explicitly). Any provider/model per stage; any SCM platform; any language. Secrets are referenced by NAME only; values never live here. See docs/CONFIGURATION.md and docs/ARCHITECTURE.md.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "roles"],
+  "required": ["version"],
   "properties": {
-    "version": { "const": 1 },
+    "version": { "const": 2 },
 
     "extends": {
-      "description": "Base config(s) to inherit from, merged before this file (local values win). Point at an org base, then a team base, then this repo — layering for org/team/user. A string or an ordered list; each item is a path or URI the installer can read.",
+      "description": "Base config(s) to inherit from, merged before this file (local values win). Layer an org base -> team base -> repo. A string or an ordered list; each item is a path or URI the installer can read.",
       "oneOf": [
         { "type": "string", "minLength": 1 },
         { "type": "array", "items": { "type": "string", "minLength": 1 } }
       ]
     },
 
-    "repository": {
+    "profile": {
+      "description": "Onboarding shortcut. Expands to a default stage graph you can then override via `stages`. `custom` adds no stages (you define them all).",
+      "enum": ["minimal", "standard", "full", "custom"],
+      "default": "standard"
+    },
+
+    "platform": {
+      "description": "The SCM/CI platform this repo lives on. The contract is platform-neutral; a per-platform renderer maps it to that system's pipeline. (GitHub renderer ships first.)",
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "type": { "enum": ["github", "gitlab", "azure_devops", "bitbucket", "gitea", "other"], "default": "github" },
+        "host": { "type": "string", "description": "For self-hosted / enterprise (e.g. github.example.com, a self-managed GitLab, dev.azure.com/org). Blank = the platform's public host." },
         "default_branch": { "type": "string", "minLength": 1, "default": "main" },
-        "trusted_authors": {
+        "same_repo_only": { "type": "boolean", "default": true },
+        "trusted_roles": {
           "type": "array",
-          "items": { "enum": ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"] },
-          "default": ["OWNER", "MEMBER", "COLLABORATOR"]
+          "items": { "enum": ["owner", "member", "collaborator", "contributor"] },
+          "default": ["owner", "member", "collaborator"],
+          "description": "Normalized author-permission levels allowed to drive agentic changes; the renderer maps them to the platform's own roles."
         },
-        "same_repo_only": { "type": "boolean", "default": true }
-      }
-    },
-
-    "labels": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "human_merge": { "type": "string", "default": "human-merge" },
-        "dispatch": { "type": "string", "default": "agentic-task" }
-      }
-    },
-
-    "defaults": {
-      "description": "Org/account-level fallbacks. A role that does not set its own model resolves here (by provider) before the toolkit's built-in fallback. Keep this in the per-repo file, or inherit it via `extends`.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "models": {
+        "auth": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "claude": { "$ref": "#/$defs/modelBinding" },
-            "openai": { "$ref": "#/$defs/modelBinding" }
+            "token_secret": { "type": "string", "minLength": 1, "description": "NAME of the secret holding the platform API token. Never the value." }
+          }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "human_merge": { "type": "string", "default": "human-merge" },
+            "dispatch": { "type": "string", "default": "agentic-task" }
           }
         }
       }
     },
 
+    "defaults": {
+      "description": "Org/account-level fallbacks. A stage that does not set its own provider/model resolves here before the toolkit's built-in fallback.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "minLength": 1, "description": "Default provider id for stages that omit one." },
+        "models": {
+          "description": "Default model binding per provider id (open map — any provider).",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/modelBinding" }
+        }
+      }
+    },
+
     "models": {
-      "description": "Provider-agnostic model aliases. Reference a model anywhere (role/tier/default) by an alias name and map it per provider here, so model-ID churn touches one place. Alias names are yours to choose.",
+      "description": "Provider-agnostic model aliases. Reference an alias name anywhere a model is expected and map it per provider here, so model-ID churn touches one place.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -69,26 +83,19 @@
     },
 
     "providers": {
-      "description": "Per-provider connection settings — endpoint, API version, deployment, and the NAME of the secret holding the key. Lets you point at self-hosted / Azure OpenAI / proxy / on-prem gateways. Never put a secret value here; only the secret's name.",
+      "description": "Per-provider connection settings, keyed by provider id (open map — claude, openai, gemini, azure_openai, bedrock, vertex, ollama, openai_compatible, custom, ...). Endpoint/version/deployment plus the NAME of the key secret. Lets you point at self-hosted / cloud / proxy / on-prem gateways. Never a secret value.",
       "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "claude": { "$ref": "#/$defs/providerConn" },
-        "openai": { "$ref": "#/$defs/providerConn" }
-      }
+      "additionalProperties": { "$ref": "#/$defs/providerConn" }
     },
 
-    "roles": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["implementer", "reviewer"],
-      "properties": {
-        "implementer": { "$ref": "#/$defs/role" },
-        "reviewer": { "$ref": "#/$defs/role" }
-      }
+    "stages": {
+      "description": "The agent pipeline as an ordered, extensible graph. Each stage is one agent bound to a provider+model and a backend. Merged onto the `profile`'s stages (a stage here with the same id overrides the profile's).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/stage" }
     },
 
     "tiering": {
+      "description": "Global deterministic model tiering (change size + paths -> trivial/standard/complex), reused with no extra model call. A stage may opt out with `tiering: false`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -120,36 +127,10 @@
       }
     },
 
-    "budgets": {
-      "description": "Optional cost / token ceilings. All limits are opt-in; set only what you want enforced. `on_exceed` decides what happens when a ceiling is hit.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "currency": { "type": "string", "default": "USD" },
-        "per_run": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "max_usd": { "type": "number", "minimum": 0 },
-            "max_tokens": { "type": "integer", "minimum": 0 }
-          }
-        },
-        "per_period": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "window": { "enum": ["daily", "weekly", "monthly"], "default": "monthly" },
-            "max_usd": { "type": "number", "minimum": 0 },
-            "max_tokens": { "type": "integer", "minimum": 0 }
-          }
-        },
-        "on_exceed": { "enum": ["block", "downgrade", "warn"], "default": "block" }
-      }
-    },
+    "budgets": { "$ref": "#/$defs/budgets" },
 
     "guardrails": {
-      "description": "Prompt-injection / untrusted-input controls. Content from PRs, issues, comments, and diffs is treated as data, not instructions.",
+      "description": "Prompt-injection / untrusted-input controls. Content from PRs/MRs, issues, comments, and diffs is treated as data, not instructions.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -178,7 +159,7 @@
     },
 
     "build": {
-      "description": "What \"green\" means for THIS repository. Optional: omit it (or leave commands empty) for a repo with no build gate, e.g. a docs-only repo. Language-agnostic — the workflows run exactly what is set here and assume no language.",
+      "description": "What \"green\" means for THIS repository. Optional: omit it for a repo with no build gate (e.g. docs-only). Language-agnostic — stages run exactly what is set here and assume no language.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -227,18 +208,73 @@
   },
 
   "$defs": {
-    "role": {
-      "description": "A pipeline role. Only `provider` is required; the model resolves through the precedence chain (per-request override > this role's model > defaults.models.<provider> > toolkit fallback), with alias resolution applied. See docs/CONFIGURATION.md \"Model resolution\".",
+    "stage": {
+      "description": "One agent in the pipeline. Only `id` and `type` are required; provider/model resolve through the precedence chain, and the backend defaults to the generic runner.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider"],
+      "required": ["id", "type"],
       "properties": {
-        "provider": { "enum": ["claude", "openai"] },
-        "model": { "$ref": "#/$defs/modelBinding" }
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-_]*$", "description": "Unique stage id, e.g. plan, implement, security, integration-test." },
+        "type": {
+          "enum": ["plan", "implement", "security", "test", "integration-test", "review", "docs", "release", "custom"],
+          "description": "Semantic role; drives sensible defaults (e.g. review/security/test default to a blocking gate; plan/docs to advisory)."
+        },
+        "name": { "type": "string", "description": "Human-readable label." },
+        "enabled": { "type": "boolean", "default": true },
+        "provider": { "type": "string", "minLength": 1, "description": "Provider id for this stage. Omit to inherit defaults.provider." },
+        "model": { "$ref": "#/$defs/modelBinding" },
+        "backend": { "$ref": "#/$defs/backend" },
+        "triggers": {
+          "type": "array",
+          "items": { "enum": ["issue_labeled", "pr_opened", "pr_updated", "comment_command", "push", "schedule", "manual"] }
+        },
+        "gate": { "enum": ["advisory", "blocking"], "description": "advisory = comment only; blocking = emits a required status check. Omit to use the type's default." },
+        "tiering": { "type": "boolean", "description": "Per-stage override of global tiering.enabled." },
+        "depends_on": { "type": "array", "items": { "type": "string" }, "description": "Ids of stages that must run before this one (defines the graph)." },
+        "budgets": { "$ref": "#/$defs/budgets" },
+        "instructions": { "type": "string", "description": "Inline prompt/policy for the stage, or a path to a prompt file." }
+      }
+    },
+    "backend": {
+      "description": "The executor for a stage. `generic` is the built-in prompt-runner; the named adapters wrap mature OSS agents. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "enum": ["generic", "claude-code-action", "openhands", "pr-agent", "codex", "swe-agent", "custom"] },
+        "uses": { "type": "string", "description": "Action ref or container image (for `custom`, or to pin/override an adapter)." },
+        "with": { "type": "object", "additionalProperties": true, "description": "Backend-specific inputs passed through to the executor." }
+      }
+    },
+    "budgets": {
+      "description": "Cost / token ceilings. All limits are opt-in; set only what you want enforced. Usable globally or per-stage.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "currency": { "type": "string", "default": "USD" },
+        "per_run": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_usd": { "type": "number", "minimum": 0 },
+            "max_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "per_period": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "window": { "enum": ["daily", "weekly", "monthly"], "default": "monthly" },
+            "max_usd": { "type": "number", "minimum": 0 },
+            "max_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "on_exceed": { "enum": ["block", "downgrade", "warn"], "default": "block" }
       }
     },
     "modelBinding": {
-      "description": "Optional model binding. Every field is optional so a caller can override only what they need (e.g. just the `complex` tier) and let the rest resolve from lower-precedence layers. A value may be a literal model ID or an alias name from `models.aliases`.",
+      "description": "Optional model binding. Every field is optional so a caller can override only what they need (e.g. just the `complex` tier). A value may be a literal model ID or an alias name from `models.aliases`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -255,13 +291,10 @@
       }
     },
     "modelAlias": {
-      "description": "One alias mapped to a concrete model ID per provider.",
+      "description": "One alias mapped to a concrete model ID per provider id (open map).",
       "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "claude": { "type": "string", "minLength": 1 },
-        "openai": { "type": "string", "minLength": 1 }
-      }
+      "minProperties": 1,
+      "additionalProperties": { "type": "string", "minLength": 1 }
     },
     "providerConn": {
       "description": "Provider connection settings. Contains NO secret values — only the name of the secret to read.",
@@ -276,7 +309,7 @@
       }
     },
     "observabilitySink": {
-      "description": "A single destination for run records. `endpoint_var`/`headers_secret` are NAMES of a variable/secret, so the actual URL and token stay out of config and adapt to your environment.",
+      "description": "A single destination for run records. `endpoint_var`/`headers_secret` are NAMES of a variable/secret, so the actual URL and token stay out of config.",
       "type": "object",
       "additionalProperties": false,
       "required": ["type"],

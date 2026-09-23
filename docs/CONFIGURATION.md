@@ -8,8 +8,10 @@ credentials must be a **service account** vs a **personal access token (PAT)**, 
 
 ## 1. Prerequisites
 
-- A GitHub repository you can add workflows and secrets to.
-- Provider access for each role you configure (Claude and/or OpenAI/Codex).
+- A repository on a supported SCM platform (GitHub first; GitLab / Azure DevOps / Bitbucket / Gitea
+  follow) that you can add pipelines and secrets to.
+- Provider access for each provider your stages use (e.g. Claude, OpenAI, Gemini, or a self-hosted
+  gateway).
 - Optional: a SonarQube/SonarCloud project (only if you enable the `sonar` module).
 
 The toolkit never creates credentials. The installer only **checks** that the required secrets exist
@@ -39,9 +41,10 @@ defaults the workflows read; keep them unless you also update the rendered workf
   only from an attributable user, and PR publication needs an attributable repository member. Grant
   it the minimum (Contents + Pull requests, R/W) — it needs no permission to merge or administer.
 
-> If a role uses Claude for **review** (not the `@codex` flow), you do **not** need
-> `CODEX_REMEDIATION_TOKEN` — Claude review runs via its action with `ANTHROPIC_API_KEY`. The
-> installer tells you exactly which secrets your chosen `roles` require.
+> Secret names are configurable. The names above are defaults; override them per provider with
+> `providers.<provider>.api_key_secret` and per platform with `platform.auth.token_secret`. The
+> installer's `doctor` command tells you exactly which secrets your chosen **stages** and providers
+> require, checking each **by name** (never reading the value).
 
 ---
 
@@ -50,16 +53,21 @@ defaults the workflows read; keep them unless you also update the rendered workf
 Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is validated against
 `install/config.schema.json`.
 
-**Simple by default, advanced when you want it.** The only required keys are `version` and `roles`
-(each role needs a `provider`). Everything else is optional and falls back to a documented default,
-so a minimal config is a few lines; add more blocks only to take finer control.
+**Simple by default, advanced when you want it.** The only required key is `version`. A `profile`
+(default `standard`) expands to a stage graph, and `platform` defaults to GitHub — so a minimal
+config is a few lines. Add `stages` and other blocks only to take finer control. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```yaml
-# Minimal config — models resolve from defaults/org, no build gate.
-version: 1
-roles:
-  implementer: { provider: claude }
-  reviewer:    { provider: openai }
+# Minimal config — profile expands to a stage graph; models resolve from defaults/org.
+version: 2
+profile: standard
+platform: { type: github, default_branch: main }
+defaults:
+  provider: claude
+  models:
+    claude: { default: "<claude-default-model>" }
+    openai: { default: "<openai-default-model>" }
 ```
 
 ### `extends` (optional — config inheritance)
@@ -67,29 +75,34 @@ roles:
 |---|---|
 | `extends` | A path/URI, or ordered list of them, to base configs merged **before** this file. Local values win. Layer an org base → team base → this repo. Maps deep-merge; scalars and arrays are replaced by the later (more specific) layer. |
 
-### `repository`
+### `profile`
 | Field | Meaning |
 |---|---|
-| `default_branch` | Trunk branch PRs target. |
-| `trusted_authors` | GitHub `author_association` values allowed to drive agentic changes (`OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`). |
-| `same_repo_only` | `true` = ignore fork PR heads. Keep `true` unless you accept fork contributions (widens the threat model). |
+| `profile` | Onboarding shortcut that expands to a default stage graph: `minimal` (implement + review), `standard` (implement + review + security), `full` (plan + implement + security + test + integration-test + review + docs), or `custom` (no auto stages). Default `standard`. Stages you list under `stages` are merged on top (same id overrides). |
 
-### `labels`
+### `platform`
 | Field | Meaning |
 |---|---|
-| `human_merge` | A PR with this label is **never** auto-merged (human keeps merge authority). |
-| `dispatch` | Optional label that dispatches an implementation task from an issue. |
+| `type` | `github` \| `gitlab` \| `azure_devops` \| `bitbucket` \| `gitea` \| `other`. Selects the renderer. GitHub ships first. |
+| `host` | Self-hosted / enterprise host (e.g. `github.example.com`, a self-managed GitLab, `dev.azure.com/org`). Blank = public host. |
+| `default_branch` | Trunk branch change-requests target. |
+| `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). |
+| `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. |
+| `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
+| `labels.human_merge` | A change-request with this label is **never** auto-merged (human keeps merge authority). |
+| `labels.dispatch` | Optional label that dispatches a task from an issue. |
 
 ### `defaults` (optional — org/account fallbacks)
 | Field | Meaning |
 |---|---|
-| `models.{claude,openai}.default` | Default model ID for that provider when a role does not set its own. Keep it here or seed it from an org-level shared config. |
-| `models.{claude,openai}.tiers.{trivial,standard,complex}` | Per-tier default model for that provider, used when `tiering.enabled: true`. |
+| `provider` | Default provider id for stages that omit one. |
+| `models.<provider>.default` | Default model ID for that provider when a stage does not set its own. Keep it here or seed it from an org base via `extends`. |
+| `models.<provider>.tiers.{trivial,standard,complex}` | Per-tier default model for that provider, used when `tiering.enabled: true`. `<provider>` is any provider id. |
 
 ### `models` (optional — provider-agnostic aliases)
 | Field | Meaning |
 |---|---|
-| `models.aliases.<name>.{claude,openai}` | Map an alias name (you choose it, e.g. `fast`/`balanced`/`strong`) to a concrete model ID per provider. Reference the alias anywhere a model is expected; ID churn then touches one place. |
+| `models.aliases.<name>.<provider>` | Map an alias name (you choose it, e.g. `fast`/`balanced`/`strong`) to a concrete model ID per provider id. Reference the alias anywhere a model is expected; ID churn then touches one place. |
 
 ### `providers` (optional — connection / self-hosted)
 | Field | Meaning |
@@ -100,13 +113,32 @@ roles:
 | `providers.<provider>.api_key_secret` | **Name** of the secret holding the API key. Lets you use your own secret naming. Never the key value. |
 | `providers.<provider>.extra_headers_secret` | **Name** of a secret holding extra headers (e.g. a gateway token). |
 
-### `roles.implementer` / `roles.reviewer`
+### `stages` (optional — the agent graph)
+Omit to use the profile's stages. Anything you list is **merged onto** the profile (a stage with the
+same `id` overrides). Each stage is one agent; mix providers, models, and backends freely.
+
 | Field | Meaning |
 |---|---|
-| `provider` | `claude` or `openai` — **the only required field per role.** The two roles are independent — mix freely, including the same provider with different models. |
-| `model` (optional) | Omit it to inherit from `defaults.models.<provider>`. Set it to override for this repo. **Placeholders only in the template** — set your provider's current IDs; the toolkit never hardcodes model versions. |
-| `model.default` (optional) | Override the resolved default model for this role. |
-| `model.tiers.{trivial,standard,complex}` (optional) | Override the per-tier model for this role. Set just one tier and the rest still inherit. |
+| `id` | **Required.** Unique stage id (`^[a-z0-9][a-z0-9-_]*$`), e.g. `plan`, `implement`, `security`, `integration-test`. |
+| `type` | **Required.** `plan` \| `implement` \| `security` \| `test` \| `integration-test` \| `review` \| `docs` \| `release` \| `custom`. Drives sensible defaults (review/security/test default to a blocking gate; plan/docs to advisory). |
+| `name` | Human-readable label. |
+| `enabled` | `false` to keep a stage defined but off. Default `true`. |
+| `provider` | Provider id for this stage. Omit to inherit `defaults.provider`. |
+| `model` (+ `.default`, `.tiers.*`) | Optional model binding; inherits per the resolution chain. A value may be a literal ID or a `models.aliases` name. |
+| `backend` | The executor (see below). Defaults to the generic runner. |
+| `triggers` | Any of `issue_labeled`, `pr_opened`, `pr_updated`, `comment_command`, `push`, `schedule`, `manual`. |
+| `gate` | `advisory` (comment only) or `blocking` (emits a required status check). Omit to use the type's default. |
+| `tiering` | Per-stage override of global `tiering.enabled`. |
+| `depends_on` | Ids of stages that must run first (defines the graph edges). |
+| `budgets` | Per-stage cost/token ceilings (same shape as global `budgets`). |
+| `instructions` | Inline prompt/policy for the stage, or a path to a prompt file. |
+
+#### `stages[].backend`
+| Field | Meaning |
+|---|---|
+| `name` | `generic` (built-in prompt-runner) \| `claude-code-action` \| `openhands` \| `pr-agent` \| `codex` \| `swe-agent` \| `custom`. |
+| `uses` | Action ref or container image (for `custom`, or to pin/override an adapter). |
+| `with` | Backend-specific inputs, passed through unchanged. |
 
 See **Model resolution** below for the full precedence order.
 
@@ -173,14 +205,14 @@ Omit `build` entirely (or leave `commands` empty) for a repo with no build gate,
 
 ## 3a. Model resolution
 
-Each role's model is resolved per run, **most specific wins**. For a given role and change tier the
-toolkit walks this chain and uses the first model it finds:
+Each **stage's** model is resolved per run, **most specific wins**. For a given stage and change tier
+the toolkit walks this chain and uses the first model it finds:
 
 | # | Layer | Where it comes from |
 |---|---|---|
-| 1 | **Per-request override** | A model supplied at dispatch time (a `workflow_dispatch` input or a dispatch-comment command). Wins over everything. |
-| 2 | **Per-repo role model** | `roles.<role>.model.tiers.<tier>`, then `roles.<role>.model.default`. |
-| 3 | **Org/account default** | `defaults.models.<provider>.tiers.<tier>`, then `defaults.models.<provider>.default`. |
+| 1 | **Per-request override** | A model supplied at dispatch time (a pipeline input or a dispatch-comment command). Wins over everything. |
+| 2 | **Stage model** | `stages[].model.tiers.<tier>`, then `stages[].model.default`. |
+| 3 | **Org/account default** | `defaults.models.<provider>.tiers.<tier>`, then `defaults.models.<provider>.default` (provider = the stage's provider, or `defaults.provider`). |
 | 4 | **Toolkit fallback** | The documented built-in for that provider. |
 
 Key points:
@@ -191,22 +223,27 @@ Key points:
 - **Tier** (`trivial` / `standard` / `complex`) comes from the deterministic classifier (change size
   + paths) only when `tiering.enabled: true`; otherwise `default` is used.
 - **Aliases resolve last.** If the resolved value matches a `models.aliases` name, it maps to that
-  alias's model ID for the role's provider — so you can pin `strong` once and swap the ID centrally.
-- **Fail loudly, never guess.** If no model resolves for a role/tier, the installer/run stops with a
-  clear error naming the role and which key to set — it never silently picks a model version.
+  alias's model ID for the stage's provider — so you can pin `strong` once and swap the ID centrally.
+- **Fail loudly, never guess.** If no model resolves for a stage/tier, the installer/run stops with a
+  clear error naming the stage and which key to set — it never silently picks a model version.
 
-**Example** — org sets the defaults; one repo pins only its reviewer's complex tier:
+**Example** — org sets the defaults; one review stage pins only its complex tier and uses a different
+provider than the implementer (any permutation is valid):
 
 ```yaml
 defaults:
+  provider: claude
   models:
     claude: { default: "<claude-default>" }
     openai: { default: "<openai-default>", tiers: { complex: "<openai-complex>" } }
-roles:
-  implementer: { provider: claude }                         # -> <claude-default>
-  reviewer:
+stages:
+  - id: implement
+    type: implement
+    provider: claude                                          # -> <claude-default>
+  - id: review
+    type: review
     provider: openai
-    model: { tiers: { complex: "<openai-strong>" } }        # complex -> <openai-strong>; else <openai-default>
+    model: { tiers: { complex: "<openai-strong>" } }          # complex -> <openai-strong>; else <openai-default>
 ```
 
 ---
@@ -238,7 +275,7 @@ installer/engine; defined here as the contract.)
 - validates `.agentic/config.yml` (after `extends` merge) against the schema;
 - confirms every required secret **exists by name** for the providers/modules in use (never reads
   the value);
-- resolves and prints the **model matrix** (each role × tier → model, showing which layer won and
+- resolves and prints the **model matrix** (each stage × tier → model, showing which layer won and
   any alias expansion);
 - checks `providers`, `budgets`, and `observability` are well-formed and that referenced
   variable/secret **names** are present.
@@ -267,11 +304,13 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 ## 5. Setup steps
 
-1. Add `.agentic/config.yml` (edit the template, or let the Claude skill draft it).
-2. Create the secrets your `roles` require (section 2). The installer lists the exact set.
-3. Run the installer / invoke the skill — it validates the config, renders the enabled modules'
-   workflows into `.github/workflows/`, and opens a bootstrap PR.
-4. Merge the bootstrap PR.
+1. Add `.agentic/config.yml` (edit the template, or let the Claude skill draft it). Start with a
+   `profile` and `platform`; add `stages` only if you need finer control.
+2. Create the secrets your stages/providers and platform require (section 2). `doctor` lists the exact
+   set by name.
+3. Run the installer / invoke the skill — it validates the config, renders the enabled stages for your
+   `platform`, and opens a bootstrap PR/MR.
+4. Merge the bootstrap PR/MR.
 
 ---
 
