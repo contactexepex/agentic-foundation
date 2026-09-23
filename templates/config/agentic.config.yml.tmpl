@@ -1,0 +1,106 @@
+# =============================================================================
+# agentic-foundation — per-repository configuration (`.agentic/config.yml`)
+# -----------------------------------------------------------------------------
+# This single file is what makes the toolkit portable. The GitHub Actions
+# workflows read from it instead of hardcoding any language, provider, or model.
+# Full reference: docs/CONFIGURATION.md
+# =============================================================================
+version: 1
+
+repository:
+  # Branch that PRs target and that the workflows treat as the trunk.
+  default_branch: main
+  # GitHub author_association values allowed to drive agentic changes.
+  trusted_authors: [OWNER, MEMBER, COLLABORATOR]
+  # true = act only on same-repo PR heads (no fork PRs). Keep true unless you
+  # deliberately accept and trust fork contributions (widens the threat model).
+  same_repo_only: true
+
+labels:
+  # A PR carrying this label is NEVER auto-merged (human keeps merge authority).
+  human_merge: human-merge
+  # Optional: label that dispatches an implementation task from an issue.
+  dispatch: agentic-task
+
+# ---------------------------------------------------------------------------
+# Roles bound to providers. Any combination is valid, including the SAME
+# provider in both roles with DIFFERENT models.
+#   provider: claude | openai
+# Examples:
+#   Claude implements, Codex reviews   -> implementer.provider: claude / reviewer.provider: openai
+#   Codex implements, Claude reviews   -> implementer.provider: openai / reviewer.provider: claude
+#   Claude both (different models)      -> both provider: claude, different model.default
+#   OpenAI only (different models)      -> both provider: openai, different model.default
+# ---------------------------------------------------------------------------
+roles:
+  implementer:
+    provider: claude
+    model:
+      # Set to your provider's current model IDs (this file ships placeholders,
+      # never hardcoded versions — see CONFIGURATION.md "Models").
+      default: "<implementer-default-model>"
+      tiers:                       # used only when tiering.enabled = true
+        trivial:  "<low-cost-model>"
+        standard: "<implementer-default-model>"
+        complex:  "<high-capability-model>"
+  reviewer:
+    provider: openai
+    model:
+      default: "<reviewer-default-model>"
+      tiers:
+        trivial:  "<low-cost-model>"
+        standard: "<reviewer-default-model>"
+        complex:  "<high-capability-model>"
+
+# ---------------------------------------------------------------------------
+# Dynamic model selection. The deterministic classifier reuses the review
+# router's change-size + path signal, so tier selection costs NO extra model
+# call. A trivial textual/config change runs on the low-cost model; a large or
+# broad change escalates to the high-capability model.
+# ---------------------------------------------------------------------------
+tiering:
+  enabled: true
+  classifier: deterministic        # v1: deterministic only
+  thresholds:
+    trivial:
+      max_files: 5
+      max_lines: 50
+      only_paths: ["**/*.md", "docs/**", "**/*.txt"]
+    complex:
+      min_files: 20
+      min_lines: 400
+    # A change that is neither trivial nor complex is treated as "standard".
+
+# ---------------------------------------------------------------------------
+# What "green" means for THIS repository. Pick a preset and/or override the
+# individual commands. The workflows run whatever is defined here — they never
+# assume a language.
+#   preset: python | maven | gradle | node | go | rust | dotnet | custom
+# Presets live in templates/presets/ and only pre-fill the commands below.
+# ---------------------------------------------------------------------------
+build:
+  preset: custom
+  commands:
+    install: ""
+    lint: ""
+    test: ""
+    typecheck: ""
+
+# ---------------------------------------------------------------------------
+# Review routing: trivial textual changes are fast-path approved WITHOUT a
+# model review; everything else is routed to the configured reviewer.
+# ---------------------------------------------------------------------------
+routing:
+  fast_path:
+    globs: ["**/*.md", "docs/**"]
+    max_files: 20
+    max_lines: 200
+    exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
+
+# ---------------------------------------------------------------------------
+# Optional add-on modules. Core (implement + review + routing + thread
+# resolution) is always installed; these are opt-in.
+# ---------------------------------------------------------------------------
+modules:
+  auto_merge: false                # fail-closed foundation auto-merge gate
+  sonar: false                     # SonarCloud/SonarQube quality gate

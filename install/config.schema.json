@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/contactexepex/agentic-foundation/install/config.schema.json",
+  "title": "agentic-foundation repository configuration",
+  "description": "Schema for .agentic/config.yml — validated by the installer before rendering workflows.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "repository", "roles", "build"],
+  "properties": {
+    "version": { "const": 1 },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_branch"],
+      "properties": {
+        "default_branch": { "type": "string", "minLength": 1 },
+        "trusted_authors": {
+          "type": "array",
+          "items": { "enum": ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"] },
+          "default": ["OWNER", "MEMBER", "COLLABORATOR"]
+        },
+        "same_repo_only": { "type": "boolean", "default": true }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "human_merge": { "type": "string", "default": "human-merge" },
+        "dispatch": { "type": "string", "default": "agentic-task" }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementer", "reviewer"],
+      "properties": {
+        "implementer": { "$ref": "#/$defs/role" },
+        "reviewer": { "$ref": "#/$defs/role" }
+      }
+    },
+    "tiering": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "classifier": { "enum": ["deterministic"], "default": "deterministic" },
+        "thresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "trivial": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "max_files": { "type": "integer", "minimum": 1 },
+                "max_lines": { "type": "integer", "minimum": 1 },
+                "only_paths": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "complex": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "min_files": { "type": "integer", "minimum": 1 },
+                "min_lines": { "type": "integer", "minimum": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands"],
+      "properties": {
+        "preset": {
+          "enum": ["python", "maven", "gradle", "node", "go", "rust", "dotnet", "custom"],
+          "default": "custom"
+        },
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "install": { "type": "string" },
+            "lint": { "type": "string" },
+            "test": { "type": "string" },
+            "typecheck": { "type": "string" }
+          }
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fast_path": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "globs": { "type": "array", "items": { "type": "string" } },
+            "max_files": { "type": "integer", "minimum": 0 },
+            "max_lines": { "type": "integer", "minimum": 0 },
+            "exclude": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auto_merge": { "type": "boolean", "default": false },
+        "sonar": { "type": "boolean", "default": false }
+      }
+    }
+  },
+  "$defs": {
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": { "enum": ["claude", "openai"] },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["default"],
+          "properties": {
+            "default": { "type": "string", "minLength": 1 },
+            "tiers": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "trivial": { "type": "string" },
+                "standard": { "type": "string" },
+                "complex": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

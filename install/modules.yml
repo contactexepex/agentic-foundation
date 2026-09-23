@@ -1,0 +1,27 @@
+# Module -> template files map. The installer copies `core` always, and each
+# opt-in module only when enabled in .agentic/config.yml (modules.*).
+# Paths are relative to templates/ ; workflows render into .github/workflows/.
+core:
+  description: Implement + review + deterministic routing + Codex thread hygiene.
+  workflows:
+    - workflows/implementor.yml                 # runs the configured implementer role
+    - workflows/review-router.yml               # deterministic trivial/substantive + tier signal
+    - workflows/request-review-on-push.yml      # keep a comment-triggered reviewer bound to head
+    - workflows/resolve-fixed-review-threads.yml
+  contract:
+    - contract/AGENTS.md.tmpl
+    - contract/CLAUDE.md.tmpl
+  config:
+    - config/agentic.config.yml.tmpl            # rendered to .agentic/config.yml
+
+auto_merge:
+  description: Fail-closed foundation auto-merge gate (opt-in; off by default).
+  requires: [core]
+  workflows:
+    - workflows/auto-merge.yml
+
+sonar:
+  description: SonarQube/SonarCloud quality gate wired as a required check.
+  requires: [core]
+  workflows:
+    - workflows/sonar-analysis.yml
