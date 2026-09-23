@@ -43,6 +43,20 @@ to a sensible default. Add configuration only to take finer control.
 username, or password), never stores them, and keeps them out of `.agentic/config.yml` — see
 [Secret handling](docs/CONFIGURATION.md#3b-secret-handling-non-negotiable).
 
+**Everything adapts to your setup — nothing hardcoded.** All of the following are optional and
+configurable, so an org, team, or individual can bend the toolkit to how they deploy, host, and
+observe:
+
+- **Config inheritance** (`extends`) — layer an org base → team base → repo; local values win.
+- **Model aliases** — reference `fast`/`balanced`/`strong` (your names) and map IDs centrally.
+- **Custom / self-hosted providers** — set a `base_url`, API version, deployment, and the *name* of
+  the key secret (Azure OpenAI, proxies, on-prem gateways).
+- **Cost & token budgets** — per-run and per-period caps; on exceed `block` / `downgrade` / `warn`.
+- **Prompt-injection guardrails** — treat PR/issue/comment/diff content as data, not instructions.
+- **Observability** — send run records to a file, CI artifact, webhook, or OTLP collector; endpoints
+  come from a variable/secret *name*, never hardcoded; secrets always redacted.
+- **`doctor` & `plan`** — validate config + secrets and dry-run the install before anything is applied.
+
 **Language-agnostic.** A repo declares what "green" means (`install` / `lint` / `test` /
 `typecheck`) via a preset (`python`, `maven`, `gradle`, `node`, `go`, `rust`, `dotnet`) or custom
 commands. The workflows never assume a language.

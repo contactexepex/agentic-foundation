@@ -62,6 +62,11 @@ roles:
   reviewer:    { provider: openai }
 ```
 
+### `extends` (optional — config inheritance)
+| Field | Meaning |
+|---|---|
+| `extends` | A path/URI, or ordered list of them, to base configs merged **before** this file. Local values win. Layer an org base → team base → this repo. Maps deep-merge; scalars and arrays are replaced by the later (more specific) layer. |
+
 ### `repository`
 | Field | Meaning |
 |---|---|
@@ -80,6 +85,20 @@ roles:
 |---|---|
 | `models.{claude,openai}.default` | Default model ID for that provider when a role does not set its own. Keep it here or seed it from an org-level shared config. |
 | `models.{claude,openai}.tiers.{trivial,standard,complex}` | Per-tier default model for that provider, used when `tiering.enabled: true`. |
+
+### `models` (optional — provider-agnostic aliases)
+| Field | Meaning |
+|---|---|
+| `models.aliases.<name>.{claude,openai}` | Map an alias name (you choose it, e.g. `fast`/`balanced`/`strong`) to a concrete model ID per provider. Reference the alias anywhere a model is expected; ID churn then touches one place. |
+
+### `providers` (optional — connection / self-hosted)
+| Field | Meaning |
+|---|---|
+| `providers.<provider>.base_url` | Custom endpoint (self-hosted, Azure OpenAI, proxy, on-prem gateway). Blank = provider default. |
+| `providers.<provider>.api_version` | API version, where the endpoint needs one (e.g. Azure OpenAI). |
+| `providers.<provider>.deployment` | Deployment name, where applicable (e.g. Azure). |
+| `providers.<provider>.api_key_secret` | **Name** of the secret holding the API key. Lets you use your own secret naming. Never the key value. |
+| `providers.<provider>.extra_headers_secret` | **Name** of a secret holding extra headers (e.g. a gateway token). |
 
 ### `roles.implementer` / `roles.reviewer`
 | Field | Meaning |
@@ -120,6 +139,36 @@ Omit `build` entirely (or leave `commands` empty) for a repo with no build gate,
 | `auto_merge` | `true` installs the fail-closed foundation auto-merge gate. Default `false`. |
 | `sonar` | `true` wires SonarQube/SonarCloud as a required check. Default `false`. |
 
+### `budgets` (optional — cost / token caps)
+| Field | Meaning |
+|---|---|
+| `enabled` | Turn budget enforcement on. Default `false`. |
+| `currency` | Currency for `max_usd` limits. Default `USD`. |
+| `per_run.{max_usd,max_tokens}` | Ceiling for a single run. |
+| `per_period.{window,max_usd,max_tokens}` | Rolling ceiling over `daily`/`weekly`/`monthly`. |
+| `on_exceed` | `block` (stop the run), `downgrade` (drop to a cheaper tier), or `warn`. Default `block`. |
+
+### `guardrails` (optional — prompt-injection controls)
+| Field | Meaning |
+|---|---|
+| `untrusted_inputs` | Which inputs are treated as **data, not instructions** (`pr_body`, `issue_body`, `comments`, `diff`, `code_comments`, `filenames`). |
+| `ignore_inline_directives` | Ignore "instructions" embedded in untrusted content. Default `true`. |
+| `allowed_tools` | Optional allowlist of tools the agent may use. |
+| `max_context_files` | Cap on files pulled into context. |
+| `redact_secrets_in_context` | Strip secret-shaped strings from model context. Default `true`. |
+
+### `observability` (optional — audit trail; adapt to your stack)
+| Field | Meaning |
+|---|---|
+| `enabled` | Emit run records. Default `true`. |
+| `format` | `json` or `text`. Default `json`. |
+| `redact_secrets` | Secrets are **always** redacted from output; this flag cannot expose them. |
+| `sinks[].type` | `none`, `artifact` (CI artifact), `file`, `webhook`, or `otlp`. Use several. |
+| `sinks[].path` | Destination for `file`. |
+| `sinks[].endpoint_var` | **Name** of a variable holding the URL for `webhook`/`otlp` — never hardcoded. |
+| `sinks[].headers_secret` | **Name** of a secret holding auth headers/token. |
+| `sinks[].min_level` | `debug`/`info`/`warn`/`error`. Default `info`. |
+
 ---
 
 ## 3a. Model resolution
@@ -141,6 +190,8 @@ Key points:
   inherit.
 - **Tier** (`trivial` / `standard` / `complex`) comes from the deterministic classifier (change size
   + paths) only when `tiering.enabled: true`; otherwise `default` is used.
+- **Aliases resolve last.** If the resolved value matches a `models.aliases` name, it maps to that
+  alias's model ID for the role's provider — so you can pin `strong` once and swap the ID centrally.
 - **Fail loudly, never guess.** If no model resolves for a role/tier, the installer/run stops with a
   clear error naming the role and which key to set — it never silently picks a model version.
 
@@ -175,6 +226,26 @@ The toolkit treats every credential as write-only and invisible:
   in repo/environment secrets (section 2). Do not put tokens in the config file.
 
 If you ever see a secret value in a log or comment, treat it as compromised and rotate it.
+
+---
+
+## 3c. Commands: `doctor` and `plan` (dry-run)
+
+Two read-only commands help you verify configuration before anything is applied. (Enforced by the
+installer/engine; defined here as the contract.)
+
+**`doctor` — validate.** Fails loudly and fixes nothing. It:
+- validates `.agentic/config.yml` (after `extends` merge) against the schema;
+- confirms every required secret **exists by name** for the providers/modules in use (never reads
+  the value);
+- resolves and prints the **model matrix** (each role × tier → model, showing which layer won and
+  any alias expansion);
+- checks `providers`, `budgets`, and `observability` are well-formed and that referenced
+  variable/secret **names** are present.
+
+**`plan` — dry-run.** Prints what the installer *would* render — the enabled modules, workflow files,
+resolved models, gates, and budgets — **without writing files or opening a PR.** Output is
+secret-free.
 
 ---
 

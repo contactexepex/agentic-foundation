@@ -11,6 +11,13 @@
 # =============================================================================
 version: 1
 
+# Optional: inherit base config(s) first; values in THIS file win. Layer an
+# org base, then a team base, then this repo. Each item is a path or URI the
+# installer can read. (String or list.)
+# extends:
+#   - org/agentic-base.yml
+#   - team/backend.yml
+
 # ===========================================================================
 # SIMPLE — the minimum a repo needs. Bind each role to a provider and declare
 # what "green" means. Models are optional here: leave them out and they resolve
@@ -64,6 +71,28 @@ defaults:
         trivial:  "<openai-low-cost-model>"
         standard: "<openai-default-model>"
         complex:  "<openai-high-capability-model>"
+
+# Provider-agnostic model aliases (optional). Reference these names anywhere a
+# model is expected (role/tier/default) instead of a raw ID; map each per
+# provider here so model-ID churn touches one place. Names are yours to choose.
+# models:
+#   aliases:
+#     fast:     { claude: "<claude-fast>",     openai: "<openai-fast>" }
+#     balanced: { claude: "<claude-balanced>", openai: "<openai-balanced>" }
+#     strong:   { claude: "<claude-strong>",   openai: "<openai-strong>" }
+
+# Provider connections (optional). Point at self-hosted / Azure OpenAI / proxy /
+# on-prem gateways. Supply only the NAME of the secret holding the key — never
+# the key itself. Everything is optional; omit to use the provider default.
+# providers:
+#   claude:
+#     base_url: ""                         # custom endpoint; blank = provider default
+#     api_key_secret: ANTHROPIC_API_KEY    # name of the secret to read
+#   openai:
+#     base_url: ""                         # e.g. https://<resource>.openai.azure.com
+#     api_version: ""                      # e.g. Azure OpenAI api-version
+#     deployment: ""                       # Azure deployment name, if applicable
+#     api_key_secret: OPENAI_API_KEY
 
 # Per-role overrides. Uncomment ONLY the fields you want to pin for this repo;
 # anything omitted inherits from `defaults.models.<provider>` above.
@@ -120,6 +149,38 @@ routing:
     max_files: 20
     max_lines: 200
     exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
+
+# --- Cost & token budgets ----------------------------------------------------
+# Optional ceilings. Set only what you want enforced; on_exceed decides the
+# action when a limit is hit.
+# budgets:
+#   enabled: true
+#   currency: USD
+#   per_run:    { max_usd: 2.00, max_tokens: 500000 }
+#   per_period: { window: monthly, max_usd: 200.00 }
+#   on_exceed: block               # block | downgrade (to a cheaper tier) | warn
+
+# --- Prompt-injection guardrails ---------------------------------------------
+# Treat content from PRs/issues/comments/diffs as data, not instructions.
+# guardrails:
+#   untrusted_inputs: [pr_body, issue_body, comments, diff, code_comments]
+#   ignore_inline_directives: true       # ignore "instructions" embedded in the above
+#   allowed_tools: []                    # optional allowlist of tools the agent may use
+#   max_context_files: 200
+#   redact_secrets_in_context: true
+
+# --- Observability / audit trail ---------------------------------------------
+# Where run records go — adapt to YOUR stack. Endpoints come from a variable/
+# secret NAME (never hardcoded), and secrets are always redacted from output.
+# observability:
+#   enabled: true
+#   format: json                   # json | text
+#   redact_secrets: true           # secrets are always redacted regardless
+#   sinks:
+#     - type: artifact             # none | artifact | file | webhook | otlp
+#     - type: otlp
+#       endpoint_var: OTEL_EXPORTER_OTLP_ENDPOINT   # name of a repo/org variable
+#       headers_secret: OTEL_EXPORTER_OTLP_HEADERS  # name of a secret
 
 # --- Optional add-on modules -------------------------------------------------
 # Core (implement + review + routing + thread resolution) is always installed;

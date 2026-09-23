@@ -2,12 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/contactexepex/agentic-foundation/install/config.schema.json",
   "title": "agentic-foundation repository configuration",
-  "description": "Schema for .agentic/config.yml — validated by the installer before rendering workflows. Everything except a minimal core is optional; unset values resolve from `defaults`, then the toolkit's documented fallbacks. See docs/CONFIGURATION.md.",
+  "description": "Schema for .agentic/config.yml — validated by the installer before rendering workflows. Everything except a minimal core is optional; unset values resolve from `extends` bases, then `defaults`, then the toolkit's documented fallbacks. Nothing about hosting, endpoints, or observability is hardcoded — an org/team/user configures it here. Secrets are referenced only by name; values never live in this file. See docs/CONFIGURATION.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "roles"],
   "properties": {
     "version": { "const": 1 },
+
+    "extends": {
+      "description": "Base config(s) to inherit from, merged before this file (local values win). Point at an org base, then a team base, then this repo — layering for org/team/user. A string or an ordered list; each item is a path or URI the installer can read.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      ]
+    },
+
     "repository": {
       "type": "object",
       "additionalProperties": false,
@@ -21,6 +30,7 @@
         "same_repo_only": { "type": "boolean", "default": true }
       }
     },
+
     "labels": {
       "type": "object",
       "additionalProperties": false,
@@ -29,8 +39,9 @@
         "dispatch": { "type": "string", "default": "agentic-task" }
       }
     },
+
     "defaults": {
-      "description": "Org/account-level fallbacks. A role that does not set its own model resolves here (by provider) before the toolkit's built-in fallback. Keep this in the per-repo file, or seed it from an org-level shared config/variables.",
+      "description": "Org/account-level fallbacks. A role that does not set its own model resolves here (by provider) before the toolkit's built-in fallback. Keep this in the per-repo file, or inherit it via `extends`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -44,6 +55,29 @@
         }
       }
     },
+
+    "models": {
+      "description": "Provider-agnostic model aliases. Reference a model anywhere (role/tier/default) by an alias name and map it per provider here, so model-ID churn touches one place. Alias names are yours to choose.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/modelAlias" }
+        }
+      }
+    },
+
+    "providers": {
+      "description": "Per-provider connection settings — endpoint, API version, deployment, and the NAME of the secret holding the key. Lets you point at self-hosted / Azure OpenAI / proxy / on-prem gateways. Never put a secret value here; only the secret's name.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claude": { "$ref": "#/$defs/providerConn" },
+        "openai": { "$ref": "#/$defs/providerConn" }
+      }
+    },
+
     "roles": {
       "type": "object",
       "additionalProperties": false,
@@ -53,6 +87,7 @@
         "reviewer": { "$ref": "#/$defs/role" }
       }
     },
+
     "tiering": {
       "type": "object",
       "additionalProperties": false,
@@ -84,6 +119,64 @@
         }
       }
     },
+
+    "budgets": {
+      "description": "Optional cost / token ceilings. All limits are opt-in; set only what you want enforced. `on_exceed` decides what happens when a ceiling is hit.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "currency": { "type": "string", "default": "USD" },
+        "per_run": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_usd": { "type": "number", "minimum": 0 },
+            "max_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "per_period": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "window": { "enum": ["daily", "weekly", "monthly"], "default": "monthly" },
+            "max_usd": { "type": "number", "minimum": 0 },
+            "max_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "on_exceed": { "enum": ["block", "downgrade", "warn"], "default": "block" }
+      }
+    },
+
+    "guardrails": {
+      "description": "Prompt-injection / untrusted-input controls. Content from PRs, issues, comments, and diffs is treated as data, not instructions.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "untrusted_inputs": {
+          "type": "array",
+          "items": { "enum": ["pr_body", "issue_body", "comments", "diff", "code_comments", "filenames"] },
+          "default": ["pr_body", "issue_body", "comments", "diff", "code_comments"]
+        },
+        "ignore_inline_directives": { "type": "boolean", "default": true },
+        "allowed_tools": { "type": "array", "items": { "type": "string" } },
+        "max_context_files": { "type": "integer", "minimum": 1 },
+        "redact_secrets_in_context": { "type": "boolean", "default": true }
+      }
+    },
+
+    "observability": {
+      "description": "Where run records go. Adapts to your stack — file, CI artifact, webhook, or OTLP collector — with endpoints supplied by variable/secret NAME, never hardcoded. Secrets are always redacted from output.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "format": { "enum": ["json", "text"], "default": "json" },
+        "redact_secrets": { "type": "boolean", "default": true },
+        "sinks": { "type": "array", "items": { "$ref": "#/$defs/observabilitySink" } }
+      }
+    },
+
     "build": {
       "description": "What \"green\" means for THIS repository. Optional: omit it (or leave commands empty) for a repo with no build gate, e.g. a docs-only repo. Language-agnostic — the workflows run exactly what is set here and assume no language.",
       "type": "object",
@@ -105,6 +198,7 @@
         }
       }
     },
+
     "routing": {
       "type": "object",
       "additionalProperties": false,
@@ -121,6 +215,7 @@
         }
       }
     },
+
     "modules": {
       "type": "object",
       "additionalProperties": false,
@@ -130,9 +225,10 @@
       }
     }
   },
+
   "$defs": {
     "role": {
-      "description": "A pipeline role. Only `provider` is required; the model resolves through the precedence chain (per-request override > this role's model > defaults.models.<provider> > toolkit fallback). See docs/CONFIGURATION.md \"Model resolution\".",
+      "description": "A pipeline role. Only `provider` is required; the model resolves through the precedence chain (per-request override > this role's model > defaults.models.<provider> > toolkit fallback), with alias resolution applied. See docs/CONFIGURATION.md \"Model resolution\".",
       "type": "object",
       "additionalProperties": false,
       "required": ["provider"],
@@ -142,7 +238,7 @@
       }
     },
     "modelBinding": {
-      "description": "Optional model binding. Every field is optional so a caller can override only what they need (e.g. just the `complex` tier) and let the rest resolve from lower-precedence layers.",
+      "description": "Optional model binding. Every field is optional so a caller can override only what they need (e.g. just the `complex` tier) and let the rest resolve from lower-precedence layers. A value may be a literal model ID or an alias name from `models.aliases`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -156,6 +252,40 @@
             "complex": { "type": "string", "minLength": 1 }
           }
         }
+      }
+    },
+    "modelAlias": {
+      "description": "One alias mapped to a concrete model ID per provider.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claude": { "type": "string", "minLength": 1 },
+        "openai": { "type": "string", "minLength": 1 }
+      }
+    },
+    "providerConn": {
+      "description": "Provider connection settings. Contains NO secret values — only the name of the secret to read.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_url": { "type": "string" },
+        "api_version": { "type": "string" },
+        "deployment": { "type": "string" },
+        "api_key_secret": { "type": "string", "minLength": 1 },
+        "extra_headers_secret": { "type": "string", "minLength": 1 }
+      }
+    },
+    "observabilitySink": {
+      "description": "A single destination for run records. `endpoint_var`/`headers_secret` are NAMES of a variable/secret, so the actual URL and token stay out of config and adapt to your environment.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["none", "artifact", "file", "webhook", "otlp"] },
+        "path": { "type": "string" },
+        "endpoint_var": { "type": "string" },
+        "headers_secret": { "type": "string" },
+        "min_level": { "enum": ["debug", "info", "warn", "error"], "default": "info" }
       }
     }
   }
