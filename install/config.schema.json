@@ -88,6 +88,12 @@
       "additionalProperties": { "$ref": "#/$defs/providerConn" }
     },
 
+    "skills": {
+      "description": "Skill registry, keyed by skill id. A skill is the reusable methodology/content for a stage (checklist, rubric, output format) — provider-, backend-, and language-agnostic. Register your own or override a shipped one by id. Built-ins live in templates/skills/<id>/. Referenced from stages via `stages[].skill`.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/skillRef" }
+    },
+
     "stages": {
       "description": "The agent pipeline as an ordered, extensible graph. Each stage is one agent bound to a provider+model and a backend. Merged onto the `profile`'s stages (a stage here with the same id overrides the profile's).",
       "type": "array",
@@ -209,10 +215,16 @@
 
   "$defs": {
     "stage": {
-      "description": "One agent in the pipeline. Only `id` and `type` are required; provider/model resolve through the precedence chain, and the backend defaults to the generic runner.",
+      "description": "One agent in the pipeline. `id` is always required; `type` is required unless `from` supplies it via an agent preset. Provider/model resolve through the precedence chain; the backend defaults to the generic runner.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type"],
+      "required": ["id"],
+      "allOf": [
+        {
+          "if": { "not": { "required": ["from"] } },
+          "then": { "required": ["type"] }
+        }
+      ],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-_]*$", "description": "Unique stage id, e.g. plan, implement, security, integration-test." },
         "type": {
@@ -220,9 +232,11 @@
           "description": "Semantic role; drives sensible defaults (e.g. review/security/test default to a blocking gate; plan/docs to advisory)."
         },
         "name": { "type": "string", "description": "Human-readable label." },
+        "from": { "type": "string", "minLength": 1, "description": "Agent-preset id to base this stage on (from templates/agents/). Fields set here override the preset." },
         "enabled": { "type": "boolean", "default": true },
         "provider": { "type": "string", "minLength": 1, "description": "Provider id for this stage. Omit to inherit defaults.provider." },
         "model": { "$ref": "#/$defs/modelBinding" },
+        "skill": { "type": "string", "minLength": 1, "description": "Skill id (from `skills` registry or a built-in) supplying this stage's methodology. Takes precedence over inline `instructions`." },
         "backend": { "$ref": "#/$defs/backend" },
         "triggers": {
           "type": "array",
@@ -288,6 +302,18 @@
             "complex": { "type": "string", "minLength": 1 }
           }
         }
+      }
+    },
+    "skillRef": {
+      "description": "A registry entry pointing at a skill's content. `builtin` uses templates/skills/<id>/; `path`/`uri` load your own; `extends` layers this skill on top of another (base first, this overrides).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "enum": ["builtin", "path", "uri"], "default": "builtin" },
+        "path": { "type": "string" },
+        "uri": { "type": "string" },
+        "version": { "type": "string" },
+        "extends": { "type": "string", "description": "Base skill id this one extends." }
       }
     },
     "modelAlias": {

@@ -113,6 +113,23 @@ defaults:
 | `providers.<provider>.api_key_secret` | **Name** of the secret holding the API key. Lets you use your own secret naming. Never the key value. |
 | `providers.<provider>.extra_headers_secret` | **Name** of a secret holding extra headers (e.g. a gateway token). |
 
+### `skills` (optional — methodology registry)
+A **skill** is the reusable methodology/content for a stage (checklist, rubric, output format),
+provider-/backend-/language-agnostic. Built-ins ship under `templates/skills/<id>/` (starter set:
+`code-review`, `security-review`). Register your own or override a shipped one by id; a stage picks one
+via `stages[].skill`.
+
+| Field | Meaning |
+|---|---|
+| `skills.<id>.source` | `builtin` (uses `templates/skills/<id>/`), `path`, or `uri`. Default `builtin`. |
+| `skills.<id>.path` / `.uri` | Location of the skill content for `path`/`uri` sources. |
+| `skills.<id>.version` | Optional version pin. |
+| `skills.<id>.extends` | Base skill id to layer on top of (base first, this overrides) — e.g. a house style over `code-review`. |
+
+**Skills vs. agents vs. stages:** a *skill* is the content; an *agent preset* (`templates/agents/<id>.yml`)
+is a pre-wired stage (type + skill + backend + gate + triggers + model tiers) you drop in via
+`stages[].from`; a *stage* is that agent placed in the pipeline graph.
+
 ### `stages` (optional — the agent graph)
 Omit to use the profile's stages. Anything you list is **merged onto** the profile (a stage with the
 same `id` overrides). Each stage is one agent; mix providers, models, and backends freely.
@@ -121,10 +138,12 @@ same `id` overrides). Each stage is one agent; mix providers, models, and backen
 |---|---|
 | `id` | **Required.** Unique stage id (`^[a-z0-9][a-z0-9-_]*$`), e.g. `plan`, `implement`, `security`, `integration-test`. |
 | `type` | **Required.** `plan` \| `implement` \| `security` \| `test` \| `integration-test` \| `review` \| `docs` \| `release` \| `custom`. Drives sensible defaults (review/security/test default to a blocking gate; plan/docs to advisory). |
+| `from` | Agent-preset id (from `templates/agents/`, e.g. `code-review`, `security-review`) to base this stage on. Fields you set here override the preset. |
 | `name` | Human-readable label. |
 | `enabled` | `false` to keep a stage defined but off. Default `true`. |
 | `provider` | Provider id for this stage. Omit to inherit `defaults.provider`. |
 | `model` (+ `.default`, `.tiers.*`) | Optional model binding; inherits per the resolution chain. A value may be a literal ID or a `models.aliases` name. |
+| `skill` | Skill id (from `skills` registry or a built-in) supplying this stage's methodology. Takes precedence over inline `instructions`. |
 | `backend` | The executor (see below). Defaults to the generic runner. |
 | `triggers` | Any of `issue_labeled`, `pr_opened`, `pr_updated`, `comment_command`, `push`, `schedule`, `manual`. |
 | `gate` | `advisory` (comment only) or `blocking` (emits a required status check). Omit to use the type's default. |

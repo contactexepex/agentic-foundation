@@ -95,17 +95,27 @@ defaults:
 #     deployment: ""                     # Azure deployment name
 #     api_key_secret: OPENAI_API_KEY
 
+# --- Skills registry (optional) ----------------------------------------------
+# A skill is the reusable methodology/content for a stage (checklist, rubric,
+# output format) — provider/backend/language-agnostic. Built-ins live in
+# templates/skills/<id>/. Register your own or override a shipped one by id.
+# skills:
+#   code-review:     { source: builtin }
+#   security-review: { source: builtin }
+#   house-review:    { source: path, path: .agentic/skills/house-review, extends: code-review }
+
 # --- Stages (the agent graph) ------------------------------------------------
 # OPTIONAL. Omit to use the profile's stages. Anything you list here is merged
-# onto the profile (a stage with the same id overrides). Each stage is one agent
-# bound to a provider+model and a backend; any provider/model permutation works.
+# onto the profile (a stage with the same id overrides). Build a stage from a
+# pre-wired agent preset with `from:` and override only what you need; or define
+# it fully. Any provider/model/backend permutation works, per stage.
 #
-# Example: a fuller SDLC mixing providers, models, and backends.
+# Example: a fuller SDLC mixing presets, providers, models, backends, and skills.
 # stages:
 #   - id: plan
 #     type: plan
 #     provider: claude
-#     model: { default: strong }         # alias or literal id
+#     model: { default: strong }
 #     backend: { name: generic }
 #     triggers: [issue_labeled]
 #     gate: advisory
@@ -119,29 +129,14 @@ defaults:
 #     triggers: [issue_labeled, comment_command]
 #
 #   - id: security
-#     type: security
-#     provider: openai
-#     model: { default: strong }
-#     backend: { name: generic }
+#     from: security-review              # pre-wired preset (skill + gate + triggers)
+#     provider: openai                   # override just the provider
 #     depends_on: [implement]
-#     gate: blocking
-#     triggers: [pr_opened, pr_updated]
-#
-#   - id: integration-test
-#     type: integration-test
-#     backend: { name: generic }
-#     depends_on: [implement]
-#     gate: blocking
-#     triggers: [pr_opened, pr_updated]
 #
 #   - id: review
-#     type: review
-#     provider: openai                   # e.g. cross-provider review
-#     model: { default: balanced }
-#     backend: { name: pr-agent }        # compose a mature OSS reviewer
+#     from: code-review                  # pre-wired preset
+#     backend: { name: pr-agent }        # override the backend with a mature OSS reviewer
 #     depends_on: [implement]
-#     gate: blocking
-#     triggers: [pr_opened, pr_updated]
 
 # --- Dynamic model selection -------------------------------------------------
 # Deterministic classifier reuses the review router's change-size + path signal,

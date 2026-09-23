@@ -69,6 +69,31 @@ touching the rest of the pipeline.
 
 ---
 
+## 3a. Skills and agents — content vs. wiring
+
+Three distinct concepts, cleanly layered so the domain knowledge is reusable and portable:
+
+| Concept | Is | Lives in | Referenced by |
+|---|---|---|---|
+| **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `templates/skills/<id>/SKILL.md` (+ your own via the `skills` registry) | `stages[].skill` |
+| **Agent preset** | A *pre-wired stage* — type + default skill + backend + gate + triggers + model tiers. | `templates/agents/<id>.yml` | `stages[].from` |
+| **Stage** | An agent *placed in the pipeline graph* (with `depends_on`, overrides). | `.agentic/config.yml` `stages[]` | the pipeline |
+
+Why the split:
+
+- **Skills are the crown jewel** — the portable domain knowledge. The `generic` backend consumes a
+  skill directly as its instructions; other backends' adapters map it to their own prompt/rule format,
+  so the *same* skill drives any backend.
+- **Layered & overridable** — register a skill by id, pin a `version`, or `extends` a built-in with a
+  house style; org→team→repo layering via `extends` applies to skills too.
+- **Agent presets** make profiles expand into *working* agents, and let a repo adopt a ready stage
+  with one line (`from: code-review`) then override only what it needs.
+- **No vendor/model assumptions** in a skill, and **no secrets** — skills are templates; guardrails
+  (untrusted-input handling) apply to everything a skill ingests.
+
+Starter skills: `code-review`, `security-review` (with matching agent presets). The catalog grows
+(`planning`, `execution-plan`, `unit-test-authoring`, `integration-test`, `docs`, `release-notes`).
+
 ## 4. Provider/model resolution
 
 Per stage, per change tier, the model resolves **most-specific-first**:

@@ -1,0 +1,20 @@
+# Agent preset: security-review
+# A pre-wired stage. Use it from .agentic/config.yml with:
+#   stages:
+#     - { id: security, from: security-review }
+#     - { id: security, from: security-review, provider: openai }   # override provider
+# Fields you set on the stage override the preset; the preset overrides toolkit defaults.
+type: security
+name: Security Review
+description: Assesses the diff for security risk (injection, authz, secrets, deps, exposure); gates on high+.
+skill: security-review             # -> templates/skills/security-review/SKILL.md
+backend:
+  name: generic
+gate: blocking
+triggers: [pr_opened, pr_updated]
+# Security review benefits from a strong model; default the standard tier up.
+model:
+  tiers:
+    trivial:  strong
+    standard: strong
+    complex:  strong

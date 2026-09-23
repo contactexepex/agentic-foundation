@@ -51,6 +51,12 @@ first; others follow.
 claude-code-action, Codex, SWE-agent) or the built-in `generic` runner — adopt one per stage without
 touching the rest.
 
+**Skills + agents catalog.** Reusable **skills** (methodology: checklist, rubric, output format —
+provider/backend/language-agnostic) are the content; **agent presets** wire a skill to a stage. Ships
+with `code-review` and `security-review` skills + presets; drop one in with `from: code-review` and
+override only what you need, or register/override your own by id. See
+[skills & agents](docs/ARCHITECTURE.md#3a-skills-and-agents--content-vs-wiring).
+
 **Simple by default, advanced when you want it.** The only required key is `version`; a `profile`
 (`minimal`/`standard`/`full`) expands to a default stage graph and `platform` defaults to GitHub —
 so a minimal file is a few lines. Define `stages` only to take finer control.
@@ -106,6 +112,8 @@ Full field reference, provider→secret mapping, and troubleshooting:
 
 ```
 templates/workflows/<platform>/  per-platform pipeline templates (github first)
+templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
+templates/agents/<id>.yml        pre-wired agent presets that reference a skill
 templates/contract/              AGENTS.md / CLAUDE.md skeletons (domain-free)
 templates/config/                the .agentic/config.yml template
 templates/presets/               per-ecosystem command presets
