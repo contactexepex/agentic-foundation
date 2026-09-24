@@ -6,11 +6,22 @@ values are ever read, printed, or logged** — only the secret *names* the contr
 
 ## What you need
 
-- **Python 3.10 or newer** (`python3 --version`). That is the only prerequisite — `stagr` is pure
-  Python and its two dependencies (PyYAML, jsonschema) install automatically.
+- **Python 3.10 or newer.** Check with `python3 --version` (Linux/macOS) or `py --version` (Windows —
+  the launcher, since a default Windows install exposes `py`/`python`, not `python3`). That is the only
+  prerequisite — `stagr` is pure Python and its two dependencies (PyYAML, jsonschema) install
+  automatically.
 - **[pipx](https://pipx.pypa.io)** is the recommended installer: it puts `stagr` on your `PATH` in an
-  isolated environment so it never clashes with other Python tools. `python3 -m pip install --user pipx`
-  installs it if you don't have it.
+  isolated environment so it never clashes with other Python tools. If you don't have it, bootstrap it,
+  add its shims to `PATH`, and open a new terminal:
+  ```bash
+  # Linux / macOS
+  python3 -m pip install --user pipx && python3 -m pipx ensurepath
+  # Windows (py launcher)
+  py -m pip install --user pipx && py -m pipx ensurepath
+  ```
+  `ensurepath` is what makes the `pipx` command available in the next shell. Before that PATH entry is
+  active you can still invoke it as a module — `python3 -m pipx install …` (or `py -m pipx install …`)
+  — which is equivalent to the `pipx …` commands below.
 
 `stagr` runs the same way on **Linux, macOS, and Windows** — one Python package, one command.
 
