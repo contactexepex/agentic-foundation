@@ -184,10 +184,10 @@ and `.github/workflows/` are the hand-written **reference implementation** the G
 ## License
 
 stagr is **source-available** under the [Business Source License 1.1](LICENSE) — not a
-traditional open-source license. In short: you may read, modify, and use it free of charge for
-internal and non-production work, and in production within your own organization on repositories you
-control. Offering stagr to third parties as a hosted/managed service, embedding it in a product sold
-to others, or reselling it requires a commercial license. Each released version converts to Apache
-2.0 four years after its publication.
+traditional open-source license. In short: you may read, modify, redistribute, and use it free of
+charge for internal and non-production work, and in production within a single organization on
+repositories you control. Other production use — for example offering stagr to third parties as a
+hosted or managed service, or embedding it in a product or service you provide to others — requires a
+commercial license. Each released version converts to Apache 2.0 four years after its publication.
 
 For commercial licensing, contact contact.exepex@gmail.com.
