@@ -327,6 +327,10 @@ def test_pipeline_selection() -> None:
           and "post_codex '@codex security review'" in req_both,
           "request-review: a graph with a security stage requests both reviews")
 
+    # The lane registry is the single selection seam (names, in emit order).
+    check([lane.name for lane in render.LANES] == ["core", "implementor", "codex-review"],
+          "select: LANES registry drives template selection, in emit order")
+
 
 def test_round4_fixes() -> None:
     from stagr.backends.generic import runner as gen
