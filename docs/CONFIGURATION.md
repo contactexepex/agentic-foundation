@@ -50,8 +50,14 @@ defaults the workflows read; keep them unless you also update the rendered workf
 
 ## 3. `.agentic/config.yml` — field reference
 
-Copy `stagr/templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is validated against
-`stagr/config.schema.json`.
+Create `.agentic/config.yml` from the annotated template. The template ships inside the installed
+package, so download it rather than copying from the install:
+[`agentic.config.yml.tmpl`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/templates/config/agentic.config.yml.tmpl)
+(e.g. `curl -o .agentic/config.yml <that URL>`), or start from the minimal example in section 5. It is
+validated against
+[`stagr/config.schema.json`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/config.schema.json).
+(A `stagr init` command that writes a starter config for you is on the roadmap — see
+[CHARTER.md](CHARTER.md) §7.)
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
 (default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). A stage
@@ -195,8 +201,14 @@ documentation other people depend on. This repository does exactly that.
 ### `modules`
 | Field | Meaning |
 |---|---|
-| `auto_merge` | `true` installs the fail-closed foundation auto-merge gate. Default `false`. |
-| `sonar` | `true` wires SonarQube/SonarCloud as a required check. Default `false`. |
+| `auto_merge` | `true` requests the fail-closed foundation auto-merge gate. Default `false`. |
+| `sonar` | `true` requests SonarQube/SonarCloud as a required check. Default `false`. |
+
+> **Not yet rendered.** `apply` does not emit a workflow for either module today — the renderer
+> installs only the core lane (see §5, "What renders today"). Enable them in the contract to declare
+> intent, but the gates themselves are roadmap ([CHARTER.md](CHARTER.md) §7). This repository's own
+> auto-merge/Sonar wiring lives in hand-written `.github/workflows/`, which is the reference the
+> renderer will follow.
 
 ### `budgets` (optional — cost / token caps)
 | Field | Meaning |
@@ -337,8 +349,9 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 ## 5. Setup steps
 
 > Install the CLI first (needs Python 3.10+). `stagr` is not on PyPI yet, so install from the
-> repository: `pipx install "git+https://github.com/contactexepex/agentic-foundation@main"`. See
-> [CLI.md](CLI.md).
+> repository's source archive (no `git` required):
+> `pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"`.
+> See [CLI.md](CLI.md).
 
 1. Add `.agentic/config.yml`. Start with a `profile`, a `platform`, and a model binding for any
    model-consuming stage; add `stages` only for finer control. (A drafting skill that proposes this
@@ -350,11 +363,11 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 > **What renders today:** `apply` emits the core lane — the `Validate` check, the review router, the
 > Claude implementer, and (when a Codex review/security stage is configured) the Codex review +
-> thread-cleanup lane. Other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and
-> non-Codex reviewers) are declared and validated but **not yet rendered** to workflows; that
-> multi-stage rendering is on the roadmap (see [CHARTER.md](CHARTER.md) §7). Always read `stagr plan`
-> output — it lists the exact files that will be written — so a declared stage that does not yet
-> render is visible before you commit.
+> thread-cleanup lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`,
+> `docs`, `release`, and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) —
+> they are declared and validated but do not yet emit workflows; that rendering is on the roadmap (see
+> [CHARTER.md](CHARTER.md) §7). Always read `stagr plan` output — it lists the exact files that will be
+> written — so a declared stage or module that does not yet render is visible before you commit.
 
 ---
 

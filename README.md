@@ -101,14 +101,17 @@ assume a language.
 ## Quickstart
 
 1. **Install the CLI** (needs only Python 3.10+; see [docs/CLI.md](docs/CLI.md) for options). `stagr`
-   is not on PyPI yet, so install it straight from the repository:
+   is not on PyPI yet, so install it from the repository's source archive — pip/pipx download and
+   build it with no `git` required:
    ```bash
-   pipx install "git+https://github.com/contactexepex/agentic-foundation@main"
+   pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
    # once published this becomes: pipx install stagr
    ```
 2. In your target repo, add `.agentic/config.yml` — set a `profile` and a `platform`. A minimal
    example is in [docs/CONFIGURATION.md](docs/CONFIGURATION.md); the full annotated template is
-   `stagr/templates/config/agentic.config.yml.tmpl`.
+   downloadable at
+   [`stagr/templates/config/agentic.config.yml.tmpl`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/templates/config/agentic.config.yml.tmpl)
+   (it ships inside the installed package, so grab it from that URL rather than the isolated install).
 3. Validate and preview:
    ```bash
    stagr doctor                # validate the contract + list the secret NAMES to configure
@@ -123,10 +126,11 @@ assume a language.
 
 > **What renders today:** the core lane — the `Validate` check, the review router, the Claude
 > implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
-> lane. Other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
-> reviewers) are declared and validated but **not yet rendered** to workflows — that multi-stage
-> rendering is on the roadmap ([docs/CHARTER.md](docs/CHARTER.md) §7). `stagr plan` always shows the
-> exact set of files that will be written, so review it before committing.
+> lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`,
+> and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) — these are declared
+> and validated but do not yet emit workflows; that rendering is on the roadmap
+> ([docs/CHARTER.md](docs/CHARTER.md) §7). `stagr plan` always shows the exact set of files that will
+> be written, so review it before committing.
 
 Full field reference, provider→secret mapping, and troubleshooting:
 **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.

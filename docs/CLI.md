@@ -16,11 +16,12 @@ values are ever read, printed, or logged** — only the secret *names* the contr
 
 ## Install
 
-> **Not on PyPI yet.** Until the first release, install straight from the repository — pip/pipx build
-> it from source (no manual clone needed):
+> **Not on PyPI yet.** Until the first release, install from the repository's source archive — pip/pipx
+> download and build it with **no `git` required** (so it works on a clean Python-only machine,
+> including Windows):
 >
 > ```bash
-> pipx install "git+https://github.com/contactexepex/agentic-foundation@main"
+> pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
 > ```
 >
 > or, from a local checkout of this repository: `pipx install .` (or `pip install .`).
@@ -86,10 +87,11 @@ target that this config does not render is kept and reported. Pass `--prune` to 
 
 > **What renders today:** the core lane — the `Validate` check, the review router, the Claude
 > implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
-> lane. Other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
-> reviewers) are declared and validated but **not yet rendered** to workflows — multi-stage rendering
-> is roadmap ([CHARTER.md](CHARTER.md) §7). Run `plan` first: it lists the exact files `apply` will
-> write, so a declared stage that does not yet render is visible before you commit.
+> lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`,
+> and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) — declared and
+> validated but they do not yet emit workflows; multi-stage rendering is roadmap
+> ([CHARTER.md](CHARTER.md) §7). Run `plan` first: it lists the exact files `apply` will write, so a
+> declared stage or module that does not yet render is visible before you commit.
 
 ```bash
 stagr apply                # write/update the rendered pipeline
