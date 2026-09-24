@@ -6,15 +6,15 @@ contract/docs repo). It runs in CI (`validate.yml`) and in the Codex implementor
 validation step. It has no network access and only reads repository files.
 
 Checks:
-  1. install/config.schema.json is valid JSON Schema (2020-12).
-  2. templates/config/agentic.config.yml.tmpl validates against the schema.
+  1. stagr/config.schema.json is valid JSON Schema (2020-12).
+  2. stagr/templates/config/agentic.config.yml.tmpl validates against the schema.
   3. The repo's own .agentic/config.yml validates against the schema (dogfood).
   4. A representative minimal config validates.
   5. Stage-graph invariants the schema cannot express: unique stage ids, every
      `depends_on` names an existing stage, and no dependency cycles.
-  6. Every agent preset (templates/agents/*.yml) is a mapping with a `type` and,
+  6. Every agent preset (stagr/templates/agents/*.yml) is a mapping with a `type` and,
      if it names a `skill`, that skill dir exists.
-  7. Every skill (templates/skills/*/SKILL.md) has parseable YAML frontmatter with
+  7. Every skill (stagr/templates/skills/*/SKILL.md) has parseable YAML frontmatter with
      the required keys and a `verdict:` line inside a fenced code block.
 
 Exit code 0 = all pass; non-zero = at least one failure (details on stderr).
@@ -148,7 +148,7 @@ def check_skill(skill_md: Path) -> None:
 
 
 def main() -> int:
-    schema_path = ROOT / "install" / "config.schema.json"
+    schema_path = ROOT / "stagr" / "config.schema.json"
     try:
         schema = json.loads(schema_path.read_text())
         Draft202012Validator.check_schema(schema)
@@ -169,7 +169,7 @@ def main() -> int:
             print(f"OK  {label} validates against schema")
 
     # 2/3. Real config files that must conform to the schema (+ graph invariants).
-    for rel in ("templates/config/agentic.config.yml.tmpl", ".agentic/config.yml"):
+    for rel in ("stagr/templates/config/agentic.config.yml.tmpl", ".agentic/config.yml"):
         path = ROOT / rel
         if not path.exists():
             fail(f"{rel}: expected file is missing")
@@ -194,7 +194,7 @@ def main() -> int:
     )
 
     # 6. Agent presets.
-    for preset in sorted((ROOT / "templates" / "agents").glob("*.yml")):
+    for preset in sorted((ROOT / "stagr" / "templates" / "agents").glob("*.yml")):
         rel = preset.relative_to(ROOT).as_posix()
         try:
             a = load_yaml(preset)
@@ -208,13 +208,13 @@ def main() -> int:
             fail(f"{rel}: missing required 'type'")
             continue
         skill = a.get("skill")
-        if skill and not (ROOT / "templates" / "skills" / skill).is_dir():
+        if skill and not (ROOT / "stagr" / "templates" / "skills" / skill).is_dir():
             fail(f"{rel}: references missing skill '{skill}'")
             continue
         print(f"OK  agent preset {preset.name}" + (f" -> skill '{skill}'" if skill else " (no skill)"))
 
     # 7. Skills.
-    for skill_md in sorted((ROOT / "templates" / "skills").glob("*/SKILL.md")):
+    for skill_md in sorted((ROOT / "stagr" / "templates" / "skills").glob("*/SKILL.md")):
         check_skill(skill_md)
 
     if errors:

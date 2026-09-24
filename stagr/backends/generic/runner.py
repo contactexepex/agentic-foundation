@@ -17,8 +17,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-SKILLS_DIR = REPO_ROOT / "templates" / "skills"
+# Builtin skills ship INSIDE this package (trusted toolkit data), so they are found the same
+# way in a source checkout and in an installed wheel.
+PKG_ROOT = Path(__file__).resolve().parents[2]
+SKILLS_DIR = PKG_ROOT / "templates" / "skills"
+
+
+def _project_root() -> Path:
+    """The user's project this runner operates on.
+
+    Config-referenced skill/instruction PATHS (which are untrusted) are resolved and confined
+    against this root: the current working directory — the repository checkout in CI, or wherever
+    an operator runs the CLI. It is deliberately NOT the installed package location, so an
+    installed runner can never read files out of site-packages or the host via a crafted config
+    path.
+    """
+    return Path.cwd().resolve()
 
 # Default secret NAME per provider (overridable via providers.<p>.api_key_secret).
 DEFAULT_KEY_SECRET = {
@@ -111,10 +125,6 @@ def _confine(path: Path, root: Path, what: str = "path") -> Path:
     return resolved
 
 
-def _confine_to_repo(path: Path, what: str = "path") -> Path:
-    return _confine(path, REPO_ROOT, what)
-
-
 def _read_skill_file(base: Path, root: Path, what: str) -> str:
     # A skill dir holds SKILL.md; pick the actual file first, then resolve + confine THAT path so a
     # symlinked SKILL.md pointing outside `root` (e.g. -> /proc/self/environ) is rejected, not just
@@ -155,7 +165,8 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[st
         loc = reg.get("path")
         if not loc:
             raise ValueError(f"skill '{skill_id}' has source: path but no path")
-        content = _read_skill_file(REPO_ROOT / loc, REPO_ROOT, f"skill '{skill_id}' path")
+        root = _project_root()
+        content = _read_skill_file(root / loc, root, f"skill '{skill_id}' path")
     else:  # builtin — the id must name a skill directly under SKILLS_DIR, not an absolute/`..` path
         content = _read_skill_file(SKILLS_DIR / skill_id, SKILLS_DIR, f"builtin skill '{skill_id}'")
 
@@ -192,19 +203,20 @@ def build_invocation(
     else:
         instr = stage.get("instructions", "") or ""
         # `instructions` may be inline text OR a path to a prompt file. Only treat it as a
-        # path when it resolves to an existing file INSIDE the repository — a path escaping
-        # the repo (absolute, `..`, or a symlink to e.g. /proc/self/environ) is rejected so
-        # host files can never be embedded in the system prompt. Anything that is not such a
+        # path when it resolves to an existing file INSIDE the project — a path escaping
+        # the project root (absolute, `..`, or a symlink to e.g. /proc/self/environ) is rejected
+        # so host files can never be embedded in the system prompt. Anything that is not such a
         # file is treated as inline text.
         methodology = instr
         if instr:
-            candidate = (REPO_ROOT / instr)
+            root = _project_root()
+            candidate = (root / instr)
             try:
-                confined = _confine_to_repo(candidate, "instructions path")
+                confined = _confine(candidate, root, "instructions path")
             except ValueError:
                 if candidate.exists() or candidate.is_absolute() or ".." in Path(instr).parts:
-                    # It looks like a path (exists or is path-shaped) but escapes the repo — fail loud
-                    # rather than silently sending the raw string as a prompt.
+                    # It looks like a path (exists or is path-shaped) but escapes the project — fail
+                    # loud rather than silently sending the raw string as a prompt.
                     raise
                 confined = None  # genuinely inline text that merely contains a slash
             if confined is not None and confined.is_file():

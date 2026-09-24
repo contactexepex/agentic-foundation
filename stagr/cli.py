@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""agentic-foundation — operator CLI (M3).
+"""stagr — the agentic-foundation control plane CLI (M3).
 
 Three subcommands over the M2 renderer core (`render.py`), so newcomers can adopt the
 toolkit with one command and experts can inspect exactly what it will do first:
 
-    agentic doctor   # validate config + resolve the graph; report health, secrets (by NAME), lanes
-    agentic plan     # dry run: show what apply WOULD write to .github/workflows (no writes)
-    agentic apply    # render the pipeline and write it (idempotent; never deletes unless --prune)
+    stagr doctor   # validate config + resolve the graph; report health, secrets (by NAME), lanes
+    stagr plan     # dry run: show what apply WOULD write to .github/workflows (no writes)
+    stagr apply    # render the pipeline and write it (idempotent; never deletes unless --prune)
 
 Design invariants (shared with the renderer):
   * No network. No secret VALUES are ever read, printed, or logged — only the secret NAMES
@@ -24,12 +24,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# The CLI's own directory (install/) is on sys.path when run as `python install/cli.py`,
-# so the renderer core and the generic backend import cleanly.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-import render  # noqa: E402
-from backends.generic.runner import DEFAULT_KEY_SECRET  # noqa: E402
+from . import render
+from .backends.generic.runner import DEFAULT_KEY_SECRET
 
 
 # --------------------------------------------------------------------------- helpers
@@ -131,7 +127,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(json.dumps(report, indent=2, sort_keys=True))
         return 1 if report["problems"] else 0
 
-    print(f"agentic doctor — {args.config}")
+    print(f"stagr doctor — {args.config}")
     print(f"  profile:        {report['profile']}")
     print(f"  platform:       {report['platform']} (default branch: {report['default_branch']})")
     print(f"  trusted roles:  {', '.join(report['trusted_roles'])}")
@@ -187,7 +183,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         print(f"plan: {exc}", file=sys.stderr)
         return 1
     out_dir = args.out
-    print(f"agentic plan — would render {len(rendered)} workflow(s) into {out_dir}/")
+    print(f"stagr plan — would render {len(rendered)} workflow(s) into {out_dir}/")
     for status, name in _classify(out_dir, rendered):
         marker = {"new": "+ new     ", "changed": "~ changed ", "unchanged": "= unchanged"}[status]
         print(f"  {marker} {name}")
@@ -246,7 +242,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="agentic", description="agentic-foundation operator CLI.")
+    ap = argparse.ArgumentParser(prog="stagr", description="stagr — the agentic-foundation control plane CLI.")
     sub = ap.add_subparsers(dest="command", required=True)
 
     def common(p: argparse.ArgumentParser) -> None:

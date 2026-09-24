@@ -1,16 +1,51 @@
-# `agentic` CLI (M3)
+# `stagr` CLI
 
-The operator CLI turns a `.agentic/config.yml` contract into a working pipeline. It is a thin,
-deterministic layer over the M2 renderer core (`install/render.py`): no network, and **no secret
+`stagr` turns a `.agentic/config.yml` contract into a working pipeline on your repo's CI/SCM. It is a
+thin, deterministic layer over the renderer core (`stagr/render.py`): no network, and **no secret
 values are ever read, printed, or logged** — only the secret *names* the contract references.
 
+## What you need
+
+- **Python 3.10 or newer** (`python3 --version`). That is the only prerequisite — `stagr` is pure
+  Python and its two dependencies (PyYAML, jsonschema) install automatically.
+- **[pipx](https://pipx.pypa.io)** is the recommended installer: it puts `stagr` on your `PATH` in an
+  isolated environment so it never clashes with other Python tools. `python3 -m pip install --user pipx`
+  installs it if you don't have it.
+
+`stagr` runs the same way on **Linux, macOS, and Windows** — one Python package, one command.
+
+## Install
+
 ```bash
-python install/cli.py <doctor|plan|apply> [--config .agentic/config.yml] [--platform github]
+# Recommended: isolated global command on Linux / macOS / Windows
+pipx install stagr
+
+# Or into the current environment / CI
+pip install stagr
 ```
 
-(Once packaged, this is exposed as the `agentic` command; the examples below use that name.)
+From a local checkout of this repository (until the package is published):
 
-## `agentic doctor`
+```bash
+pipx install .        # or: pip install .
+```
+
+Verify it:
+
+```bash
+stagr --help
+```
+
+## Use it in your repo
+
+From the root of the repository you want to add the pipeline to (the folder holding — or that will
+hold — `.agentic/config.yml`):
+
+```bash
+stagr <doctor|plan|apply> [--config .agentic/config.yml] [--platform github]
+```
+
+### `stagr doctor`
 
 Validate the contract and resolve the stage graph, then print a health report:
 
@@ -25,31 +60,31 @@ Exits non-zero if the config is invalid or any required model cannot be resolved
 hidden default). `--json` emits the report as machine-readable JSON for CI.
 
 ```bash
-agentic doctor --config .agentic/config.yml
-agentic doctor --json        # for CI health checks
+stagr doctor --config .agentic/config.yml
+stagr doctor --json        # for CI health checks
 ```
 
-## `agentic plan`
+### `stagr plan`
 
 Dry run: show exactly what `apply` **would** write to `.github/workflows/`, marking each workflow
 `new`, `changed`, or `unchanged`, and listing any hand-written workflows the config does not render
 (left untouched). Writes nothing.
 
 ```bash
-agentic plan                 # summary against .github/workflows/
-agentic plan --diff          # unified diff for changed workflows
-agentic plan --out some/dir  # compare against a different target
+stagr plan                 # summary against .github/workflows/
+stagr plan --diff          # unified diff for changed workflows
+stagr plan --out some/dir  # compare against a different target
 ```
 
-## `agentic apply`
+### `stagr apply`
 
 Render the pipeline and write it to `.github/workflows/` (override with `--out`). Idempotent — only
 files whose content changed are written. By default it never deletes: a workflow present in the
 target that this config does not render is kept and reported. Pass `--prune` to remove such orphans.
 
 ```bash
-agentic apply                # write/update the rendered pipeline
-agentic apply --prune        # also remove workflows this config no longer renders
+stagr apply                # write/update the rendered pipeline
+stagr apply --prune        # also remove workflows this config no longer renders
 ```
 
 ## Safety model
@@ -61,3 +96,17 @@ agentic apply --prune        # also remove workflows this config no longer rende
   `uri` skill source or `extends` base offline), or a missing selected template stops the command
   with a precise error rather than emitting a broken pipeline.
 - **Non-destructive by default.** `apply` adds and updates; it deletes only with `--prune`.
+
+## Build the package (maintainers)
+
+The CLI and its data (schema + `templates/`) live in the `stagr/` package, so a standard build ships
+everything needed:
+
+```bash
+pip install build
+python -m build            # writes dist/stagr-<version>-py3-none-any.whl and .tar.gz
+pipx install dist/stagr-*.whl   # smoke-test the built wheel
+```
+
+The single wheel is what every install path uses (`pipx`, `pip`, and — later — any OS package that
+wraps it). Publishing to PyPI is a future step (add a LICENSE first).

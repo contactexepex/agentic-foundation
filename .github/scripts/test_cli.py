@@ -15,10 +15,10 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO_ROOT / "install"))
+sys.path.insert(0, str(REPO_ROOT))
 
-import cli  # noqa: E402
-import render  # noqa: E402
+from stagr import cli  # noqa: E402
+from stagr import render  # noqa: E402
 
 failures: list[str] = []
 SECRET_VALUE = re.compile(r"sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{8,}")
