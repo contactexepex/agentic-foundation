@@ -61,7 +61,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "provider": { "type": "string", "minLength": 1, "description": "Default provider id for stages that omit one." },
+        "provider": { "type": "string", "minLength": 1, "description": "Default provider id for stages that omit one. Supported today: `anthropic` (runs Claude Code) and `openai` (runs Codex). Other ids are accepted for forward-compatibility but not rendered yet." },
         "models": {
           "description": "Default model binding per provider id (open map — any provider).",
           "type": "object",
@@ -83,7 +83,7 @@
     },
 
     "providers": {
-      "description": "Per-provider connection settings, keyed by provider id (open map — claude, openai, gemini, azure_openai, bedrock, vertex, ollama, openai_compatible, custom, ...). Endpoint/version/deployment plus the NAME of the key secret. Lets you point at self-hosted / cloud / proxy / on-prem gateways. Never a secret value.",
+      "description": "Per-provider connection settings, keyed by provider id (open map — anthropic, openai, gemini, azure_openai, bedrock, vertex, ollama, openai_compatible, custom, ...). Endpoint/version/deployment plus the NAME of the key secret. Lets you point at self-hosted / cloud / proxy / on-prem gateways. Never a secret value.",
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/providerConn" }
     },
@@ -95,7 +95,7 @@
     },
 
     "stages": {
-      "description": "The agent pipeline as an ordered, extensible graph. Each stage is one agent bound to a provider+model and a backend. Merged onto the `profile`'s stages (a stage here with the same id overrides the profile's).",
+      "description": "The agent pipeline as an ordered, extensible graph. Each stage is one agent bound to a provider+model (the tool is derived from the provider). Merged onto the `profile`'s stages (a stage here with the same id overrides the profile's).",
       "type": "array",
       "items": { "$ref": "#/$defs/stage" }
     },
@@ -216,7 +216,7 @@
 
   "$defs": {
     "stage": {
-      "description": "One agent in the pipeline. `id` is always required; `type` is required unless `from` supplies it via an agent preset. Provider/model resolve through the precedence chain; the backend defaults to the generic runner.",
+      "description": "One agent in the pipeline. `id` is always required; `type` is required unless `from` supplies it via an agent preset. Provider/model resolve through the precedence chain; the executor/tool is derived from the provider unless `backend` pins one.",
       "type": "object",
       "additionalProperties": false,
       "required": ["id"],
@@ -235,7 +235,7 @@
         "name": { "type": "string", "description": "Human-readable label." },
         "from": { "type": "string", "minLength": 1, "description": "Agent-preset id to base this stage on (from templates/agents/). Fields set here override the preset." },
         "enabled": { "type": "boolean", "default": true },
-        "provider": { "type": "string", "minLength": 1, "description": "Provider id for this stage. Omit to inherit defaults.provider." },
+        "provider": { "type": "string", "minLength": 1, "description": "Provider id for this stage; the primary knob. Supported today: `anthropic` (runs Claude Code — implement stages) and `openai` (runs Codex — review/security stages). The executor/tool is derived from this, so a stage normally sets only `provider` + `model` and omits `backend`. Omit `provider` to inherit defaults.provider." },
         "model": { "$ref": "#/$defs/modelBinding" },
         "skill": { "type": "string", "minLength": 1, "description": "Skill id (from `skills` registry or a built-in) supplying this stage's methodology. Takes precedence over inline `instructions`." },
         "backend": { "$ref": "#/$defs/backend" },
@@ -251,7 +251,7 @@
       }
     },
     "backend": {
-      "description": "The executor for a stage; its effect depends on the stage type. An implement stage always renders the Claude implementer (`claude-code-action`, Anthropic) regardless of this field. A review/security stage renders its lane only with `codex` (OpenAI, via the Codex GitHub App); any other name renders no review/security lane yet. The remaining names are accepted so configs stay forward-compatible but are roadmap: `generic` (a provider-agnostic runner via a user-supplied adapter), `openhands`, `pr-agent`, `swe-agent`, and `custom`. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
+      "description": "Optional executor override. Normally omit it — the tool is derived from `provider` (`anthropic` -> Claude Code, `openai` -> Codex). Set it only to pin a specific tool or point at a custom adapter. Rendered today: `claude-code-action` (the Anthropic implementer) and `codex` (the OpenAI review/security lane). The remaining names are accepted so configs stay forward-compatible but are roadmap: `generic` (a provider-agnostic runner via a user-supplied adapter), `openhands`, `pr-agent`, `swe-agent`, and `custom`. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
       "type": "object",
       "additionalProperties": false,
       "required": ["name"],

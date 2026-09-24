@@ -50,14 +50,29 @@ GITHUB_ROLE_MAP = {
     "contributor": "CONTRIBUTOR",
 }
 
-# Backend names, referenced in routing/model logic across modules — kept as named constants so the
-# strings are not repeated as literals in comparisons.
-BACKEND_GENERIC = "generic"          # the built-in, provider-agnostic runner (the default)
-BACKEND_CLAUDE_ACTION = "claude-code-action"
-BACKEND_CODEX = "codex"
+# Provider ids. Provider is the primary knob: a stage declares which vendor runs it, and the
+# toolkit renders OpenAI via Codex and Anthropic via Claude Code today. The executor/tool below is
+# derived from the provider unless a stage pins `backend` explicitly.
+PROVIDER_OPENAI = "openai"
+PROVIDER_ANTHROPIC = "anthropic"
+# The Anthropic provider id was previously `claude`; rejected with a migration error (see
+# _validate_semantics) so an upgraded config fails loud instead of resolving the wrong key secret.
+RENAMED_ANTHROPIC_PROVIDER = "claude"
 
-# Backends that consume a resolved model from the contract. App backends (codex,
-# openhands, swe-agent, pr-agent) choose their own model, so resolution is skipped.
+# Backend (executor/tool) names, referenced in routing/model logic across modules — kept as named
+# constants so the strings are not repeated as literals in comparisons.
+BACKEND_GENERIC = "generic"                     # the provider-agnostic runner (roadmap adapter)
+BACKEND_CLAUDE_ACTION = "claude-code-action"    # Anthropic's Claude Code
+BACKEND_CODEX = "codex"                         # OpenAI's Codex
+
+# The coding tool the toolkit renders for each provider when a stage does not pin `backend`.
+PROVIDER_TOOL = {
+    PROVIDER_ANTHROPIC: BACKEND_CLAUDE_ACTION,
+    PROVIDER_OPENAI: BACKEND_CODEX,
+}
+
+# Backends that consume a resolved model from the contract. App backends (codex, openhands,
+# swe-agent, pr-agent) choose their own model, so resolution is skipped.
 BACKENDS_NEEDING_MODEL = {BACKEND_GENERIC, BACKEND_CLAUDE_ACTION}
 
 # Gate strengths a stage can carry.
@@ -80,24 +95,27 @@ PRESET_COMMANDS: dict[str, dict[str, str]] = {
     "custom": {},
 }
 
+# Profile stages carry a provider so a profile renders correctly out of the box: implement/plan/docs
+# run Claude Code (anthropic), review/security/test run Codex (openai). Without it, an unprovidered
+# review stage would inherit `defaults.provider` and silently render no Codex lane.
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
-        {"id": "implement", "type": "implement", "gate": GATE_ADVISORY},
-        {"id": "review", "type": "review", "gate": GATE_ADVISORY},
+        {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
+        {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_ADVISORY},
     ],
     "standard": [
-        {"id": "implement", "type": "implement"},
-        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
-        {"id": "security", "type": "security", "gate": GATE_ADVISORY},
+        {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC},
+        {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "security", "type": "security", "provider": PROVIDER_OPENAI, "gate": GATE_ADVISORY},
     ],
     "full": [
-        {"id": "plan", "type": "plan", "gate": GATE_ADVISORY},
-        {"id": "implement", "type": "implement"},
-        {"id": "security", "type": "security", "gate": GATE_BLOCKING},
-        {"id": "test", "type": "test", "gate": GATE_BLOCKING},
-        {"id": "integration-test", "type": "integration-test", "gate": GATE_BLOCKING},
-        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
-        {"id": "docs", "type": "docs", "gate": GATE_ADVISORY},
+        {"id": "plan", "type": "plan", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
+        {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC},
+        {"id": "security", "type": "security", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "test", "type": "test", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "integration-test", "type": "integration-test", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "docs", "type": "docs", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
     ],
     "custom": [],
 }
@@ -268,6 +286,18 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
                 "vendor it locally and use source: path (remote fetch is future work)"
             )
 
+    # The Anthropic provider id was renamed `claude` -> `anthropic`. Reject the old id with a clear
+    # migration message rather than let it fall through to a wrong default key secret (MODEL_API_KEY)
+    # while the pipeline is reported healthy.
+    providers_in_use = [(cfg.get("defaults", {}) or {}).get("provider")]
+    providers_in_use += [(stage or {}).get("provider") for stage in (cfg.get("stages", []) or [])]
+    if RENAMED_ANTHROPIC_PROVIDER in providers_in_use:
+        raise RenderError(
+            f"provider '{RENAMED_ANTHROPIC_PROVIDER}' was renamed to '{PROVIDER_ANTHROPIC}'; update "
+            f"defaults.provider / stages[].provider (and defaults.models.{RENAMED_ANTHROPIC_PROVIDER} "
+            f"-> defaults.models.{PROVIDER_ANTHROPIC}) to '{PROVIDER_ANTHROPIC}'."
+        )
+
 
 # ------------------------------------------------------------------------- stages
 
@@ -312,7 +342,27 @@ def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
         else:
             stages_by_id[stage_id] = resolved
             order.append(stage_id)
-    return [stages_by_id[stage_id] for stage_id in order if stages_by_id[stage_id].get("enabled", True)]
+    expanded = [stages_by_id[stage_id] for stage_id in order if stages_by_id[stage_id].get("enabled", True)]
+    _apply_backend_defaults(cfg, expanded)
+    return expanded
+
+
+def _apply_backend_defaults(cfg: dict[str, Any], stages: list[dict[str, Any]]) -> None:
+    """Fill each stage's effective backend/tool from its provider when it does not pin one.
+
+    Provider is the primary knob: a stage that names `provider` (or inherits `defaults.provider`)
+    gets the tool the toolkit renders for that provider (anthropic -> Claude Code, openai -> Codex).
+    An explicit `stages[].backend` wins (override / custom adapter). A stage whose provider has no
+    known tool is left without one (`_stage_backend` -> the generic runner), so an unsupported or
+    roadmap provider never silently masquerades as a supported tool.
+    """
+    default_provider = (cfg.get("defaults", {}) or {}).get("provider")
+    for stage in stages:
+        if (stage.get("backend") or {}).get("name"):
+            continue
+        tool = PROVIDER_TOOL.get(stage.get("provider") or default_provider)
+        if tool:
+            stage["backend"] = {"name": tool}
 
 
 # -------------------------------------------------------------------- model resolve
@@ -395,6 +445,41 @@ def _build_steps(cfg: dict[str, Any]) -> str:
     return "\n          ".join(lines)
 
 
+def _resolve_implementer_model(cfg: dict[str, Any], implement_stage: dict[str, Any] | None) -> str:
+    """Resolve the implement stage's model, or "" when there is no implement stage.
+
+    The implementer workflow runs Claude Code, so the stage must resolve to a model-consuming tool
+    (Anthropic / Claude Code, or the generic runner). A stage that resolves to Codex or another app
+    backend cannot implement here yet (roadmap): fail loud rather than emit an implementer with an
+    empty model. A resolution failure is not swallowed either.
+    """
+    if implement_stage is None:
+        return ""
+    # The implementer workflow is hardcoded to Claude Code (reads ANTHROPIC_API_KEY, runs the resolved
+    # model as a Claude model), so BOTH the provider and the tool must be Anthropic/Claude Code.
+    # Checking the tool alone is not enough: `provider: openai` with an explicit
+    # `backend: claude-code-action` would otherwise render the Claude workflow with an OpenAI model id.
+    provider = implement_stage.get("provider") or (cfg.get("defaults", {}) or {}).get("provider")
+    tool = _stage_backend(implement_stage)
+    if provider != PROVIDER_ANTHROPIC or tool != BACKEND_CLAUDE_ACTION:
+        raise RenderError(
+            f"implement stage '{implement_stage.get('id')}' must be provider '{PROVIDER_ANTHROPIC}' "
+            f"(Claude Code), which reads ANTHROPIC_API_KEY; got provider '{provider}', tool '{tool}'. "
+            f"stagr renders no other implementer yet. Use provider '{PROVIDER_ANTHROPIC}', or disable "
+            "the stage."
+        )
+    model = resolve_model(cfg, implement_stage, "standard")
+    # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a quote
+    # or expression metacharacter could break out and inject another operand (e.g. a secret) into the
+    # implementer's --model. Constrain it to model-id characters, fail loud.
+    if not _MODEL_SAFE.match(model):
+        raise RenderError(
+            f"resolved implementer model '{model}' contains characters unsafe to template into a "
+            "workflow expression (allowed: letters, digits, and '._:/-')"
+        )
+    return model
+
+
 def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     platform = cfg.get("platform", {}) or {}
     labels = platform.get("labels", {}) or {}
@@ -433,19 +518,7 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
 
     stages = {stage["id"]: stage for stage in expand_stages(cfg)}
     implement_stage = next((stage for stage in stages.values() if stage.get("type") == "implement"), None)
-    # Resolve the implementer model ONLY when the backend consumes one; otherwise the
-    # app backend supplies it. Do NOT swallow a resolution error — fail loud.
-    implementer_model = ""
-    if implement_stage and _stage_backend(implement_stage) in BACKENDS_NEEDING_MODEL:
-        implementer_model = resolve_model(cfg, implement_stage, "standard")
-        # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a
-        # quote or expression metacharacter could break out and inject another operand (e.g. a
-        # secret) into the implementer's --model. Constrain it to model-id characters, fail loud.
-        if not _MODEL_SAFE.match(implementer_model):
-            raise RenderError(
-                f"resolved implementer model '{implementer_model}' contains characters unsafe to "
-                "template into a workflow expression (allowed: letters, digits, and '._:/-')"
-            )
+    implementer_model = _resolve_implementer_model(cfg, implement_stage)
 
     # Agent contract files are always excluded from the fast path (union with configured excludes,
     # de-duplicated, order preserved) so a nested AGENTS.md/CLAUDE.md can never be fast-path approved.

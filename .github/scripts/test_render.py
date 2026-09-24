@@ -62,18 +62,18 @@ def expect_raises(fn, msg: str) -> None:
 
 def test_resolution() -> None:
     cfg = {
-        "defaults": {"provider": "claude", "models": {"claude": {"default": "c-def", "tiers": {"complex": "c-cx"}}, "openai": {"default": "o-def"}}},
-        "models": {"aliases": {"strong": {"claude": "c-strong", "openai": "o-strong"}}},
+        "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c-def", "tiers": {"complex": "c-cx"}}, "openai": {"default": "o-def"}}},
+        "models": {"aliases": {"strong": {"anthropic": "c-strong", "openai": "o-strong"}}},
     }
     # precedence: per-request > stage > defaults
-    check(render.resolve_model(cfg, {"id": "s", "provider": "claude"}, "standard") == "c-def", "resolve: defaults.default")
-    check(render.resolve_model(cfg, {"id": "s", "provider": "claude"}, "complex") == "c-cx", "resolve: defaults tier")
-    check(render.resolve_model(cfg, {"id": "s", "provider": "claude", "model": {"default": "c-stage"}}, "standard") == "c-stage", "resolve: stage overrides default")
-    check(render.resolve_model(cfg, {"id": "s", "provider": "claude"}, "standard", request_override="c-req") == "c-req", "resolve: per-request wins")
+    check(render.resolve_model(cfg, {"id": "s", "provider": "anthropic"}, "standard") == "c-def", "resolve: defaults.default")
+    check(render.resolve_model(cfg, {"id": "s", "provider": "anthropic"}, "complex") == "c-cx", "resolve: defaults tier")
+    check(render.resolve_model(cfg, {"id": "s", "provider": "anthropic", "model": {"default": "c-stage"}}, "standard") == "c-stage", "resolve: stage overrides default")
+    check(render.resolve_model(cfg, {"id": "s", "provider": "anthropic"}, "standard", request_override="c-req") == "c-req", "resolve: per-request wins")
     # alias expansion per provider
     check(render.resolve_model(cfg, {"id": "s", "provider": "openai", "model": {"default": "strong"}}, "standard") == "o-strong", "resolve: alias expands per provider")
     # fail loud when nothing resolves
-    expect_raises(lambda: render.resolve_model({"defaults": {}}, {"id": "s", "provider": "claude"}, "standard"), "resolve: fail loud when unresolved")
+    expect_raises(lambda: render.resolve_model({"defaults": {}}, {"id": "s", "provider": "anthropic"}, "standard"), "resolve: fail loud when unresolved")
     # fail loud when provider missing
     expect_raises(lambda: render.resolve_model({"defaults": {}}, {"id": "s"}, "standard"), "resolve: fail loud when no provider")
 
@@ -91,7 +91,7 @@ def test_profile_expansion() -> None:
 
 
 def test_backend() -> None:
-    cfg = {"defaults": {"provider": "claude"}, "providers": {"openai": {"api_key_secret": "AZ_OPENAI_KEY"}}}
+    cfg = {"defaults": {"provider": "anthropic"}, "providers": {"openai": {"api_key_secret": "AZ_OPENAI_KEY"}}}
     inv = build_invocation(cfg, {"id": "review", "type": "review", "provider": "openai", "skill": "code-review", "gate": "blocking"}, "o-model")
     check(inv.action == "review", "backend: review type -> review action")
     check(inv.api_key_secret == "AZ_OPENAI_KEY", "backend: uses configured secret NAME")
@@ -102,7 +102,7 @@ def test_backend() -> None:
     blob = str(inv.to_dict())
     check(not re.search(r"sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{8,}", blob), "backend: no secret value in invocation")
     # default secret name when provider not configured
-    inv2 = build_invocation(cfg, {"id": "implement", "type": "implement", "provider": "claude"}, "c-model")
+    inv2 = build_invocation(cfg, {"id": "implement", "type": "implement", "provider": "anthropic"}, "c-model")
     check(inv2.api_key_secret == "ANTHROPIC_API_KEY" and inv2.action == "implement", "backend: default secret name + implement action")
 
 
@@ -128,11 +128,11 @@ def test_render_structural() -> None:
 def test_new_behaviors() -> None:
     # extends: base merged before child; child wins
     with _project_dir() as dp:
-        (dp / "base.yml").write_text("version: 2\ndefaults:\n  provider: claude\n  models:\n    claude: {default: c-base}\n")
+        (dp / "base.yml").write_text("version: 2\ndefaults:\n  provider: anthropic\n  models:\n    anthropic: {default: c-base}\n")
         (dp / "child.yml").write_text("version: 2\nextends: base.yml\nprofile: custom\ndefaults:\n  models:\n    openai: {default: o-child}\n")
         merged = render.load_config(dp / "child.yml")
-        check(merged["defaults"]["provider"] == "claude", "extends: inherits base provider")
-        check(merged["defaults"]["models"]["claude"]["default"] == "c-base", "extends: inherits base model")
+        check(merged["defaults"]["provider"] == "anthropic", "extends: inherits base provider")
+        check(merged["defaults"]["models"]["anthropic"]["default"] == "c-base", "extends: inherits base model")
         check(merged["defaults"]["models"]["openai"]["default"] == "o-child", "extends: child adds model")
 
     # extends confinement: a base resolving OUTSIDE the project root is rejected (untrusted config
@@ -142,7 +142,7 @@ def test_new_behaviors() -> None:
     with tempfile.TemporaryDirectory() as outer:
         project = Path(outer) / "project"
         project.mkdir()
-        (Path(outer) / "outside-base.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
+        (Path(outer) / "outside-base.yml").write_text("version: 2\ndefaults: {provider: anthropic}\n")
         (project / "child.yml").write_text("version: 2\nextends: ../outside-base.yml\nprofile: custom\n")
         prev = Path.cwd()
         os.chdir(project)
@@ -164,20 +164,46 @@ def test_new_behaviors() -> None:
     check("make test" in steps, "build_steps: includes configured test command")
     check("No build commands" in render._build_steps({}), "build_steps: empty -> no-op message")
 
-    # fail-loud: a generic-backed stage with no resolvable model raises during render
+    # the implementer runs Claude Code, so a non-claude-code-action implement tool fails loud rather
+    # than rendering the Claude workflow with the wrong provider's model/key.
     expect_raises(
         lambda: render.build_context({"profile": "custom", "defaults": {"provider": "openai", "models": {}},
                                       "stages": [{"id": "implement", "type": "implement", "backend": {"name": "generic"}}]}),
-        "render: build_context fails loud on unresolved generic implementer model",
+        "render: non-Anthropic implement tool (generic) fails loud",
     )
-    # app-backed implement stage with no model does NOT raise (backend supplies it)
-    try:
-        render.build_context({"profile": "custom", "defaults": {"provider": "openai", "models": {}},
-                              "stages": [{"id": "implement", "type": "implement", "backend": {"name": "codex"}}]})
-        print("OK  render: app-backed implementer needs no resolved model")
-    except render.RenderError:
-        failures.append("app-backed implementer must not require a model")
-        print("FAIL app-backed implementer must not require a model", file=sys.stderr)
+    expect_raises(
+        lambda: render.build_context({"profile": "custom", "defaults": {"provider": "openai", "models": {}},
+                                      "stages": [{"id": "implement", "type": "implement", "backend": {"name": "codex"}}]}),
+        "render: codex implement stage fails loud (not a rendered implementer)",
+    )
+    # provider openai + an explicit claude-code-action backend must still fail: the implementer reads
+    # ANTHROPIC_API_KEY, so the effective PROVIDER (not just the tool) must be anthropic.
+    expect_raises(
+        lambda: render.build_context({"profile": "custom", "defaults": {"provider": "anthropic", "models": {"openai": {"default": "m"}}},
+                                      "stages": [{"id": "implement", "type": "implement", "provider": "openai",
+                                                  "backend": {"name": "claude-code-action"}, "model": {"default": "m"}}]}),
+        "render: openai implement with explicit claude-code-action backend fails loud",
+    )
+    # a bare anthropic implement stage with no resolvable model still fails loud on the model.
+    expect_raises(
+        lambda: render.build_context({"profile": "custom", "defaults": {"provider": "anthropic", "models": {}},
+                                      "stages": [{"id": "implement", "type": "implement", "provider": "anthropic"}]}),
+        "render: anthropic implement stage fails loud on unresolved model",
+    )
+    # provider `claude` was renamed to `anthropic` -> rejected with a migration error.
+    expect_raises(
+        lambda: render.validate_config({"version": 2, "profile": "custom",
+                                        "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+                                        "stages": [{"id": "implement", "type": "implement"}]}),
+        "validate: renamed provider 'claude' fails loud with a migration error",
+    )
+    # the standard profile's review/security stages carry provider openai, so the codex review lane
+    # renders out of the box (regression: profile review stages must not inherit the anthropic default
+    # and silently drop the lane).
+    std = render.render_all({"version": 2, "profile": "standard",
+                             "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m"}}}})
+    check("request-review.yml" in std and "implementor.yml" in std,
+          "select: standard profile renders the implementer + codex review lane out of the box")
 
 
 def test_round2_fixes() -> None:
@@ -189,12 +215,12 @@ def test_round2_fixes() -> None:
 
     # diamond extends (two bases share an ancestor) must NOT raise circular
     with _project_dir() as dp:
-        (dp / "org.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
+        (dp / "org.yml").write_text("version: 2\ndefaults: {provider: anthropic}\n")
         (dp / "teamA.yml").write_text("version: 2\nextends: org.yml\n")
         (dp / "teamB.yml").write_text("version: 2\nextends: org.yml\n")
         (dp / "repo.yml").write_text("version: 2\nprofile: custom\nextends: [teamA.yml, teamB.yml]\n")
         merged = render.load_config(dp / "repo.yml")
-        check(merged["defaults"]["provider"] == "claude", "extends: diamond (shared ancestor) resolves, no false cycle")
+        check(merged["defaults"]["provider"] == "anthropic", "extends: diamond (shared ancestor) resolves, no false cycle")
 
     # preset pre-fills commands; multiline command indents every line -> valid YAML
     steps = render._build_steps({"build": {"preset": "python"}})
@@ -207,7 +233,7 @@ def test_round2_fixes() -> None:
     import yaml as _yaml
     rendered = render.render_all(
         {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "true"},
-         "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+         "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c"}}},
          "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]},
         "github",
     )
@@ -216,8 +242,8 @@ def test_round2_fixes() -> None:
     check(on_block["push"]["branches"] == ["true"], "render: YAML-keyword default_branch stays a quoted string filter")
 
     # instructions as a file path is loaded
-    inv = build_invocation({"defaults": {"provider": "claude"}},
-                           {"id": "x", "type": "custom", "provider": "claude", "instructions": "stagr/templates/skills/code-review/SKILL.md"}, "m")
+    inv = build_invocation({"defaults": {"provider": "anthropic"}},
+                           {"id": "x", "type": "custom", "provider": "anthropic", "instructions": "stagr/templates/skills/code-review/SKILL.md"}, "m")
     check("Code Review" in inv.system_prompt, "backend: instructions file path is loaded as content")
 
 
@@ -225,11 +251,11 @@ def test_round3_fixes() -> None:
     from stagr.backends.generic import runner as gen
 
     # redact_secrets: default true; guardrails toggle propagates to the invocation.
-    inv = build_invocation({"defaults": {"provider": "claude"}},
-                           {"id": "r", "type": "review", "provider": "claude"}, "m")
+    inv = build_invocation({"defaults": {"provider": "anthropic"}},
+                           {"id": "r", "type": "review", "provider": "anthropic"}, "m")
     check(inv.redact_secrets is True, "backend: redact_secrets defaults true")
-    inv_off = build_invocation({"defaults": {"provider": "claude"}, "guardrails": {"redact_secrets_in_context": False}},
-                               {"id": "r", "type": "review", "provider": "claude"}, "m")
+    inv_off = build_invocation({"defaults": {"provider": "anthropic"}, "guardrails": {"redact_secrets_in_context": False}},
+                               {"id": "r", "type": "review", "provider": "anthropic"}, "m")
     check(inv_off.redact_secrets is False and "redact_secrets" in inv_off.to_dict(),
           "backend: redact_secrets_in_context=false propagates to Invocation")
 
@@ -254,16 +280,16 @@ def test_round3_fixes() -> None:
 
     # path confinement: an absolute instructions path is rejected (never embedded in the prompt).
     try:
-        build_invocation({"defaults": {"provider": "claude"}},
-                         {"id": "x", "type": "custom", "provider": "claude", "instructions": "/etc/passwd"}, "m")
+        build_invocation({"defaults": {"provider": "anthropic"}},
+                         {"id": "x", "type": "custom", "provider": "anthropic", "instructions": "/etc/passwd"}, "m")
         failures.append("build_invocation must reject an absolute out-of-repo instructions path")
         print("FAIL build_invocation must reject an absolute instructions path", file=sys.stderr)
     except ValueError:
         print("OK  backend: instructions path outside the repo is rejected")
 
     # inline instructions containing a slash but not a real file stay inline (not treated as a path).
-    inv3 = build_invocation({"defaults": {"provider": "claude"}},
-                            {"id": "x", "type": "custom", "provider": "claude",
+    inv3 = build_invocation({"defaults": {"provider": "anthropic"}},
+                            {"id": "x", "type": "custom", "provider": "anthropic",
                              "instructions": "Compare branch a/b and summarize"}, "m")
     check("Compare branch a/b" in inv3.system_prompt, "backend: non-file instructions stay inline")
 
@@ -291,7 +317,7 @@ def test_pipeline_selection() -> None:
     # No codex review stage -> the review lane is NOT emitted (module-aware, not glob-all).
     minimal = {"version": 2, "profile": "custom",
                "platform": {"type": "github", "default_branch": "main"},
-               "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+               "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c"}}},
                "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
     r2 = render.render_all(minimal, "github")
     check("request-review.yml" not in r2 and "resolve-threads.yml" not in r2,
@@ -348,7 +374,7 @@ def test_round4_fixes() -> None:
         print("OK  backend: cyclic skill extends fails loud")
 
     # S2: unsafe default_branch fails loud; a normal one is fine.
-    base = {"version": 2, "profile": "custom", "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+    base = {"version": 2, "profile": "custom", "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c"}}},
             "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
     expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": 'release"2026'}}),
                   "render: quote in default_branch fails loud")
@@ -373,14 +399,14 @@ def test_round4_fixes() -> None:
 
     # S-b: an implementer model with an expression metacharacter fails loud at render.
     inj = {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "main"},
-           "defaults": {"provider": "claude", "models": {"claude": {"default": "m') || secrets.X }}"}}},
+           "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m') || secrets.X }}"}}},
            "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
     expect_raises(lambda: render.build_context(inj), "render: unsafe implementer model fails loud")
 
     # T-b: a model with ':' or '/' that the renderer accepts must also pass the rendered
     # implementor's own runtime model check (aligned allowlists), or the workflow can't run.
     modcfg = {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "main"},
-              "defaults": {"provider": "claude", "models": {"claude": {"default": "ns/model:tag"}}},
+              "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "ns/model:tag"}}},
               "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
     check(render.build_context(modcfg)["implementer_model"] == "ns/model:tag", "render: ':'/'/' model accepted")
     impl_wf = render.render_all(modcfg, "github")["implementor.yml"]
@@ -427,20 +453,20 @@ def test_round4_fixes() -> None:
     check("request-review.yml" not in rm, "render: review lane omitted when stage lacks pr_updated trigger")
 
     # A5: an enabled budget is carried on the invocation; a disabled one is not.
-    inv = build_invocation({"defaults": {"provider": "claude"}, "budgets": {"enabled": True, "per_run": {"max_usd": 5}, "on_exceed": "block"}},
-                           {"id": "r", "type": "review", "provider": "claude"}, "m")
+    inv = build_invocation({"defaults": {"provider": "anthropic"}, "budgets": {"enabled": True, "per_run": {"max_usd": 5}, "on_exceed": "block"}},
+                           {"id": "r", "type": "review", "provider": "anthropic"}, "m")
     check(inv.budget.get("enabled") is True and inv.budget.get("on_exceed") == "block", "backend: enabled budget carried")
-    inv0 = build_invocation({"defaults": {"provider": "claude"}, "budgets": {"enabled": False, "per_run": {"max_usd": 5}}},
-                            {"id": "r", "type": "review", "provider": "claude"}, "m")
+    inv0 = build_invocation({"defaults": {"provider": "anthropic"}, "budgets": {"enabled": False, "per_run": {"max_usd": 5}}},
+                            {"id": "r", "type": "review", "provider": "anthropic"}, "m")
     check(inv0.budget == {}, "backend: disabled budget not carried")
     # stage budget overrides global
-    invs = build_invocation({"defaults": {"provider": "claude"}, "budgets": {"enabled": True, "per_run": {"max_usd": 5}}},
-                            {"id": "r", "type": "review", "provider": "claude", "budgets": {"enabled": True, "per_run": {"max_usd": 1}}}, "m")
+    invs = build_invocation({"defaults": {"provider": "anthropic"}, "budgets": {"enabled": True, "per_run": {"max_usd": 5}}},
+                            {"id": "r", "type": "review", "provider": "anthropic", "budgets": {"enabled": True, "per_run": {"max_usd": 1}}}, "m")
     check(invs.budget["per_run"]["max_usd"] == 1, "backend: stage budget overrides global")
 
     # A6: allowed_tools + max_context_files carried on the invocation.
-    invg = build_invocation({"defaults": {"provider": "claude"}, "guardrails": {"allowed_tools": ["read", "grep"], "max_context_files": 12}},
-                            {"id": "r", "type": "review", "provider": "claude"}, "m")
+    invg = build_invocation({"defaults": {"provider": "anthropic"}, "guardrails": {"allowed_tools": ["read", "grep"], "max_context_files": 12}},
+                            {"id": "r", "type": "review", "provider": "anthropic"}, "m")
     check(invg.allowed_tools == ["read", "grep"] and invg.max_context_files == 12, "backend: tool/context guardrails carried")
 
 

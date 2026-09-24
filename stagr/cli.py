@@ -109,9 +109,11 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
                 secret_names.add(extra)
         report["stages"].append(entry)
 
-    # The codex review lane authors comments/resolutions with a real-user PAT (NAME only).
-    if any(stage.get("type") in render.REVIEW_LANE_TYPES and render._stage_backend(stage) == render.BACKEND_CODEX
-           for stage in stages):
+    # The review lane authors comments/resolutions with a real-user PAT (NAME only). It is needed
+    # only when the push-review workflows actually render — mirror _has_codex_push_review exactly so
+    # doctor never asks for a secret no rendered workflow references (e.g. a codex review stage that
+    # omits pr_updated).
+    if render._has_codex_push_review(stages):
         secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or render.DEFAULT_TOKEN_SECRET)
 
     report["secret_names"] = sorted(secret_names)

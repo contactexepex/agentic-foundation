@@ -25,16 +25,18 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design and
 
 **Stages are agents; anything plugs in.** A pipeline is an ordered, extensible graph of stages. Each
 stage binds a **role/type** (plan, implement, security, test, integration-test, review, docs, …) to a
-**provider + model** and a **backend** — so any permutation works:
+**provider + model**; the coding tool is derived from the provider — `anthropic` runs Claude Code,
+`openai` runs Codex:
 
-| Stage | Provider | Model | Backend |
+| Stage | Provider | Model | Tool (derived) |
 |---|---|---|---|
-| implement | claude | `strong` (alias) | `claude-code-action` |
-| security | openai | `complex` tier | `generic` |
-| review | gemini | `balanced` | `pr-agent` |
-| integration-test | openai | `standard` | `generic` |
+| implement | anthropic | `strong` (alias) | Claude Code |
+| review | openai | app-supplied | Codex |
+| security | openai | app-supplied | Codex |
 
-Same provider with different models, multiple providers, or any frontier-model mix — all per stage.
+Mix Anthropic and OpenAI per stage, or vary the Anthropic model across stages. Today the toolkit
+renders **Anthropic (Claude Code)** and **OpenAI (Codex)**; more providers/tools are roadmap and slot
+in through the same provider→tool map without forking the contract.
 
 **Models are configurable, layered, and dynamic.** You need not specify a model at all: each stage
 resolves one through a precedence chain — **per-request override › stage model › org/account
@@ -48,9 +50,9 @@ escalates — selection is **deterministic** (change-size + path signal), no ext
 renderer that maps the same contract to that system (PR↔MR, roles, required checks). GitHub ships
 first; others follow.
 
-**Compose, don't reinvent.** A stage's `backend` wraps a mature OSS agent (OpenHands, PR-Agent,
-claude-code-action, Codex, SWE-agent) or the built-in `generic` runner — adopt one per stage without
-touching the rest.
+**Compose, don't reinvent.** New tools plug in through one seam: a stage's optional `backend` override
+wraps a mature OSS agent (OpenHands, PR-Agent, SWE-agent) or a custom adapter — roadmap today, added
+without touching the rest. Normally you omit it and let the provider choose the tool.
 
 **Skills + agents catalog.** Reusable **skills** (methodology: checklist, rubric, output format —
 provider/backend/language-agnostic) are the content; **agent presets** wire a skill to a stage. Ships
@@ -59,11 +61,10 @@ override only what you need, or register/override your own by id. See
 [skills & agents](docs/ARCHITECTURE.md#3a-skills-and-agents--content-vs-wiring).
 
 **Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
-(`minimal`/`standard`/`full`, which expands to a default stage graph), and a `platform`. A stage
-whose backend consumes a model (the built-in `generic`/`claude-code-action`) also needs a model
-binding (`defaults.models.<provider>`, or a per-stage model); app backends (e.g. `codex`) supply
-their own. Model resolution is fail-loud — no hidden default. Still a few lines; define `stages`
-only for finer control.
+(`minimal`/`standard`/`full`, which expands to a default stage graph), and a `platform`. An
+`anthropic` stage (Claude Code) also needs a model binding (`defaults.models.anthropic`, or a
+per-stage model); an `openai` stage (Codex) supplies its own. Model resolution is fail-loud — no
+hidden default. Still a few lines; define `stages` only for finer control.
 
 **Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,
 username, or password), never stores them, and keeps them out of `.agentic/config.yml` — see

@@ -191,7 +191,7 @@ def main() -> int:
             "version": 2,
             "profile": "standard",
             "platform": {"type": "github", "default_branch": "main"},
-            "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+            "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c"}}},
         },
         "minimal config",
     )

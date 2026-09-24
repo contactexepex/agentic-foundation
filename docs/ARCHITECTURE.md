@@ -12,8 +12,8 @@ A repository's agentic pipeline is an **ordered, extensible graph of stages**. E
 **stage is one agent** in the SDLC/STLC — `plan`, `implement`, `security`, `test`,
 `integration-test`, `review`, `docs`, `release`, or `custom` — bound to:
 
-- a **provider + model** (any vendor, any model, per stage — mix freely),
-- a **backend** (the executor that runs the stage),
+- a **provider + model** (the knob — `anthropic` or `openai` today; mix per stage),
+- a **backend** (the executor/tool; derived from the provider, overridable),
 - **triggers** (issue label, PR/MR opened/updated, comment command, push, schedule, manual),
 - a **gate** (advisory = comment only; blocking = emits a required status check),
 - **dependencies** (`depends_on`) that define the graph edges.
@@ -37,7 +37,7 @@ The toolkit is deliberately split so each concern can change without disturbing 
 |---|---|---|
 | **1. Contract** | Declarative, platform-neutral description of the pipeline. | `.agentic/config.yml` (this schema) |
 | **2. Provider adapters** | Talk to a model vendor (Claude / OpenAI / Gemini / local / gateway). Give true provider-agnosticism. | `providers`, `defaults.models`, `models.aliases` |
-| **3. Agent backends** | Execute a stage. Adapters wrap mature OSS agents; a `generic` runner is the fallback. | `stages[].backend` |
+| **3. Agent tools** | Execute a stage. The tool is derived from the provider (`anthropic` → Claude Code, `openai` → Codex); roadmap adapters wrap other OSS agents. | `stages[].provider` (or `stages[].backend` to pin) |
 | **4. Platform/SCM adapters** | Render the neutral pipeline into a concrete CI system and normalize concepts (PR↔MR, roles, checks). | `platform` |
 | **5. Installer / CLI** | `init` / `doctor` / `plan` / `apply`: validate, render for the target platform, open the bootstrap PR/MR. | — |
 
@@ -46,25 +46,27 @@ live in layers 2–4, so a repo swaps any of them by editing config, not workflo
 
 ---
 
-## 3. Agent backends — compose, don't reinvent
+## 3. Agent tools — compose, don't reinvent
 
 A landscape scan (see `docs/LANDSCAPE.md`) shows mature OSS agents already do the hard
 parts well, but none bundle a configurable implementer **and** reviewer as one
 provider-agnostic, drop-in toolkit. So agentic-foundation is an **orchestration /
-contract layer**: a stage names a `backend`, and the toolkit wires it in.
+contract layer**: a stage names a **provider**, and the toolkit derives the coding tool
+(the *backend*) and wires it in. Normally a stage sets only `provider`; an explicit
+`backend` pins a tool or adopts a roadmap adapter.
 
-| Backend | Wraps | Typical stage types |
-|---|---|---|
-| `generic` | Built-in prompt-runner (provider adapter + prompt + tools) | any |
-| `claude-code-action` | Anthropic's `@claude` action | implement, review |
-| `openhands` | OpenHands issue resolver | implement |
-| `codex` | OpenAI Codex action | implement, review |
-| `swe-agent` | SWE-agent | implement |
-| `pr-agent` | Qodo/PR-Agent | review |
-| `custom` | Any action ref / container image via `backend.uses` | any |
+| Backend (tool) | Wraps | Derived from | Rendered today? |
+|---|---|---|---|
+| `claude-code-action` | Anthropic's Claude Code | `anthropic` | ✅ implement |
+| `codex` | OpenAI Codex | `openai` | ✅ review, security |
+| `generic` | Built-in prompt-runner (provider adapter + prompt + tools) | — | roadmap |
+| `openhands` | OpenHands issue resolver | — | roadmap |
+| `swe-agent` | SWE-agent | — | roadmap |
+| `pr-agent` | Qodo/PR-Agent | — | roadmap |
+| `custom` | Any action ref / container image via `backend.uses` | — | roadmap |
 
-`backend.with` passes backend-specific inputs through unchanged. Backends are opt-in per
-stage, so you can start entirely on `generic` and adopt an OSS backend later without
+`backend.with` passes tool-specific inputs through unchanged. The tool follows the provider;
+an explicit `backend` override lets you pin one or adopt a roadmap adapter later without
 touching the rest of the pipeline.
 
 ---
@@ -76,7 +78,7 @@ Three distinct concepts, cleanly layered so the domain knowledge is reusable and
 | Concept | Is | Lives in | Referenced by |
 |---|---|---|---|
 | **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `stagr/templates/skills/<id>/SKILL.md` (+ your own via the `skills` registry) | `stages[].skill` |
-| **Agent preset** | A *pre-wired stage* — type + default skill + backend + gate + triggers, and an **optional** model binding (presets may omit it and resolve models via `defaults`). | `stagr/templates/agents/<id>.yml` | `stages[].from` |
+| **Agent preset** | A *pre-wired stage* — type + default skill + provider + gate + triggers, and an **optional** model binding (presets may omit it; the Anthropic implementer resolves via `defaults`, Codex supplies its own). | `stagr/templates/agents/<id>.yml` | `stages[].from` |
 | **Stage** | An agent *placed in the pipeline graph* (with `depends_on`, overrides). | `.agentic/config.yml` `stages[]` | the pipeline |
 
 Why the split:
@@ -105,12 +107,10 @@ Per stage, per change tier, the model resolves **most-specific-first**:
 A resolved value that matches a `models.aliases` name expands to that alias's model ID
 for the stage's provider. `tier` (trivial/standard/complex) comes from the deterministic
 classifier (change size + paths) only when tiering is on. There is **no hidden toolkit
-fallback**: for a stage whose backend consumes a contract model (`generic`/`claude-code-action`),
-if none of layers 1–3 yields a model the toolkit **fails loudly** and never guesses a version. App
-backends (e.g. `codex`) supply their own model, so the rule does not apply to them. This is how
-"same provider,
-different models" or "multiple providers, any permutation" is expressed — independently
-per stage.
+fallback**: for an `anthropic` stage (Claude Code consumes a contract model), if none of layers 1–3
+yields a model the toolkit **fails loudly** and never guesses a version. An `openai` stage (Codex)
+supplies its own model, so the rule does not apply to it. This is how "same provider, different
+models" or "mix Anthropic and OpenAI" is expressed — independently per stage.
 
 ---
 

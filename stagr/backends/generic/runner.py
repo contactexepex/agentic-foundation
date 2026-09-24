@@ -36,7 +36,7 @@ def _project_root() -> Path:
 
 # Default secret NAME per provider (overridable via providers.<p>.api_key_secret).
 DEFAULT_KEY_SECRET = {
-    "claude": "ANTHROPIC_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "gemini": "GEMINI_API_KEY",
     "azure_openai": "AZURE_OPENAI_API_KEY",
