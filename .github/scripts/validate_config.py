@@ -127,10 +127,16 @@ def check_skill(skill_md: Path) -> None:
     # `verdict:` must live inside a fenced code block (the structured output contract),
     # not merely be mentioned in prose.
     in_fence = False
+    fence_marker = ""
     verdict_in_fence = False
     for line in parts[2].splitlines():
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
+        stripped = line.lstrip()
+        # Markdown allows both ``` and ~~~ fences; a fence closes only on its own marker.
+        if not in_fence and (stripped.startswith("```") or stripped.startswith("~~~")):
+            in_fence, fence_marker = True, stripped[0]
+            continue
+        if in_fence and stripped.startswith(fence_marker * 3):
+            in_fence, fence_marker = False, ""
             continue
         if in_fence and re.match(r"\s*verdict:", line):
             verdict_in_fence = True

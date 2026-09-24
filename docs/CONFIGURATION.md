@@ -332,13 +332,19 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 ## 5. Setup steps
 
-1. Add `.agentic/config.yml` (edit the template, or let the Claude skill draft it). Start with a
-   `profile` and `platform`; add `stages` only if you need finer control.
-2. Create the secrets your stages/providers and platform require (section 2). `doctor` lists the exact
-   set by name.
-3. Run the installer / invoke the skill — it validates the config, renders the enabled stages for your
-   `platform`, and opens a bootstrap PR/MR.
-4. Merge the bootstrap PR/MR.
+> **Status:** the renderer (M2), the `doctor`/`plan`/`apply` CLI (M3), and the front-door skill (M4)
+> are **not shipped on `main` yet** (see the roadmap). Steps 3–4 below describe the intended automated
+> experience; today, follow the manual path noted in each.
+
+1. Add `.agentic/config.yml` (edit the template — the drafting skill is M4). Start with a `profile`,
+   a `platform`, and a model binding for any model-consuming stage; add `stages` only for finer control.
+2. Create the secrets your stages/providers and platform require (section 2). (`doctor` will list the
+   exact set by name once M3 ships.)
+3. **Planned (M2/M3):** run `agentic apply` — it validates the config, renders the enabled stages for
+   your `platform`, and installs the pipeline. **Today (manual):** hand-adapt the automation you need;
+   the toolkit's own `.github/workflows/` validate *this* repo's contract and are references, not
+   drop-in files.
+4. **Planned:** merge the bootstrap PR/MR. **Today:** commit the workflows you adapted.
 
 ---
 

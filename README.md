@@ -32,7 +32,7 @@ stage binds a **role/type** (plan, implement, security, test, integration-test, 
 | implement | claude | `strong` (alias) | `claude-code-action` |
 | security | openai | `complex` tier | `generic` |
 | review | gemini | `balanced` | `pr-agent` |
-| integration-test | — | — | `generic` |
+| integration-test | openai | `standard` | `generic` |
 
 Same provider with different models, multiple providers, or any frontier-model mix — all per stage.
 
