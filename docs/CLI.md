@@ -18,9 +18,13 @@ values are ever read, printed, or logged** — only the secret *names* the contr
 
 > **Not on PyPI yet.** Until the first release, install from the repository's source archive — pip/pipx
 > download and build it with **no `git` required** (so it works on a clean Python-only machine,
-> including Windows):
+> including Windows). For a reproducible, auditable install, pin to an **immutable revision** — a
+> commit SHA (or a release tag once one exists); use `main` only for the latest evaluation build:
 >
 > ```bash
+> # reproducible — replace <commit> with a specific commit SHA (or a release tag):
+> pipx install "https://github.com/contactexepex/agentic-foundation/archive/<commit>.tar.gz"
+> # or the latest tip of main (evaluation only, mutable):
 > pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
 > ```
 >

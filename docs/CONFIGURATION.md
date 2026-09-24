@@ -351,7 +351,8 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 > Install the CLI first (needs Python 3.10+). `stagr` is not on PyPI yet, so install from the
 > repository's source archive (no `git` required):
 > `pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"`.
-> See [CLI.md](CLI.md).
+> For a reproducible install, pin the URL to a commit SHA or release tag instead of `main`. See
+> [CLI.md](CLI.md) for full options.
 
 1. Add `.agentic/config.yml`. Start with a `profile`, a `platform`, and a model binding for any
    model-consuming stage; add `stages` only for finer control. (A drafting skill that proposes this

@@ -107,6 +107,8 @@ assume a language.
    pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
    # once published this becomes: pipx install stagr
    ```
+   For a reproducible, auditable install, pin the URL to a commit SHA (or a release tag) instead of
+   `main` — see [docs/CLI.md](docs/CLI.md).
 2. In your target repo, add `.agentic/config.yml` — set a `profile` and a `platform`. A minimal
    example is in [docs/CONFIGURATION.md](docs/CONFIGURATION.md); the full annotated template is
    downloadable at
