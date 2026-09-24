@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -245,15 +246,33 @@ def cmd_apply(args: argparse.Namespace) -> int:
 # ------------------------------------------------------------------------------- init
 
 
+_REPARSE_POINT_ATTR = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+
+
+def _is_reparse_point(path: Path) -> bool:
+    """True if `path` is a Windows reparse point — a symlink OR an NTFS directory junction.
+
+    `Path.is_symlink()` does not flag junctions, so a junctioned ancestor could still redirect the
+    write on Windows. The reparse-point flag (exposed only on Windows via lstat's
+    `st_file_attributes`) catches both symlinks and junctions. On POSIX that attribute is absent, so
+    this returns False and `is_symlink()` alone does the work — the check is inert off Windows.
+    """
+    try:
+        return bool(path.lstat().st_file_attributes & _REPARSE_POINT_ATTR)
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
 def _symlink_in_chain(dest: Path) -> Path | None:
-    """First symlink in `dest`'s chain, checking EVERY component, or None if there is none.
+    """First symlink/junction in `dest`'s chain, checking EVERY component, or None if there is none.
 
     Walks the destination from the leaf to the filesystem root, testing each component with
-    `is_symlink()` — which lstat's that single component without following it. Any symlink is
-    rejected: the leaf itself (so even a broken link is caught) OR an ancestor such as a crafted
-    `.agentic` -> outside in an untrusted checkout, which `mkdir`/`write_text` would follow to
-    escape the repo. Every component is inspected — there is no early exists()/is_dir() boundary,
-    because those follow symlinks in earlier components and could skip a symlinked ancestor.
+    `is_symlink()` (and, on Windows, the reparse-point flag) — an lstat of that single component
+    that does not follow it. Any symlink or junction is rejected: the leaf itself (so even a broken
+    link is caught) OR an ancestor such as a crafted `.agentic` -> outside in an untrusted checkout,
+    which `mkdir`/`write_text` would follow to escape the repo. Every component is inspected — there
+    is no early exists()/is_dir() boundary, because those follow symlinks in earlier components and
+    could skip a symlinked ancestor.
 
     The absolute path is built by joining onto the (already symlink-free) cwd WITHOUT normalizing
     `..`. `os.path.abspath`/`normpath` would collapse `link/../x` to `x` lexically, hiding the
@@ -262,7 +281,7 @@ def _symlink_in_chain(dest: Path) -> Path | None:
     """
     cur = dest if dest.is_absolute() else Path.cwd() / dest
     while True:
-        if cur.is_symlink():
+        if cur.is_symlink() or _is_reparse_point(cur):
             return cur
         parent = cur.parent
         if parent == cur:  # reached the filesystem anchor

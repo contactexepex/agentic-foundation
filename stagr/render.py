@@ -413,27 +413,7 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     fast_path_enabled = routing.get("enabled", True)
     fast_path_globs = list(routing.get("globs", ["**/*.md"])) if fast_path_enabled else []
 
-    # The on-push re-review requests are per-lane: ask Codex for a code review only when a codex
-    # code-review stage runs on pushes, and for a security review only when a codex security stage
-    # does. This keeps, e.g., the `minimal` profile (code review only) from firing a paid security
-    # review it never configured. request-review.yml is emitted only when at least one of these is
-    # present (select_templates), so at least one request line is always active.
-    def _requests_push_review(stage_type: str) -> bool:
-        return any(
-            stage.get("type") == stage_type
-            and _stage_backend(stage) == BACKEND_CODEX
-            and _wants_push_review(stage)
-            for stage in stages.values()
-        )
-
-    code_review_request = (
-        "post_codex '@codex review'" if _requests_push_review("review")
-        else "# no code-review stage configured; not requesting a Codex code review"
-    )
-    security_review_request = (
-        "post_codex '@codex security review'" if _requests_push_review("security")
-        else "# no security stage configured; not requesting a Codex security review"
-    )
+    code_review_request, security_review_request = _review_request_lines(list(stages.values()))
 
     return {
         "default_branch": default_branch,
@@ -490,6 +470,30 @@ def _wants_push_review(stage: dict[str, Any]) -> bool:
     if trig is None:
         return True
     return "pr_updated" in trig
+
+
+def _review_request_lines(stages: list[dict[str, Any]]) -> tuple[str, str]:
+    """The per-lane on-push re-review commands for request-review.yml: (code, security).
+
+    Each is the `post_codex '@codex …'` command when a codex-backed stage of that kind runs on
+    pushes, else a comment explaining the omission — so, e.g., the `minimal` profile (code review
+    only) never fires a paid security review it did not configure. request-review.yml is emitted
+    only when at least one such stage exists (select_templates), so at least one line is always
+    active.
+    """
+    def requests(stage_type: str) -> bool:
+        return any(
+            stage.get("type") == stage_type
+            and _stage_backend(stage) == BACKEND_CODEX
+            and _wants_push_review(stage)
+            for stage in stages
+        )
+
+    code = ("post_codex '@codex review'" if requests("review")
+            else "# no code-review stage configured; not requesting a Codex code review")
+    security = ("post_codex '@codex security review'" if requests("security")
+                else "# no security stage configured; not requesting a Codex security review")
+    return code, security
 
 
 def select_templates(stages: list[dict[str, Any]]) -> list[str]:
