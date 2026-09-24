@@ -18,6 +18,13 @@ def test_pipeline_selection() -> None:
           "select: codex_review_secret NAME substituted into request-review")
     check(not re.search(r"ghp_[A-Za-z0-9]{8,}", rendered["resolve-threads.yml"]),
           "select: resolve-threads inlines no secret value")
+    # Regression (#15): the on-push lane re-triggers a head stranded during a long security review.
+    # It must carry the extra event triggers (issue_comment:edited + check_suite:completed, never
+    # :created) and the per-head stranding marker, so the re-trigger path can't be silently dropped.
+    _rev = rendered["request-review.yml"]
+    check("issue_comment" in _rev and "check_suite" in _rev
+          and "code-review-requested:" in _rev,
+          "select: request-review carries the stranded-head re-trigger + marker (#15)")
 
     # No codex review stage -> the review lane is NOT emitted (module-aware, not glob-all).
     minimal = {"version": 2, "profile": "custom",

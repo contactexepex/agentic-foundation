@@ -274,14 +274,19 @@ def test_round4_fixes() -> None:
                   "auth": {"token_secret": "GITHUB_TOKEN"}}}),
                   "render: GITHUB_TOKEN token_secret fails loud (reserved, not a real-user PAT)")
 
-    # A2: narrowed trusted_roles render into the review lane (not a hardcoded allowlist).
+    # A2: narrowed trusted_roles render into the review lane (not a hardcoded allowlist). The on-push
+    # lane enforces the trusted-author guard in-script (the job-level `if:` was removed so the
+    # issue_comment/check_suite re-trigger events, whose PR fields are null, still run), so the roles
+    # render as the TRUSTED_ROLES env consumed by jq rather than a `fromJSON(...)` expression.
     narrow = {"version": 2, "profile": "custom",
               "platform": {"type": "github", "default_branch": "main", "trusted_roles": ["owner"],
                            "auth": {"token_secret": "REMEDIATION_TOKEN"}},
               "defaults": {"provider": "openai", "models": {"openai": {"default": "o"}}},
               "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
     rn = render.render_all(narrow, "github")
-    check('fromJSON(\'["OWNER"]\')' in rn["request-review.yml"], "render: trusted_roles rendered into request-review (narrowed)")
+    check("TRUSTED_ROLES: '[\"OWNER\"]'" in rn["request-review.yml"]
+          and '"MEMBER"' not in rn["request-review.yml"],
+          "render: trusted_roles rendered into request-review (narrowed)")
 
     # A4: a codex review stage that omits pr_updated does not emit the push-review lane.
     manual = {**narrow, "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"}, "triggers": ["manual"]}]}
