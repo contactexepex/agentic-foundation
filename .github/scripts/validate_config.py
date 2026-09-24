@@ -66,12 +66,19 @@ def check_stage_graph(cfg, label: str) -> None:
     if dup:
         fail(f"{label}: duplicate stage id(s): {', '.join(dup)}")
     idset = set(ids)
+
+    # `depends_on` may reference profile-provided stages that a non-`custom` config does not list
+    # here (the profile is expanded by the renderer, not by this file). So only enforce that a
+    # dependency names an EXISTING stage when the config carries the complete graph (profile: custom).
+    # Self-dependency is always invalid; cycle detection below considers only listed edges, so it is
+    # safe for any profile.
+    complete_graph = cfg.get("profile", "standard") == "custom"
     for sid, targets in deps.items():
         for t in targets:
-            if t not in idset:
-                fail(f"{label}: stage '{sid}' depends_on missing stage '{t}'")
             if t == sid:
                 fail(f"{label}: stage '{sid}' depends_on itself")
+            elif complete_graph and t not in idset:
+                fail(f"{label}: stage '{sid}' depends_on missing stage '{t}'")
 
     # Cycle detection over the resolvable edges (DFS with colors).
     WHITE, GRAY, BLACK = 0, 1, 2

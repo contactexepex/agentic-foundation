@@ -54,7 +54,8 @@ build:
 #   1. Per-request override supplied at dispatch time (workflow input / command)
 #   2. This stage's model      -> stages[].model.(tiers.<tier> | default)
 #   3. Org/account default     -> defaults.models.<provider>.(tiers.<tier> | default)
-#   4. Toolkit built-in fallback   (installer fails loudly if nothing resolves)
+# If none of 1-3 resolves, the installer/run FAILS LOUDLY naming the stage/key —
+# there is no hidden toolkit fallback.
 # A resolved value that matches a `models.aliases` name expands per provider.
 # The toolkit ships placeholders, never hardcoded versions.
 # ---------------------------------------------------------------------------

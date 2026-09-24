@@ -19,7 +19,9 @@ permissions:
 
 jobs:
   validate:
-    name: Validate config schema, templates, skills & agents
+    # The job name IS the check-run name the auto-merge gate requires by name ("Validate").
+    # Keep it exactly "Validate" (the descriptive detail lives in the step name below).
+    name: Validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
