@@ -120,8 +120,28 @@ templates/presets/               per-ecosystem command presets
 install/                         config.schema.json, modules.yml, installer
 skill/                           the Claude Code front-door skill
 docs/                            ARCHITECTURE.md, CONFIGURATION.md, LANDSCAPE.md
+.github/workflows/               this repo's live automation (reference impl for the renderer)
+.github/scripts/                 validate_config.py + docs
+.agentic/config.yml              this repo's own agentic contract (dogfood)
 ```
 
-> Status: **M1 — contract layer (v2).** Platform-neutral stage-graph schema, profiles, provider/model
-> resolution, backends, and cross-cutting policy are defined; per-platform renderers, the generic
-> backend, and the installer/CLI are next (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).
+## Dogfooding
+
+This repository runs the pattern on itself. `.agentic/config.yml` is its declarative source of truth,
+and `.github/workflows/` are the hand-written **reference implementation** the M2 GitHub renderer will
+later generate:
+
+- **Claude implements** (`claude-code-implementor.yml`, manual dispatch) and **Codex implements**
+  (`authorized-engineering-task.yml`, on the `codex-engineering` issue label) via an
+  untrusted-implement → validate → trusted-publish (remediation) flow.
+- **Codex reviews** — code and security — is re-requested on every push
+  (`request-codex-review-on-push.yml`); the deterministic router (`fast-ai-code-review.yml`)
+  fast-paths trivial docs changes.
+- **`Validate`** (`validate.yml`) is the CI gate; **fixed Codex threads auto-resolve**
+  (`resolve-fixed-codex-review-threads.yml`); the **fail-closed foundation gate**
+  (`auto-merge-foundation-prs.yml`) merges provably-ready PRs. Humans keep authority via `human-merge`.
+
+> Status: **M1 — contract layer (v2), now dogfooded.** Platform-neutral stage-graph schema, profiles,
+> provider/model resolution, backends, cross-cutting policy, and the toolkit's own live Claude+Codex
+> automation are in place. Next: templatize these workflows into `templates/workflows/github/` and
+> build the generic backend + installer/CLI (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).

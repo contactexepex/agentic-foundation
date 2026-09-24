@@ -1,0 +1,74 @@
+# agentic-foundation dogfoods its own contract. This file is the declarative
+# source of truth that the hand-written .github/workflows/ mirror today; once the
+# M2 GitHub renderer exists, those workflows will be generated from this file.
+version: 2
+profile: custom
+
+platform:
+  type: github
+  default_branch: main
+  trusted_roles: [owner, member, collaborator]
+  labels:
+    human_merge: human-merge          # foundation gate hard-stop
+    dispatch: codex-engineering       # issue label that dispatches the Codex implementor
+  # Publication/remediation uses a real-user PAT; reads use the workflow GITHUB_TOKEN.
+  auth: { token_secret: CODEX_REMEDIATION_TOKEN }
+
+defaults:
+  provider: claude
+  models:
+    # Real IDs here (this is the toolkit's own repo, not a shipped template).
+    # Override via repo variable vars.AGENTIC_IMPLEMENTER_MODEL in the workflow.
+    claude: { default: claude-sonnet-5 }
+
+stages:
+  # Implementer A: Claude, manual/safe entry point (workflow_dispatch).
+  - id: implement-claude
+    type: implement
+    provider: claude
+    backend: { name: claude-code-action }
+    triggers: [manual]
+
+  # Implementer B: Codex, dispatched by the `codex-engineering` issue label,
+  # through the untrusted-implement -> validate -> trusted-publish (remediation) flow.
+  - id: implement-codex
+    type: implement
+    provider: openai
+    backend: { name: codex }
+    triggers: [issue_labeled]
+
+  # Reviewer: Codex code review (via @codex review), gates the PR.
+  - id: review
+    type: review
+    provider: openai
+    skill: code-review
+    backend: { name: codex }
+    gate: blocking
+    triggers: [pr_opened, pr_updated]
+
+  # Reviewer: Codex security review (via @codex security review), gates the PR.
+  - id: security
+    type: security
+    provider: openai
+    skill: security-review
+    backend: { name: codex }
+    gate: blocking
+    triggers: [pr_opened, pr_updated]
+
+# What "green" means for this repo (language-agnostic; here: validate the contract).
+build:
+  preset: custom
+  commands:
+    test: "python .github/scripts/validate_config.py"
+
+# Fast-path trivial docs/text changes; route everything substantive to Codex.
+routing:
+  fast_path:
+    globs: ["**/*.md", "docs/**"]
+    max_files: 20
+    max_lines: 200
+    exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
+
+modules:
+  auto_merge: true                    # fail-closed foundation auto-merge gate is active
+  sonar: false

@@ -1,0 +1,65 @@
+name: Claude Code Implementor
+
+# Manual, safe entry point for Claude Code as the IMPLEMENTOR agent.
+# This first phase is deliberately workflow_dispatch-only so a human verifies Claude
+# execution before any automatic triggers (issue/PR events) are enabled. It does not
+# implement the full orchestration pipeline.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Scoped engineering task for Claude (the IMPLEMENTOR). Be specific."
+        required: true
+        type: string
+
+# Serialize implementor runs so two dispatches cannot race on the same branch/PR.
+# Do not cancel an in-progress implementation; let it finish or hit the timeout.
+concurrency:
+  group: claude-code-implementor
+  cancel-in-progress: false
+
+# Least privilege for "implement on a feature branch and open a PR":
+#   contents: write      -> create/update the claude/* feature branch and commit to it
+#   pull-requests: write -> open the implementation pull request for Codex review
+#   id-token: write      -> OIDC token exchange required by anthropics/claude-code-action
+# Deliberately omitted: no merge/admin scope; no issues/actions write for this manual phase.
+# main is never written directly: Claude works only on a feature branch, and the foundation
+# auto-merge gate + required checks are the enforcing controls.
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  implement:
+    name: Claude implements on a feature branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Model is configurable via a repository variable (no hardcoded version); falls back to a
+      # sensible default. Set vars.AGENTIC_IMPLEMENTER_MODEL to override.
+      IMPLEMENTER_MODEL: ${{ vars.AGENTIC_IMPLEMENTER_MODEL || 'claude-sonnet-5' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          # Always start from main, regardless of which ref this workflow_dispatch was launched
+          # against, so the implementor's base tree and the CLAUDE.md/AGENTS.md it reads are the
+          # trusted main versions. This matches `base_branch: main` on the action below and keeps
+          # the "created from main" invariant a checked-out fact rather than only a convention.
+          ref: main
+          fetch-depth: 0
+
+      - name: Run Claude Code (implementor)
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The task is supplied by the human at dispatch time. `prompt` runs the action in
+          # automation mode (no @claude mention needed). CLAUDE.md at the repo root is read
+          # automatically; the appended rules pin the non-negotiable implementor guardrails.
+          prompt: ${{ github.event.inputs.task }}
+          base_branch: main
+          branch_prefix: claude/
+          claude_args: |
+            --model ${{ env.IMPLEMENTER_MODEL }}
+            --append-system-prompt "You are the IMPLEMENTOR for this repository (the agentic-foundation toolkit). Read and follow CLAUDE.md and AGENTS.md at the repository root before doing anything. Work only on a new feature branch created from main; never commit or push to main. Make the smallest coherent change that satisfies the task, run the repository's relevant validation and tests (e.g. python .github/scripts/validate_config.py), and then open a pull request targeting main for independent Codex review. Never merge a pull request. If the task needs a toolkit design decision that is ambiguous or unsupported by repository evidence, stop and ask for human clarification instead of guessing."
