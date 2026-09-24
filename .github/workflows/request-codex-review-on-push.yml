@@ -1,0 +1,146 @@
+name: Request Codex review on push
+
+# Keeps Codex's review bound to the CURRENT head of a substantive PR.
+#
+# Codex re-reviews a PR on open / ready-for-review / an "@codex review" (code) or
+# "@codex security review" (security) comment — but NOT on a plain push. The foundation auto-merge
+# gate (`auto-merge-foundation-prs.yml`) requires BOTH a Codex code review of the current head and a
+# Codex security-review marker bound to the current head. So after every push to an open, non-draft,
+# substantive PR, this workflow asks Codex to re-review that new head; otherwise the head would carry
+# only a stale review and the gate would (correctly, but permanently) refuse to merge it.
+#
+# It runs as pull_request_target so the trusted workflow definition comes from the base branch, and
+# it performs only GitHub API work (reads the PR + the router status, posts one comment) — no PR
+# content is checked out or executed. The comment is posted with the narrowly-scoped remediation PAT
+# so it is authored by a trusted user (Codex honours "@codex" commands from a real user); a comment
+# posted by the workflow's own GITHUB_TOKEN would not reliably trigger Codex.
+on:
+  pull_request_target:
+    types: [synchronize]
+
+# Reads (PR head + router status) use GITHUB_TOKEN, which carries statuses:read; the comment is
+# written with the PAT below, not GITHUB_TOKEN.
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: read
+
+# One request per PR; a newer push supersedes an in-flight request so only the latest head is asked
+# for (avoids stacking review requests during a rapid push sequence).
+concurrency:
+  group: request-codex-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  request-review:
+    name: Ask Codex to re-review the pushed head
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post @codex review for the current head
+        shell: bash
+        env:
+          # Reads (PR head, router commit status) run under the workflow's own GITHUB_TOKEN, which
+          # carries the statuses:read scope the remediation PAT does not have — a PAT-authenticated
+          # status read would 403 and silently defeat the router-fast-path optimisation.
+          GH_TOKEN: ${{ github.token }}
+          # A real-user PAT (Contents R/W + Pull requests R/W): the comment must be authored by a
+          # trusted user for Codex to act on the "@codex" commands, so the posts below use it.
+          CODEX_PAT: ${{ secrets.CODEX_REMEDIATION_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Without the PAT the request can only be authored by github-actions[bot], which Codex does
+          # not reliably act on; skip cleanly rather than post a comment that does nothing.
+          if [[ -z "${CODEX_PAT:-}" ]]; then
+            echo "CODEX_REMEDIATION_TOKEN is not configured; cannot request a Codex review as a trusted user. Skipping."
+            exit 0
+          fi
+
+          # Ignore a stale event: if a newer commit has landed since this event fired, let that
+          # commit's own run request the review for the current head.
+          CURRENT_HEAD_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [[ "$CURRENT_HEAD_SHA" != "$EVENT_HEAD_SHA" ]]; then
+            echo "Event is stale; PR head has moved to ${CURRENT_HEAD_SHA}. A later run will request the review."
+            exit 0
+          fi
+
+          # Skip trivial changes: the review router fast-path approves docs/text changes without Codex,
+          # and the auto-merge gate's trivial lane does not require a Codex review, so requesting a full
+          # code + security review would just burn model budget.
+          #
+          # The router (fast-ai-code-review.yml) runs on the same synchronize event, independently, so
+          # its status for this head may not be published yet when this job starts. A single early read
+          # would see no status and fall through to requesting paid reviews even for a trivial change.
+          # So wait (bounded) for the router to reach a terminal state for THIS head before deciding.
+          # The router is a fast, deterministic, no-model job, so this adds only a few seconds. If it
+          # never settles within the budget, fall through and request the review (fail-safe).
+          ROUTER_STATE=""
+          ROUTER_DESC=""
+          router_deadline=$(( SECONDS + 120 ))
+          while (( SECONDS < router_deadline )); do
+            router_line="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${EVENT_HEAD_SHA}/status" \
+              --jq '[.statuses[] | select(.context=="Publish fast review result")] | (sort_by(.updated_at, .id) | last) // {} | ((.state // "") + "\t" + (.description // ""))' 2>/dev/null || printf '\t')"
+            ROUTER_STATE="${router_line%%$'\t'*}"
+            ROUTER_DESC="${router_line#*$'\t'}"
+            # Terminal router states; "pending" (still classifying) or "" (not published yet) keep waiting.
+            case "$ROUTER_STATE" in
+              success|failure|error) break ;;
+            esac
+            sleep 6
+          done
+
+          if [[ "$ROUTER_DESC" == *"fast-path approved"* ]]; then
+            echo "Router fast-path approved this head (trivial change); not requesting a Codex review."
+            exit 0
+          fi
+          case "$ROUTER_STATE" in
+            success)
+              : ;; # Substantive change routed to Codex — request the review below.
+            failure|error)
+              # The auto-merge gate requires the router status itself to be successful, so a Codex
+              # review cannot make this head mergeable until routing is repaired/rerun. Requesting
+              # paid reviews now would just burn model budget; stop.
+              echo "Router status is '${ROUTER_STATE}' for ${EVENT_HEAD_SHA}; the head cannot become mergeable until routing is fixed. Not requesting a Codex review."
+              exit 0 ;;
+            *)
+              # Missing/pending/timed-out (never reached a terminal state within the budget): fail-safe
+              # — request the review rather than risk skipping a needed one.
+              echo "Router did not publish a terminal status for ${EVENT_HEAD_SHA} within the budget (state='${ROUTER_STATE:-none}'); requesting review anyway (fail-safe)." ;;
+          esac
+
+          # The router wait can span a new push; re-confirm the head has not moved so a superseded run
+          # does not request a review for a stale commit.
+          CURRENT_HEAD_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [[ "$CURRENT_HEAD_SHA" != "$EVENT_HEAD_SHA" ]]; then
+            echo "Head moved to ${CURRENT_HEAD_SHA} during the router wait; a later run will request the review."
+            exit 0
+          fi
+
+          # Ask Codex to re-review the new head — BOTH code and security — so the gate can evaluate
+          # this exact commit. Codex acts on only one "@codex" command per comment (a single comment
+          # carrying both commands triggers only the code review), so post them as two separate
+          # comments.
+          post_codex() {
+            local command="$1"
+            {
+              echo "$command"
+              echo
+              echo "_Automated re-review request for the pushed head \`${EVENT_HEAD_SHA}\` so the foundation auto-merge gate can evaluate this exact commit._"
+              echo
+              echo '---'
+              echo '_Generated by [Claude Code](https://claude.ai/code)_'
+            } > "$RUNNER_TEMP/comment.md"
+            # Post as the trusted PAT user, not the workflow token, so Codex acts on the command.
+            GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          }
+          post_codex '@codex review'
+          post_codex '@codex security review'
+          echo "Requested Codex code + security re-review for ${EVENT_HEAD_SHA} on PR #${PR_NUMBER}."

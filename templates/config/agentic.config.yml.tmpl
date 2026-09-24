@@ -1,66 +1,149 @@
 # =============================================================================
 # agentic-foundation — per-repository configuration (`.agentic/config.yml`)
 # -----------------------------------------------------------------------------
-# This single file is what makes the toolkit portable. The GitHub Actions
-# workflows read from it instead of hardcoding any language, provider, or model.
-# Full reference: docs/CONFIGURATION.md
+# A platform-neutral contract for a graph of SDLC/STLC agent stages. One file
+# makes the toolkit portable: it never hardcodes a language, provider, model,
+# or SCM platform.
+#
+# EASY BY DEFAULT: pick a `profile` and a `platform` and you're done — the
+# profile expands to a default stage graph. ADD `stages:` only when you want
+# granular control. Everything else is optional and falls back to defaults.
+# Full reference: docs/CONFIGURATION.md   Design: docs/ARCHITECTURE.md
 # =============================================================================
-version: 1
+version: 2
 
-repository:
-  # Branch that PRs target and that the workflows treat as the trunk.
+# Optional: inherit base config(s) first; values in THIS file win. Layer an
+# org base, then a team base, then this repo. (String or list.)
+# extends:
+#   - org/agentic-base.yml
+#   - team/backend.yml
+
+# ===========================================================================
+# SIMPLE — a newcomer needs only these two.
+# ===========================================================================
+
+# Onboarding shortcut. Expands to a default stage graph you can override below.
+#   minimal  = implement + review (advisory; humans merge)
+#   standard = implement + review (blocking) + security (advisory)   <- default
+#   full     = plan + implement + security + test + integration-test + review + docs
+#   custom   = no auto stages; you define them all under `stages:`
+profile: standard
+
+platform:
+  type: github                 # github | gitlab | azure_devops | bitbucket | gitea | other
+  # host: ""                   # self-hosted/enterprise host; blank = public host
   default_branch: main
-  # GitHub author_association values allowed to drive agentic changes.
-  trusted_authors: [OWNER, MEMBER, COLLABORATOR]
-  # true = act only on same-repo PR heads (no fork PRs). Keep true unless you
-  # deliberately accept and trust fork contributions (widens the threat model).
-  same_repo_only: true
+  # auth: { token_secret: GITHUB_TOKEN }   # NAME of the platform token secret
 
-labels:
-  # A PR carrying this label is NEVER auto-merged (human keeps merge authority).
-  human_merge: human-merge
-  # Optional: label that dispatches an implementation task from an issue.
-  dispatch: agentic-task
+build:
+  # What "green" means for THIS repo. Language-agnostic; omit for docs-only.
+  #   preset: python | maven | gradle | node | go | rust | dotnet | custom
+  preset: custom
+  commands:
+    install: ""
+    lint: ""
+    test: ""
+    typecheck: ""
 
+# ===========================================================================
+# ADVANCED — everything below is OPTIONAL. Delete any block to accept defaults.
+# ===========================================================================
+
+# --- Model resolution --------------------------------------------------------
+# Precedence per stage, highest first (most specific wins):
+#   1. Per-request override supplied at dispatch time (workflow input / command)
+#   2. This stage's model      -> stages[].model.(tiers.<tier> | default)
+#   3. Org/account default     -> defaults.models.<provider>.(tiers.<tier> | default)
+#   4. Toolkit built-in fallback   (installer fails loudly if nothing resolves)
+# A resolved value that matches a `models.aliases` name expands per provider.
+# The toolkit ships placeholders, never hardcoded versions.
 # ---------------------------------------------------------------------------
-# Roles bound to providers. Any combination is valid, including the SAME
-# provider in both roles with DIFFERENT models.
-#   provider: claude | openai
-# Examples:
-#   Claude implements, Codex reviews   -> implementer.provider: claude / reviewer.provider: openai
-#   Codex implements, Claude reviews   -> implementer.provider: openai / reviewer.provider: claude
-#   Claude both (different models)      -> both provider: claude, different model.default
-#   OpenAI only (different models)      -> both provider: openai, different model.default
-# ---------------------------------------------------------------------------
-roles:
-  implementer:
-    provider: claude
-    model:
-      # Set to your provider's current model IDs (this file ships placeholders,
-      # never hardcoded versions — see CONFIGURATION.md "Models").
-      default: "<implementer-default-model>"
-      tiers:                       # used only when tiering.enabled = true
-        trivial:  "<low-cost-model>"
-        standard: "<implementer-default-model>"
-        complex:  "<high-capability-model>"
-  reviewer:
-    provider: openai
-    model:
-      default: "<reviewer-default-model>"
+
+# Org/account-level defaults, keyed by provider id (any provider).
+defaults:
+  provider: claude             # default provider for stages that omit one
+  models:
+    claude:
+      default: "<claude-default-model>"
       tiers:
-        trivial:  "<low-cost-model>"
-        standard: "<reviewer-default-model>"
-        complex:  "<high-capability-model>"
+        trivial:  "<claude-low-cost-model>"
+        standard: "<claude-default-model>"
+        complex:  "<claude-high-capability-model>"
+    openai:
+      default: "<openai-default-model>"
+      tiers:
+        trivial:  "<openai-low-cost-model>"
+        standard: "<openai-default-model>"
+        complex:  "<openai-high-capability-model>"
+    # gemini: { default: "<gemini-default-model>" }
 
-# ---------------------------------------------------------------------------
-# Dynamic model selection. The deterministic classifier reuses the review
-# router's change-size + path signal, so tier selection costs NO extra model
-# call. A trivial textual/config change runs on the low-cost model; a large or
-# broad change escalates to the high-capability model.
-# ---------------------------------------------------------------------------
+# Provider-agnostic model aliases (optional). Reference these names anywhere a
+# model is expected; map each per provider so ID churn touches one place.
+# models:
+#   aliases:
+#     fast:     { claude: "<claude-fast>",   openai: "<openai-fast>",   gemini: "<gemini-fast>" }
+#     balanced: { claude: "<claude-bal>",    openai: "<openai-bal>" }
+#     strong:   { claude: "<claude-strong>", openai: "<openai-strong>" }
+
+# Provider connections (optional). Point at self-hosted / Azure OpenAI / Vertex /
+# proxy / on-prem gateways. Supply only the NAME of the key secret, never the key.
+# providers:
+#   claude:  { api_key_secret: ANTHROPIC_API_KEY }
+#   openai:
+#     base_url: ""                       # e.g. https://<resource>.openai.azure.com
+#     api_version: ""                    # e.g. Azure OpenAI api-version
+#     deployment: ""                     # Azure deployment name
+#     api_key_secret: OPENAI_API_KEY
+
+# --- Skills registry (optional) ----------------------------------------------
+# A skill is the reusable methodology/content for a stage (checklist, rubric,
+# output format) — provider/backend/language-agnostic. Built-ins live in
+# templates/skills/<id>/. Register your own or override a shipped one by id.
+# skills:
+#   code-review:     { source: builtin }
+#   security-review: { source: builtin }
+#   house-review:    { source: path, path: .agentic/skills/house-review, extends: code-review }
+
+# --- Stages (the agent graph) ------------------------------------------------
+# OPTIONAL. Omit to use the profile's stages. Anything you list here is merged
+# onto the profile (a stage with the same id overrides). Build a stage from a
+# pre-wired agent preset with `from:` and override only what you need; or define
+# it fully. Any provider/model/backend permutation works, per stage.
+#
+# Example: a fuller SDLC mixing presets, providers, models, backends, and skills.
+# stages:
+#   - id: plan
+#     type: plan
+#     provider: claude
+#     model: { default: strong }
+#     backend: { name: generic }
+#     triggers: [issue_labeled]
+#     gate: advisory
+#
+#   - id: implement
+#     type: implement
+#     provider: claude
+#     model: { tiers: { trivial: fast, standard: balanced, complex: strong } }
+#     backend: { name: claude-code-action }   # or: openhands | codex | swe-agent | generic
+#     depends_on: [plan]
+#     triggers: [issue_labeled, comment_command]
+#
+#   - id: security
+#     from: security-review              # pre-wired preset (skill + gate + triggers)
+#     provider: openai                   # override just the provider
+#     depends_on: [implement]
+#
+#   - id: review
+#     from: code-review                  # pre-wired preset
+#     backend: { name: pr-agent }        # override the backend with a mature OSS reviewer
+#     depends_on: [implement]
+
+# --- Dynamic model selection -------------------------------------------------
+# Deterministic classifier reuses the review router's change-size + path signal,
+# so tier selection costs NO extra model call. A stage may set `tiering: false`.
 tiering:
   enabled: true
-  classifier: deterministic        # v1: deterministic only
+  classifier: deterministic
   thresholds:
     trivial:
       max_files: 5
@@ -69,27 +152,9 @@ tiering:
     complex:
       min_files: 20
       min_lines: 400
-    # A change that is neither trivial nor complex is treated as "standard".
 
-# ---------------------------------------------------------------------------
-# What "green" means for THIS repository. Pick a preset and/or override the
-# individual commands. The workflows run whatever is defined here — they never
-# assume a language.
-#   preset: python | maven | gradle | node | go | rust | dotnet | custom
-# Presets live in templates/presets/ and only pre-fill the commands below.
-# ---------------------------------------------------------------------------
-build:
-  preset: custom
-  commands:
-    install: ""
-    lint: ""
-    test: ""
-    typecheck: ""
-
-# ---------------------------------------------------------------------------
-# Review routing: trivial textual changes are fast-path approved WITHOUT a
-# model review; everything else is routed to the configured reviewer.
-# ---------------------------------------------------------------------------
+# --- Review routing ----------------------------------------------------------
+# Trivial textual changes are fast-path approved WITHOUT a model review.
 routing:
   fast_path:
     globs: ["**/*.md", "docs/**"]
@@ -97,10 +162,35 @@ routing:
     max_lines: 200
     exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
 
-# ---------------------------------------------------------------------------
-# Optional add-on modules. Core (implement + review + routing + thread
-# resolution) is always installed; these are opt-in.
-# ---------------------------------------------------------------------------
+# --- Cost & token budgets ----------------------------------------------------
+# Optional ceilings, global or per-stage. on_exceed decides the action.
+# budgets:
+#   enabled: true
+#   per_run:    { max_usd: 2.00, max_tokens: 500000 }
+#   per_period: { window: monthly, max_usd: 200.00 }
+#   on_exceed: block               # block | downgrade | warn
+
+# --- Prompt-injection guardrails ---------------------------------------------
+# Treat content from PRs/issues/comments/diffs as data, not instructions.
+# guardrails:
+#   untrusted_inputs: [pr_body, issue_body, comments, diff, code_comments]
+#   ignore_inline_directives: true
+#   allowed_tools: []
+#   redact_secrets_in_context: true
+
+# --- Observability / audit trail ---------------------------------------------
+# Where run records go — adapt to YOUR stack. Endpoints via variable/secret NAME
+# (never hardcoded); secrets always redacted.
+# observability:
+#   enabled: true
+#   format: json                   # json | text
+#   sinks:
+#     - type: artifact             # none | artifact | file | webhook | otlp
+#     - type: otlp
+#       endpoint_var: OTEL_EXPORTER_OTLP_ENDPOINT
+#       headers_secret: OTEL_EXPORTER_OTLP_HEADERS
+
+# --- Optional add-on modules -------------------------------------------------
 modules:
   auto_merge: false                # fail-closed foundation auto-merge gate
   sonar: false                     # SonarCloud/SonarQube quality gate

@@ -1,0 +1,354 @@
+name: Auto-merge foundation PRs
+
+# Two-lane merge policy — see AGENTS.md "Merge lanes".
+#
+# FOUNDATION (engineering-platform) PRs auto-merge once they are provably green and Codex-clean, so
+# the human is not the bottleneck for building the pipeline itself. PRODUCT / knowledge PRs (the
+# reviewed-knowledge output of a snapshot run) are excluded from auto-merge and stay human-gated;
+# they are marked with the `human-merge` label, which this gate treats as a hard stop.
+#
+# SECURITY POSTURE (this workflow writes to the default branch, and branch protection is not
+# enforceable on this repository's plan, so the workflow is the gate):
+#   * It runs only as pull_request_target / pull_request_review / issue_comment / check_suite /
+#     schedule / workflow_dispatch — never on a `pull_request` trigger — so the workflow definition
+#     and token always come from the trusted base branch, never from PR head.
+#   * It NEVER checks out or executes PR content. It reads PR metadata, checks, reviews and comments
+#     as data through the API only, so untrusted PR code can never reach the merge token.
+#   * It is FAIL-CLOSED: every gate must positively prove mergeability. Any missing signal, unknown
+#     state, or API error results in "skip, do not merge" — never a merge on doubt. A skipped PR is
+#     simply re-evaluated on the next event or scheduled sweep.
+#   * Eligibility requires: open, not draft, not already merged, head in THIS repo (no forks), base
+#     is the default branch, a trusted author association, and NO `human-merge` label.
+#   * The merge is conditional on the evaluated head SHA (`sha=` on the merge call), so a PR whose
+#     head moved between evaluation and merge is not merged with stale approval.
+#
+# It uses the workflow GITHUB_TOKEN (contents+PR write) to merge. Known limitation: a merge pushed
+# with GITHUB_TOKEN does not itself trigger downstream workflows (e.g. a future deploy-on-merge);
+# that will be wired separately when deploy-on-merge is added.
+on:
+  pull_request_target:
+    types: [labeled, unlabeled, opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+  issue_comment:
+    types: [created]
+  check_suite:
+    types: [completed]
+  schedule:
+    # Safety-net sweep: catches PRs that became mergeable via a signal that fired no event we
+    # subscribe to (most importantly CI going green after a push). Event triggers handle the rest
+    # immediately; this bounds the worst-case latency.
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+# Least privilege: contents write + PR write to perform the squash merge; checks/statuses read to
+# verify CI. (Head-branch cleanup is left to GitHub's own auto-delete setting, not this workflow.)
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+# One evaluation per PR at a time (per-PR events), and a single shared slot for the whole-repo
+# sweeps (schedule / check_suite / workflow_dispatch). Never cancel an in-flight run — a cancelled
+# merge could leave state half-done; the merge call is idempotent, so letting runs finish is safe.
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number || github.event.issue.number || 'sweep' }}
+  cancel-in-progress: false
+
+env:
+  HUMAN_MERGE_LABEL: human-merge
+  # Must match the context published by Fast AI Code Review; its description tells us the lane.
+  REVIEW_STATUS_CONTEXT: Publish fast review result
+  CODEX_BOT_LOGIN: chatgpt-codex-connector[bot]
+
+jobs:
+  auto-merge:
+    name: Auto-merge eligible foundation PRs
+    # issue_comment fires for plain issues too; only proceed when it is on a pull request.
+    if: >-
+      github.event_name != 'issue_comment' || github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Evaluate candidates and merge the eligible ones
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_FROM_PULL: ${{ github.event.pull_request.number }}
+          PR_FROM_ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          REPO="$GITHUB_REPOSITORY"
+          DEFAULT_BRANCH="${EVENT_DEFAULT_BRANCH:-}"
+          if [[ -z "$DEFAULT_BRANCH" ]]; then
+            # schedule / workflow_dispatch payloads carry no repository object.
+            DEFAULT_BRANCH="$(gh api "repos/$REPO" --jq '.default_branch')"
+          fi
+
+          # --- Build the candidate PR list ---------------------------------------------------
+          # Per-PR events evaluate exactly one PR; whole-repo triggers evaluate every open PR that
+          # targets the default branch. One PR's outcome never aborts the others.
+          declare -a PRS=()
+          case "$EVENT_NAME" in
+            pull_request_target|pull_request_review)
+              [[ -n "${PR_FROM_PULL:-}" && "$PR_FROM_PULL" != "null" ]] && PRS=("$PR_FROM_PULL") ;;
+            issue_comment)
+              [[ -n "${PR_FROM_ISSUE:-}" && "$PR_FROM_ISSUE" != "null" ]] && PRS=("$PR_FROM_ISSUE") ;;
+            *)
+              mapfile -t PRS < <(gh api --paginate \
+                "repos/$REPO/pulls?state=open&base=$DEFAULT_BRANCH&per_page=100" \
+                --jq '.[].number') || PRS=() ;;
+          esac
+
+          if [[ ${#PRS[@]} -eq 0 ]]; then
+            echo "No candidate PRs for event '$EVENT_NAME'."
+            exit 0
+          fi
+
+          # skip <pr> <reason>: record a fail-closed decision and stop evaluating this PR.
+          skip() { echo "SKIP #$1: $2"; }
+
+          # count_unresolved_threads <pr>: number of unresolved review threads (any author).
+          count_unresolved_threads() {
+            local pr="$1" q cursor="null" resp total=0 page has_next
+            q='query($owner:String!,$repo:String!,$number:Int!,$cursor:String){
+                 repository(owner:$owner,name:$repo){
+                   pullRequest(number:$number){
+                     reviewThreads(first:100,after:$cursor){
+                       nodes{ isResolved }
+                       pageInfo{ hasNextPage endCursor }
+                     }}}}'
+            local owner="${REPO%%/*}" name="${REPO#*/}"
+            while :; do
+              if [[ "$cursor" == "null" ]]; then
+                resp="$(gh api graphql -f query="$q" -f owner="$owner" -f repo="$name" -F number="$pr")" || return 1
+              else
+                resp="$(gh api graphql -f query="$q" -f owner="$owner" -f repo="$name" -F number="$pr" -f cursor="$cursor")" || return 1
+              fi
+              page="$(jq -r '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' <<<"$resp")" || return 1
+              total=$((total + page))
+              has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$resp")"
+              [[ "$has_next" == "true" ]] || break
+              cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<<"$resp")"
+            done
+            echo "$total"
+          }
+
+          # evaluate_pr <pr>: run every fail-closed gate; merge only if all pass. Always returns 0
+          # (a skip is not an error) so the sweep continues to the next PR.
+          evaluate_pr() {
+            local pr="$1"
+            echo "::group::Evaluate PR #$pr"
+
+            local pr_json
+            pr_json="$(gh api "repos/$REPO/pulls/$pr")" || { skip "$pr" "cannot fetch PR"; echo '::endgroup::'; return 0; }
+
+            local state merged draft head_sha head_repo base_ref author_assoc mergeable mergeable_state
+            state="$(jq -r '.state' <<<"$pr_json")"
+            merged="$(jq -r '.merged' <<<"$pr_json")"
+            draft="$(jq -r '.draft' <<<"$pr_json")"
+            head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+            head_repo="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
+            base_ref="$(jq -r '.base.ref' <<<"$pr_json")"
+            author_assoc="$(jq -r '.author_association' <<<"$pr_json")"
+            mergeable="$(jq -r '.mergeable' <<<"$pr_json")"
+            mergeable_state="$(jq -r '.mergeable_state' <<<"$pr_json")"
+
+            # --- Eligibility (fail-closed) ---
+            [[ "$state" == "open" ]]        || { skip "$pr" "state=$state"; echo '::endgroup::'; return 0; }
+            [[ "$merged" == "false" ]]      || { skip "$pr" "already merged"; echo '::endgroup::'; return 0; }
+            [[ "$draft" == "false" ]]       || { skip "$pr" "draft"; echo '::endgroup::'; return 0; }
+            [[ "$head_repo" == "$REPO" ]]   || { skip "$pr" "head is a fork ($head_repo)"; echo '::endgroup::'; return 0; }
+            [[ "$base_ref" == "$DEFAULT_BRANCH" ]] || { skip "$pr" "base=$base_ref not $DEFAULT_BRANCH"; echo '::endgroup::'; return 0; }
+            case "$author_assoc" in
+              OWNER|MEMBER|COLLABORATOR) ;;
+              *) skip "$pr" "untrusted author_association=$author_assoc"; echo '::endgroup::'; return 0 ;;
+            esac
+
+            # Knowledge / product PRs are human-gated: presence of the label is a hard stop.
+            if jq -e --arg L "$HUMAN_MERGE_LABEL" 'any(.labels[]?; .name==$L)' <<<"$pr_json" >/dev/null; then
+              skip "$pr" "labelled '$HUMAN_MERGE_LABEL' (human-gated knowledge PR)"; echo '::endgroup::'; return 0
+            fi
+
+            # mergeable==null means GitHub is still computing the merge; treat as not-yet-ready.
+            [[ "$mergeable" == "true" ]] || { skip "$pr" "mergeable=$mergeable (conflict or still computing)"; echo '::endgroup::'; return 0; }
+            # Require mergeable_state == clean: this rejects "behind" (head not up to date with the
+            # base, so the recorded checks ran against an older base than the one it would merge into)
+            # as well as "dirty"/"blocked"/"unstable"/"unknown". Merging only a clean head guarantees
+            # the checks verified below reflect the current base+head pair.
+            [[ "$mergeable_state" == "clean" ]] || { skip "$pr" "mergeable_state=$mergeable_state (not clean: behind base, blocked, or checks not settled)"; echo '::endgroup::'; return 0; }
+
+            # --- CI must be green ---
+            # Combined commit-status state is success only if every status context is success.
+            local status_json status_state
+            status_json="$(gh api "repos/$REPO/commits/$head_sha/status")" || { skip "$pr" "cannot read combined status"; echo '::endgroup::'; return 0; }
+            status_state="$(jq -r '.state' <<<"$status_json")"
+            [[ "$status_state" == "success" ]] || { skip "$pr" "combined status=$status_state"; echo '::endgroup::'; return 0; }
+
+            # The review router status must be success, and its description selects the review lane.
+            local router
+            router="$(jq -r --arg c "$REVIEW_STATUS_CONTEXT" \
+              '[.statuses[] | select(.context==$c)] | (sort_by(.updated_at) | last) // {} | ((.state // "missing") + "\t" + (.description // ""))' <<<"$status_json")"
+            local router_state="${router%%$'\t'*}" router_text="${router#*$'\t'}"
+            [[ "$router_state" == "success" ]] || { skip "$pr" "review router status=$router_state"; echo '::endgroup::'; return 0; }
+
+            # EVERY check-run on the head must be completed and passing — with no name-based
+            # exclusion. Excluding a run because its name contains a magic word would be fail-open: a
+            # failed or pending check could hide a genuine failure behind that name and let the merge
+            # through. Fetch first (fail-closed on API error), then count — never read an API failure
+            # as "zero failures".
+            #
+            # This does not deadlock on the gate's own run. Merges are driven by the scheduled sweep
+            # and the comment/review triggers, whose workflow runs attach their check-run to the
+            # default branch, not to the PR head — so no in-progress "Auto-merge foundation PRs" check
+            # sits on the head when they evaluate. A pull_request_target run does attach its own
+            # in-progress check to the head, so it simply defers; the next sweep/event completes the
+            # merge once that run has finished. The gate never merges past a real failing check.
+            local cr_json bad_checks
+            cr_json="$(gh api --paginate "repos/$REPO/commits/$head_sha/check-runs?per_page=100" --slurp \
+              | jq 'map(.check_runs) | add // []')" || { skip "$pr" "cannot read check-runs"; echo '::endgroup::'; return 0; }
+            bad_checks="$(jq -r '[ .[]
+                    | select(.status != "completed" or (.conclusion | IN("success","neutral","skipped") | not)) ]
+                    | length' <<<"$cr_json")"
+            [[ "$bad_checks" == "0" ]] || { skip "$pr" "$bad_checks check-run(s) pending/failed"; echo '::endgroup::'; return 0; }
+
+            # --- Review must be clean ---
+            # No unresolved review threads (a Codex finding or a human comment blocks the merge).
+            local unresolved
+            unresolved="$(count_unresolved_threads "$pr")" || { skip "$pr" "cannot read review threads"; echo '::endgroup::'; return 0; }
+            [[ "$unresolved" == "0" ]] || { skip "$pr" "$unresolved unresolved review thread(s)"; echo '::endgroup::'; return 0; }
+
+            # No reviewer's latest decisive review is CHANGES_REQUESTED (COMMENTED is not decisive;
+            # a later APPROVED/DISMISSED clears an earlier request).
+            local reviews_json blocking
+            reviews_json="$(gh api --paginate "repos/$REPO/pulls/$pr/reviews?per_page=100" --slurp \
+              | jq 'add // []')" || { skip "$pr" "cannot read reviews"; echo '::endgroup::'; return 0; }
+            blocking="$(jq -r '[ .[] | select(.state=="APPROVED" or .state=="CHANGES_REQUESTED" or .state=="DISMISSED") ]
+                              | group_by(.user.login) | map(sort_by(.submitted_at) | last)
+                              | map(select(.state=="CHANGES_REQUESTED")) | length' <<<"$reviews_json")"
+            [[ "$blocking" == "0" ]] || { skip "$pr" "$blocking reviewer(s) requested changes"; echo '::endgroup::'; return 0; }
+
+            # Lane-specific Codex requirement.
+            if [[ "$router_text" == *"fast-path approved"* ]]; then
+              echo "#$pr: trivial fast-path lane — independent Codex review not required."
+            else
+              # Substantive lane: the current head must carry a Codex CODE review, and the review must
+              # be clean. "Clean" is enforced by the zero-unresolved-threads check above: every Codex
+              # finding — code OR security — is posted as a review thread, so any real issue leaves an
+              # unresolved thread and blocks the merge.
+              #
+              # The gate deliberately does NOT parse Codex's `codex-security-review` marker. Codex runs
+              # the security review only on open/ready (not on push), it does not always post the marker,
+              # and matching a marker to the current head races the review that a ready event triggers —
+              # so the marker is an unreliable gate signal. The security review still runs and its
+              # findings still block as threads; we simply do not require its completion marker.
+              #
+              # Codex's CODE review must have completed for the current head. Codex posts a formal
+              # review OBJECT only when it has suggestions; a CLEAN review posts no review object and
+              # only updates its "Codex Review Summary" comment. So detect "reviewed current head" from
+              # EITHER signal:
+              #  (a) the latest non-dismissed Codex review object whose commit_id is the current head
+              #      (covers reviews that carried suggestions), OR
+              #  (b) Codex's summary comment (the one carrying the `codex-pull-request-review-summary`
+              #      marker) showing the Code Review row as "Completed" for the current head — the
+              #      always-present, head-bound signal that also covers a clean review.
+              # A running review reads "Running" in (b) (not "Completed") and correctly holds the merge;
+              # any finding is still an unresolved thread, already blocked above.
+              local codex_head_reviewed=false
+
+              # (a) formal review object: take the latest Codex review first.
+              local codex_latest codex_sha codex_state
+              codex_latest="$(jq -c --arg bot "$CODEX_BOT_LOGIN" \
+                '[ .[] | select(.user.login==$bot) ] | (sort_by(.submitted_at) | last) // {}' <<<"$reviews_json")"
+              codex_sha="$(jq -r '.commit_id // ""' <<<"$codex_latest")"
+              codex_state="$(jq -r '.state // ""' <<<"$codex_latest")"
+              # Dismissal is DECISIVE for the current head: if the latest Codex review object is a
+              # DISMISSED review of the current head, do not merge and do NOT fall through to the
+              # summary-row path — GitHub does not update the summary comment's stale "Completed" row on
+              # dismissal, so that fallback would otherwise bypass an explicitly invalidated review. A
+              # new push (or re-review) is required to clear it.
+              if [[ "$codex_state" == "DISMISSED" && "$codex_sha" == "$head_sha" ]]; then
+                skip "$pr" "latest Codex review of the current head is DISMISSED"; echo '::endgroup::'; return 0
+              fi
+              if [[ "$codex_sha" == "$head_sha" ]]; then
+                codex_head_reviewed=true
+              fi
+
+              # (b) summary comment's Code Review row: fetch PR comments, take the latest Codex summary
+              # comment, and require its Code Review row to read "Completed" with a commit that is a
+              # prefix of the current head (the summary shows an abbreviated SHA).
+              if [[ "$codex_head_reviewed" != true ]]; then
+                local pr_comments summary_body code_row row_sha
+                pr_comments="$(gh api --paginate "repos/$REPO/issues/$pr/comments?per_page=100" --slurp \
+                  | jq 'add // []')" || { skip "$pr" "cannot read PR comments for Codex review summary"; echo '::endgroup::'; return 0; }
+                summary_body="$(jq -r --arg bot "$CODEX_BOT_LOGIN" \
+                  '[ .[] | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$pr_comments")"
+                code_row="$(grep -i 'Code Review' <<<"$summary_body" | head -1 || true)"
+                if grep -qi 'Completed' <<<"$code_row"; then
+                  row_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$code_row" | head -1 | tr -d '`' || true)"
+                  if [[ -n "$row_sha" && "$head_sha" == "$row_sha"* ]]; then
+                    codex_head_reviewed=true
+                  fi
+                fi
+              fi
+
+              [[ "$codex_head_reviewed" == true ]] || { skip "$pr" "no completed Codex code review for current head $head_sha (no head-matching review object or summary row)"; echo '::endgroup::'; return 0; }
+
+              # NOTE: agentic-foundation does not wire SonarCloud by default (modules.sonar defaults
+              # off). The security gate here is Codex's security review — every finding posts as a
+              # review thread and is caught by the zero-unresolved-threads requirement above — together
+              # with the required `validate` check-run (all-check-runs-green, above). If you enable the
+              # sonar module, re-add a fail-closed check-run assertion for the SonarCloud app here.
+            fi
+
+            # --- Re-validate the mutable gates immediately before merging ---
+            # Concurrency does NOT cancel an in-flight evaluation, and the merge call is pinned only to
+            # head_sha — so a `human-merge` label, a draft toggle, a lost mergeability, or an already-
+            # completed merge applied AFTER the reads above must still stop this merge. Re-fetch and
+            # re-check the mutable gates against the same head_sha right before the merge call.
+            local recheck current_default
+            recheck="$(gh api "repos/$REPO/pulls/$pr")" || { skip "$pr" "cannot re-fetch PR before merge"; echo '::endgroup::'; return 0; }
+            # Re-read the repository's default branch here rather than trusting the value cached at the
+            # start of the run: if the default branch was changed mid-run, the cached name is stale and
+            # a PR still targeting the former default could otherwise merge into a now-non-default branch.
+            current_default="$(gh api "repos/$REPO" --jq '.default_branch')" || { skip "$pr" "cannot re-read default branch before merge"; echo '::endgroup::'; return 0; }
+            if [[ "$(jq -r '.state' <<<"$recheck")" != "open" \
+               || "$(jq -r '.merged' <<<"$recheck")" != "false" \
+               || "$(jq -r '.draft' <<<"$recheck")" != "false" \
+               || "$(jq -r '.mergeable' <<<"$recheck")" != "true" \
+               || "$(jq -r '.mergeable_state' <<<"$recheck")" != "clean" \
+               || "$(jq -r '.head.sha' <<<"$recheck")" != "$head_sha" \
+               || "$(jq -r '.head.repo.full_name // ""' <<<"$recheck")" != "$REPO" \
+               || "$(jq -r '.base.ref' <<<"$recheck")" != "$current_default" ]]; then
+              skip "$pr" "PR state changed between evaluation and merge (state/head/base/mergeability); deferring to a later run"; echo '::endgroup::'; return 0
+            fi
+            if jq -e --arg L "$HUMAN_MERGE_LABEL" 'any(.labels[]?; .name==$L)' <<<"$recheck" >/dev/null; then
+              skip "$pr" "'$HUMAN_MERGE_LABEL' applied before merge (human-gated); not merging"; echo '::endgroup::'; return 0
+            fi
+
+            # --- All gates passed: merge (squash), conditional on the evaluated head SHA ---
+            echo "#$pr: all gates green — squash-merging at $head_sha"
+            local err
+            if err="$(gh api --method PUT "repos/$REPO/pulls/$pr/merge" \
+                        -f merge_method=squash -f sha="$head_sha" 2>&1 >/dev/null)"; then
+              echo "Merged #$pr."
+              # The merged head branch is intentionally NOT deleted here. GitHub's REST API has no
+              # atomic compare-and-delete for a ref, so any read-then-delete keeps a race where a push
+              # that advances the branch after the read is silently discarded by the delete. Leave
+              # head-branch cleanup to GitHub's own "Automatically delete head branches" repository
+              # setting, which deletes safely on merge, or to a human.
+            else
+              # Head moved, PR became unmergeable, or a transient API error: skip, do not force it.
+              skip "$pr" "merge call failed (head moved or not mergeable): $err"
+            fi
+            echo '::endgroup::'
+            return 0
+          }
+
+          for pr in "${PRS[@]}"; do
+            evaluate_pr "$pr" || true
+          done
