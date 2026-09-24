@@ -321,6 +321,11 @@ def test_round4_fixes() -> None:
     impl_wf = render.render_all(modcfg, "github")["implementor.yml"]
     check("[A-Za-z0-9._:/-]" in impl_wf, "render: implementor runtime model regex matches renderer allowlist")
 
+    # U-c: an agent-preset `from` that escapes the presets dir is rejected (path traversal).
+    expect_raises(lambda: render.expand_stages({"profile": "custom",
+                  "stages": [{"id": "x", "from": "../../../../etc/passwd"}]}),
+                  "expand_stages: preset `from` escaping AGENTS_DIR fails loud")
+
     # S3: agent contracts are always excluded from the fast path.
     ex = json.loads(ctx["fast_path_exclude_json"])
     check({"AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLAUDE.md"} <= set(ex), "render: AGENTS/CLAUDE always fast-path-excluded")

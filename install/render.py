@@ -217,10 +217,15 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
 
 
 def _load_agent_preset(name: str) -> dict[str, Any]:
-    p = AGENTS_DIR / f"{name}.yml"
-    if not p.is_file():
-        raise RenderError(f"agent preset '{name}' not found at {p}")
-    return _read_yaml(p)
+    # `from` comes from the (untrusted) config; an absolute/`..`/symlink value could escape
+    # AGENTS_DIR and read a host YAML file into the rendered workflow/invocation. Resolve the
+    # final path (follows symlinks) and reject anything outside the presets directory.
+    resolved = (AGENTS_DIR / f"{name}.yml").resolve()
+    if not resolved.is_relative_to(AGENTS_DIR.resolve()):
+        raise RenderError(f"agent preset '{name}' resolves outside the presets directory")
+    if not resolved.is_file():
+        raise RenderError(f"agent preset '{name}' not found at {resolved}")
+    return _read_yaml(resolved)
 
 
 def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
