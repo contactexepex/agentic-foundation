@@ -144,7 +144,7 @@ Full field reference, provider→secret mapping, and troubleshooting:
 ## Layout
 
 ```
-stagr/                                 the installable CLI package: cli.py, render/ (package),
+stagr/                                 the installable CLI package: cli/ (package), render/ (package),
                                        config.schema.json, backends/ (init / doctor / plan / apply)
 stagr/templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
 stagr/templates/agents/<id>.yml        pre-wired agent presets that reference a skill

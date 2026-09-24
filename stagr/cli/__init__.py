@@ -1,6 +1,6 @@
 """stagr — the agentic-foundation control plane CLI.
 
-Subcommands over the renderer core (`render.py`), so newcomers can adopt the toolkit with one
+Subcommands over the renderer core (`render/`), so newcomers can adopt the toolkit with one
 command and experts can inspect exactly what it will do first:
 
     stagr init     # scaffold a commented .agentic/config.yml (guided wizard, or --profile to generate)
@@ -20,6 +20,11 @@ This package was split from a single `cli.py` module into cohesive submodules; t
 re-exports every top-level name so `from stagr import cli; cli.<name>` keeps working unchanged.
 """
 from __future__ import annotations
+
+# Preserve the module-level bindings the single-file cli.py exposed: some consumers reach imports
+# through the CLI namespace (e.g. `from stagr import cli; cli.render`), so re-bind them here.
+from .. import render, scaffold
+from ..backends.generic.runner import DEFAULT_KEY_SECRET
 
 from .report import (
     DEFAULT_CONFIG_PATH,
