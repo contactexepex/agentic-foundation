@@ -38,7 +38,15 @@ DEFAULT_UNTRUSTED = ["pr_body", "issue_body", "comments", "diff", "code_comments
 
 @dataclass
 class Invocation:
-    """A provider-agnostic, secret-free description of one stage run."""
+    """A provider-agnostic, secret-free description of one stage run.
+
+    Every credential-bearing field carries a secret NAME, never a value:
+    `api_key_secret` and `extra_headers_secret` are the names of CI secrets a thin
+    provider adapter resolves at run time. `base_url` / `api_version` / `deployment`
+    are non-secret connection settings (Azure / self-hosted / proxy endpoints).
+    `redact_secrets` tells the adapter whether to scrub credential-shaped strings out
+    of the untrusted context before sending it to the model.
+    """
 
     stage_id: str
     action: str  # "implement" | "review"
@@ -48,6 +56,12 @@ class Invocation:
     untrusted_inputs: list[str]
     api_key_secret: str  # NAME only — never the value
     gate: str  # "advisory" | "blocking"
+    redact_secrets: bool = True
+    # Non-secret provider connection settings (empty when not configured).
+    base_url: str = ""
+    api_version: str = ""
+    deployment: str = ""
+    extra_headers_secret: str = ""  # NAME only — never the value
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,6 +73,11 @@ class Invocation:
             "untrusted_inputs": list(self.untrusted_inputs),
             "api_key_secret": self.api_key_secret,
             "gate": self.gate,
+            "redact_secrets": self.redact_secrets,
+            "base_url": self.base_url,
+            "api_version": self.api_version,
+            "deployment": self.deployment,
+            "extra_headers_secret": self.extra_headers_secret,
         }
 
 
@@ -68,6 +87,21 @@ def _action_for(stage_type: str) -> str:
     if stage_type in REVIEW_TYPES:
         return "review"
     return "implement"  # `custom` defaults to implement
+
+
+def _confine_to_repo(path: Path, what: str = "path") -> Path:
+    """Resolve `path` and reject anything outside the toolkit repository root.
+
+    Skill/instruction file references come from the (untrusted) config, so an absolute
+    path or one escaping via `..` or a symlink — e.g. `/proc/self/environ` — must not be
+    read into a system prompt that a provider adapter could then transmit externally.
+    Resolution follows symlinks, so a symlinked escape is caught by the containment check.
+    """
+    resolved = path.resolve()
+    root = REPO_ROOT.resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"{what} '{path}' resolves outside the repository root ({resolved})")
+    return resolved
 
 
 def _read_skill_file(base: Path) -> str:
@@ -88,7 +122,10 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None) -> str:
     source = reg.get("source", "builtin")
 
     if source == "uri":
-        raise RuntimeError(
+        # Remote fetch is deliberately unsupported offline; the renderer rejects this
+        # contract shape up front (see render.validate_config), and this is the backstop
+        # if the backend is invoked directly.
+        raise ValueError(
             f"skill '{skill_id}' uses source: uri, which is not fetched offline; "
             "vendor it locally and use source: path"
         )
@@ -96,7 +133,7 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None) -> str:
         loc = reg.get("path")
         if not loc:
             raise ValueError(f"skill '{skill_id}' has source: path but no path")
-        content = _read_skill_file((REPO_ROOT / loc).resolve())
+        content = _read_skill_file(_confine_to_repo(REPO_ROOT / loc, f"skill '{skill_id}' path"))
     else:  # builtin
         content = _read_skill_file(SKILLS_DIR / skill_id)
 
@@ -132,17 +169,29 @@ def build_invocation(
         methodology = load_skill(skill_id, cfg)
     else:
         instr = stage.get("instructions", "") or ""
-        # `instructions` may be inline text OR a path to a prompt file; load the file's content
-        # when it resolves to an existing file, otherwise treat it as inline.
-        instr_path = (REPO_ROOT / instr) if instr else None
-        if instr and instr_path is not None and instr_path.is_file():
-            methodology = instr_path.read_text()
-        else:
-            methodology = instr
+        # `instructions` may be inline text OR a path to a prompt file. Only treat it as a
+        # path when it resolves to an existing file INSIDE the repository — a path escaping
+        # the repo (absolute, `..`, or a symlink to e.g. /proc/self/environ) is rejected so
+        # host files can never be embedded in the system prompt. Anything that is not such a
+        # file is treated as inline text.
+        methodology = instr
+        if instr:
+            candidate = (REPO_ROOT / instr)
+            try:
+                confined = _confine_to_repo(candidate, "instructions path")
+            except ValueError:
+                if candidate.exists() or candidate.is_absolute() or ".." in Path(instr).parts:
+                    # It looks like a path (exists or is path-shaped) but escapes the repo — fail loud
+                    # rather than silently sending the raw string as a prompt.
+                    raise
+                confined = None  # genuinely inline text that merely contains a slash
+            if confined is not None and confined.is_file():
+                methodology = confined.read_text()
 
     guardrails = guardrails or cfg.get("guardrails", {}) or {}
     untrusted = guardrails.get("untrusted_inputs", DEFAULT_UNTRUSTED)
     ignore_inline = guardrails.get("ignore_inline_directives", True)
+    redact_secrets = guardrails.get("redact_secrets_in_context", True)
 
     frame = (
         f"You are the {stage_type.upper()} stage ('{stage.get('id')}') in an automated "
@@ -157,11 +206,12 @@ def build_invocation(
         )
     system_prompt = frame + "\n---\n" + methodology
 
-    # Secret NAME only.
+    # Provider connection settings. Secrets are referenced by NAME only; base_url /
+    # api_version / deployment are non-secret endpoint metadata (Azure / self-hosted /
+    # proxy). A thin adapter needs all of these to reach a non-default endpoint.
     providers = cfg.get("providers", {}) or {}
-    api_key_secret = (providers.get(provider, {}) or {}).get(
-        "api_key_secret", DEFAULT_KEY_SECRET.get(provider, "MODEL_API_KEY")
-    )
+    pcfg = providers.get(provider, {}) or {}
+    api_key_secret = pcfg.get("api_key_secret", DEFAULT_KEY_SECRET.get(provider, "MODEL_API_KEY"))
 
     return Invocation(
         stage_id=stage.get("id", ""),
@@ -172,4 +222,9 @@ def build_invocation(
         untrusted_inputs=list(untrusted),
         api_key_secret=api_key_secret,
         gate=_default_gate(stage_type, stage.get("gate")),
+        redact_secrets=bool(redact_secrets),
+        base_url=pcfg.get("base_url", "") or "",
+        api_version=pcfg.get("api_version", "") or "",
+        deployment=pcfg.get("deployment", "") or "",
+        extra_headers_secret=pcfg.get("extra_headers_secret", "") or "",
     )

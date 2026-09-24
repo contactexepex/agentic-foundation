@@ -87,6 +87,16 @@ class RenderError(Exception):
     """A configuration/resolution error that must fail loudly."""
 
 
+# A URI reference (scheme://…) as opposed to a local filesystem path. Remote fetch of
+# `extends` bases and `skills` sources is not supported by the offline renderer; such
+# references are rejected up front rather than mis-handled as local paths.
+_URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*://")
+
+
+def _is_uri(ref: str) -> bool:
+    return bool(_URI_SCHEME.match(ref))
+
+
 # --------------------------------------------------------------------------- config
 
 
@@ -126,6 +136,11 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
     _seen = _seen or set()
     merged: dict[str, Any] = {}
     for ref in bases:
+        if _is_uri(str(ref)):
+            raise RenderError(
+                f"extends references a URI ('{ref}'), which the offline renderer does not "
+                "fetch; vendor the base config locally and reference it by relative path"
+            )
         p = (base_dir / ref).resolve()
         key = str(p)
         if key in _seen:
@@ -153,6 +168,22 @@ def validate_config(cfg: dict[str, Any]) -> None:
             f"{'/'.join(str(p) for p in e.path) or '(root)'}: {e.message}" for e in errors
         )
         raise RenderError(f"config does not conform to schema: {lines}")
+    _validate_semantics(cfg)
+
+
+def _validate_semantics(cfg: dict[str, Any]) -> None:
+    """Contract-shape checks the JSON Schema cannot express, at the front door.
+
+    Rejects the not-yet-supported `source: uri` skill registry entries loudly here (rather
+    than deferring to a backend-time error), so a config that names a remote skill fails at
+    validation with a clear "vendor locally" message. Remote fetch is tracked as future work.
+    """
+    for sid, entry in (cfg.get("skills", {}) or {}).items():
+        if isinstance(entry, dict) and entry.get("source") == "uri":
+            raise RenderError(
+                f"skill '{sid}' uses source: uri, which the offline renderer does not fetch; "
+                "vendor it locally and use source: path (remote fetch is future work)"
+            )
 
 
 # ------------------------------------------------------------------------- stages

@@ -187,12 +187,67 @@ def test_round2_fixes() -> None:
     check("Code Review" in inv.system_prompt, "backend: instructions file path is loaded as content")
 
 
+def test_round3_fixes() -> None:
+    from backends.generic import runner as gen
+
+    # redact_secrets: default true; guardrails toggle propagates to the invocation.
+    inv = build_invocation({"defaults": {"provider": "claude"}},
+                           {"id": "r", "type": "review", "provider": "claude"}, "m")
+    check(inv.redact_secrets is True, "backend: redact_secrets defaults true")
+    inv_off = build_invocation({"defaults": {"provider": "claude"}, "guardrails": {"redact_secrets_in_context": False}},
+                               {"id": "r", "type": "review", "provider": "claude"}, "m")
+    check(inv_off.redact_secrets is False and "redact_secrets" in inv_off.to_dict(),
+          "backend: redact_secrets_in_context=false propagates to Invocation")
+
+    # provider connection settings (base_url/api_version/deployment + extra_headers_secret NAME) carried.
+    cfg = {"defaults": {"provider": "azure_openai"},
+           "providers": {"azure_openai": {"api_key_secret": "AZ_KEY", "base_url": "https://x.openai.azure.com",
+                                          "api_version": "2024-02-01", "deployment": "gpt4o",
+                                          "extra_headers_secret": "AZ_EXTRA_HEADERS"}}}
+    inv2 = build_invocation(cfg, {"id": "i", "type": "implement", "provider": "azure_openai"}, "gpt4o")
+    check(inv2.base_url == "https://x.openai.azure.com" and inv2.api_version == "2024-02-01"
+          and inv2.deployment == "gpt4o" and inv2.extra_headers_secret == "AZ_EXTRA_HEADERS",
+          "backend: provider connection settings carried in invocation")
+    check(inv2.api_key_secret == "AZ_KEY", "backend: provider api_key_secret still a NAME")
+
+    # path confinement: a skills-registry path escaping the repo is rejected.
+    try:
+        gen.load_skill("evil", {"skills": {"evil": {"source": "path", "path": "../../../../../../etc/passwd"}}})
+        failures.append("load_skill must reject a path outside the repo")
+        print("FAIL load_skill must reject a path outside the repo", file=sys.stderr)
+    except ValueError:
+        print("OK  backend: load_skill rejects an out-of-repo skill path")
+
+    # path confinement: an absolute instructions path is rejected (never embedded in the prompt).
+    try:
+        build_invocation({"defaults": {"provider": "claude"}},
+                         {"id": "x", "type": "custom", "provider": "claude", "instructions": "/etc/passwd"}, "m")
+        failures.append("build_invocation must reject an absolute out-of-repo instructions path")
+        print("FAIL build_invocation must reject an absolute instructions path", file=sys.stderr)
+    except ValueError:
+        print("OK  backend: instructions path outside the repo is rejected")
+
+    # inline instructions containing a slash but not a real file stay inline (not treated as a path).
+    inv3 = build_invocation({"defaults": {"provider": "claude"}},
+                            {"id": "x", "type": "custom", "provider": "claude",
+                             "instructions": "Compare branch a/b and summarize"}, "m")
+    check("Compare branch a/b" in inv3.system_prompt, "backend: non-file instructions stay inline")
+
+    # URI extends fails loud.
+    expect_raises(lambda: render.resolve_extends({"extends": "https://example.com/base.yml"}, REPO_ROOT),
+                  "extends: URI base fails loud")
+    # URI skill source fails loud at validation.
+    expect_raises(lambda: render._validate_semantics({"skills": {"s": {"source": "uri", "uri": "https://x/y"}}}),
+                  "validate: source: uri skill fails loud")
+
+
 def main() -> int:
     test_resolution()
     test_profile_expansion()
     test_backend()
     test_new_behaviors()
     test_round2_fixes()
+    test_round3_fixes()
     test_render_structural()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
