@@ -97,6 +97,18 @@ def _is_uri(ref: str) -> bool:
     return bool(_URI_SCHEME.match(ref))
 
 
+# A git ref safe to interpolate into generated YAML/shell: no quotes, colons, whitespace, or YAML
+# indicator characters. Real branch names fit this; anything else fails loud rather than producing
+# broken or structurally altered workflows.
+_SAFE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+# A GitHub Actions secret name (what may follow `secrets.` in an expression).
+_SECRET_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Agent contract files change the behavior/security posture of later automation, so they must never
+# ride the review fast path, whatever routing.fast_path.exclude is set to (root and nested).
+MANDATORY_FAST_PATH_EXCLUDE = ["AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLAUDE.md"]
+
+
 # --------------------------------------------------------------------------- config
 
 
@@ -315,8 +327,22 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     roles = platform.get("trusted_roles", ["owner", "member", "collaborator"])
     gh_roles = [GITHUB_ROLE_MAP[r] for r in roles if r in GITHUB_ROLE_MAP]
 
-    # NAME of the real-user PAT the codex review lane posts/resolves with (never a value).
+    default_branch = str(platform.get("default_branch", "main"))
+    if not _SAFE_REF.match(default_branch):
+        raise RenderError(
+            f"platform.default_branch '{default_branch}' contains characters unsafe for workflow "
+            "generation; allowed: letters, digits, and '._/-'"
+        )
+
+    # NAME of the real-user PAT the codex review lane posts/resolves with (never a value). Validate
+    # it as a GitHub secret name so it cannot break out of the `secrets.<NAME>` expression it is
+    # inserted into (e.g. a hyphen, punctuation, or newline).
     codex_review_secret = ((platform.get("auth", {}) or {}).get("token_secret")) or "CODEX_REMEDIATION_TOKEN"
+    if not _SECRET_NAME.match(str(codex_review_secret)):
+        raise RenderError(
+            f"platform.auth.token_secret '{codex_review_secret}' is not a valid GitHub secret name "
+            "(letters, digits, underscore; not starting with a digit)"
+        )
 
     stages = {s["id"]: s for s in expand_stages(cfg)}
     implement_stage = next((s for s in stages.values() if s.get("type") == "implement"), None)
@@ -326,15 +352,19 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     if implement_stage and _stage_backend(implement_stage) in BACKENDS_NEEDING_MODEL:
         implementer_model = resolve_model(cfg, implement_stage, "standard")
 
+    # Agent contract files are always excluded from the fast path (union with configured excludes,
+    # de-duplicated, order preserved) so a nested AGENTS.md/CLAUDE.md can never be fast-path approved.
+    fast_path_exclude = list(dict.fromkeys(MANDATORY_FAST_PATH_EXCLUDE + list(routing.get("exclude", []) or [])))
+
     return {
-        "default_branch": platform.get("default_branch", "main"),
+        "default_branch": default_branch,
         "human_merge_label": labels.get("human_merge", "human-merge"),
         "dispatch_label": labels.get("dispatch", "agentic-task"),
         "trusted_roles_json": json.dumps(gh_roles),
         # Serialize glob lists as JSON so patterns with spaces/quotes survive intact
         # (the template parses them with jq, not word-splitting).
         "fast_path_globs_json": json.dumps(routing.get("globs", ["**/*.md"])),
-        "fast_path_exclude_json": json.dumps(routing.get("exclude", [])),
+        "fast_path_exclude_json": json.dumps(fast_path_exclude),
         "fast_path_max_files": str(routing.get("max_files", 20)),
         "fast_path_max_lines": str(routing.get("max_lines", 200)),
         "implementer_model": implementer_model,
@@ -365,16 +395,34 @@ CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl", "implementor.ym
 REVIEW_TEMPLATES = ["request-review.yml.tmpl", "resolve-threads.yml.tmpl"]
 
 
+def _wants_push_review(stage: dict[str, Any]) -> bool:
+    """True if a review/security stage should run on each pushed head.
+
+    A stage with no explicit `triggers` defaults to reviewing PR updates. A stage that lists
+    triggers but omits `pr_updated` (e.g. only `manual` / `comment_command`) must NOT get the
+    synchronize-triggered request workflow — otherwise paid reviews fire on events the stage
+    never authorized.
+    """
+    trig = stage.get("triggers")
+    if trig is None:
+        return True
+    return "pr_updated" in trig
+
+
 def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     """Choose which workflow templates to emit for this config.
 
     Module-aware, not glob-all: a config with no codex review stage does not get the review
-    lane. (The `modules.auto_merge` gate template is intentionally not emitted yet — its
-    trust model is under review; see PR #2 — so an auto_merge config still renders its core
-    pipeline without a half-decided security gate.)
+    lane, and the lane is emitted only when a codex review/security stage actually runs on
+    pushed heads (honoring its `triggers`). (The `modules.auto_merge` gate template is
+    intentionally not emitted yet — its trust model is under review; see PR #2 — so an
+    auto_merge config still renders its core pipeline without a half-decided security gate.)
     """
     names = list(CORE_TEMPLATES)
-    if any(s.get("type") in {"review", "security"} and _stage_backend(s) == "codex" for s in stages):
+    if any(
+        s.get("type") in {"review", "security"} and _stage_backend(s) == "codex" and _wants_push_review(s)
+        for s in stages
+    ):
         names += REVIEW_TEMPLATES
     return names
 

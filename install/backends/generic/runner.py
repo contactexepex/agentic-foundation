@@ -62,6 +62,10 @@ class Invocation:
     api_version: str = ""
     deployment: str = ""
     extra_headers_secret: str = ""  # NAME only — never the value
+    # Enforceable policy the adapter applies before/while calling the model.
+    budget: dict[str, Any] = field(default_factory=dict)  # {} when no budget is enabled
+    allowed_tools: list[str] = field(default_factory=list)  # [] = adapter default (unrestricted)
+    max_context_files: int | None = None  # None = adapter default (uncapped)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,6 +82,9 @@ class Invocation:
             "api_version": self.api_version,
             "deployment": self.deployment,
             "extra_headers_secret": self.extra_headers_secret,
+            "budget": dict(self.budget),
+            "allowed_tools": list(self.allowed_tools),
+            "max_context_files": self.max_context_files,
         }
 
 
@@ -111,13 +118,20 @@ def _read_skill_file(base: Path) -> str:
     return path.read_text()
 
 
-def load_skill(skill_id: str, cfg: dict[str, Any] | None = None) -> str:
+def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[str, ...] = ()) -> str:
     """Load a skill's methodology, honoring the `skills` registry.
 
     Registry entry (cfg['skills'][skill_id]) may set source builtin|path|uri and an
     `extends` base. A `path` source loads a custom skill; `extends` layers this skill's
     content on top of the base. Without a registry entry, the built-in is used.
+
+    `_seen` is the active `extends` recursion path; a skill id that reappears on it is a
+    cycle (A extends B extends A, or a self-extends) and fails loud instead of recursing
+    into RecursionError.
     """
+    if skill_id in _seen:
+        chain = " -> ".join([*_seen, skill_id])
+        raise ValueError(f"circular skill extends: {chain}")
     reg = ((cfg or {}).get("skills", {}) or {}).get(skill_id, {}) or {}
     source = reg.get("source", "builtin")
 
@@ -139,7 +153,7 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None) -> str:
 
     base_id = reg.get("extends")
     if base_id:
-        base_content = load_skill(base_id, cfg)
+        base_content = load_skill(base_id, cfg, _seen=(*_seen, skill_id))
         content = base_content + "\n\n---\n(overlay: " + skill_id + ")\n---\n\n" + content
     return content
 
@@ -192,6 +206,14 @@ def build_invocation(
     untrusted = guardrails.get("untrusted_inputs", DEFAULT_UNTRUSTED)
     ignore_inline = guardrails.get("ignore_inline_directives", True)
     redact_secrets = guardrails.get("redact_secrets_in_context", True)
+    allowed_tools = list(guardrails.get("allowed_tools", []) or [])
+    max_context_files = guardrails.get("max_context_files")
+
+    # Budget: a per-stage budget overrides the global one wholesale (most-specific wins),
+    # matching how the rest of the contract resolves. Only carry it when it is enabled, so
+    # the adapter can block / downgrade / warn before a paid call exceeds the ceiling.
+    budget_cfg = stage.get("budgets") if isinstance(stage.get("budgets"), dict) else cfg.get("budgets", {})
+    budget = dict(budget_cfg) if isinstance(budget_cfg, dict) and budget_cfg.get("enabled") else {}
 
     frame = (
         f"You are the {stage_type.upper()} stage ('{stage.get('id')}') in an automated "
@@ -227,4 +249,7 @@ def build_invocation(
         api_version=pcfg.get("api_version", "") or "",
         deployment=pcfg.get("deployment", "") or "",
         extra_headers_secret=pcfg.get("extra_headers_secret", "") or "",
+        budget=budget,
+        allowed_tools=allowed_tools,
+        max_context_files=max_context_files,
     )

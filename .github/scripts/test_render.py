@@ -8,6 +8,7 @@ validity + determinism of the rendered GitHub workflows. Exit 0 = pass.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -169,17 +170,18 @@ def test_round2_fixes() -> None:
     ml = render._build_steps({"build": {"commands": {"test": "echo one\necho two"}}})
     check("\n          echo two" in ml, "build_steps: multiline command lines are all indented")
 
-    # default_branch with YAML flow syntax renders as valid YAML (quoted)
+    # A YAML-keyword branch name (pattern-safe but boolean-like) stays a quoted STRING filter,
+    # not the YAML boolean True. (Characters that break quoting are rejected up front — see round-4.)
     import yaml as _yaml
     rendered = render.render_all(
-        {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "release,2026"},
+        {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "true"},
          "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
          "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]},
         "github",
     )
     doc = _yaml.safe_load(rendered["validate.yml"])
     on_block = doc.get("on", doc.get(True))  # YAML parses the `on:` key as boolean True
-    check(on_block["push"]["branches"] == ["release,2026"], "render: odd default_branch stays one quoted branch filter")
+    check(on_block["push"]["branches"] == ["true"], "render: YAML-keyword default_branch stays a quoted string filter")
 
     # instructions as a file path is loaded
     inv = build_invocation({"defaults": {"provider": "claude"}},
@@ -265,6 +267,69 @@ def test_pipeline_selection() -> None:
     check("validate.yml" in r2, "select: core pipeline still emitted")
 
 
+def test_round4_fixes() -> None:
+    from backends.generic import runner as gen
+
+    # S1: cyclic skill extends fails loud instead of RecursionError (use real files as content).
+    cyc = {"skills": {
+        "a": {"source": "path", "path": "templates/skills/code-review/SKILL.md", "extends": "b"},
+        "b": {"source": "path", "path": "templates/skills/security-review/SKILL.md", "extends": "a"},
+    }}
+    try:
+        gen.load_skill("a", cyc)
+        failures.append("load_skill must reject a skill extends cycle")
+        print("FAIL load_skill must reject a skill extends cycle", file=sys.stderr)
+    except ValueError:
+        print("OK  backend: cyclic skill extends fails loud")
+
+    # S2: unsafe default_branch fails loud; a normal one is fine.
+    base = {"version": 2, "profile": "custom", "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+            "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
+    expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "release,2026"}}),
+                  "render: unsafe default_branch fails loud")
+    ctx = render.build_context({**base, "platform": {"type": "github", "default_branch": "release/2026"}})
+    check(ctx["default_branch"] == "release/2026", "render: normal default_branch accepted")
+
+    # S3: agent contracts are always excluded from the fast path.
+    ex = json.loads(ctx["fast_path_exclude_json"])
+    check({"AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLAUDE.md"} <= set(ex), "render: AGENTS/CLAUDE always fast-path-excluded")
+
+    # A3: an invalid token_secret name fails loud.
+    expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "main",
+                  "auth": {"token_secret": "bad-name"}}}), "render: invalid token_secret name fails loud")
+
+    # A2: narrowed trusted_roles render into the review lane (not a hardcoded allowlist).
+    narrow = {"version": 2, "profile": "custom",
+              "platform": {"type": "github", "default_branch": "main", "trusted_roles": ["owner"],
+                           "auth": {"token_secret": "CODEX_REMEDIATION_TOKEN"}},
+              "defaults": {"provider": "openai", "models": {"openai": {"default": "o"}}},
+              "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
+    rn = render.render_all(narrow, "github")
+    check('fromJSON(\'["OWNER"]\')' in rn["request-review.yml"], "render: trusted_roles rendered into request-review (narrowed)")
+
+    # A4: a codex review stage that omits pr_updated does not emit the push-review lane.
+    manual = {**narrow, "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"}, "triggers": ["manual"]}]}
+    rm = render.render_all(manual, "github")
+    check("request-review.yml" not in rm, "render: review lane omitted when stage lacks pr_updated trigger")
+
+    # A5: an enabled budget is carried on the invocation; a disabled one is not.
+    inv = build_invocation({"defaults": {"provider": "claude"}, "budgets": {"enabled": True, "per_run": {"max_usd": 5}, "on_exceed": "block"}},
+                           {"id": "r", "type": "review", "provider": "claude"}, "m")
+    check(inv.budget.get("enabled") is True and inv.budget.get("on_exceed") == "block", "backend: enabled budget carried")
+    inv0 = build_invocation({"defaults": {"provider": "claude"}, "budgets": {"enabled": False, "per_run": {"max_usd": 5}}},
+                            {"id": "r", "type": "review", "provider": "claude"}, "m")
+    check(inv0.budget == {}, "backend: disabled budget not carried")
+    # stage budget overrides global
+    invs = build_invocation({"defaults": {"provider": "claude"}, "budgets": {"enabled": True, "per_run": {"max_usd": 5}}},
+                            {"id": "r", "type": "review", "provider": "claude", "budgets": {"enabled": True, "per_run": {"max_usd": 1}}}, "m")
+    check(invs.budget["per_run"]["max_usd"] == 1, "backend: stage budget overrides global")
+
+    # A6: allowed_tools + max_context_files carried on the invocation.
+    invg = build_invocation({"defaults": {"provider": "claude"}, "guardrails": {"allowed_tools": ["read", "grep"], "max_context_files": 12}},
+                            {"id": "r", "type": "review", "provider": "claude"}, "m")
+    check(invg.allowed_tools == ["read", "grep"] and invg.max_context_files == 12, "backend: tool/context guardrails carried")
+
+
 def main() -> int:
     test_resolution()
     test_profile_expansion()
@@ -273,6 +338,7 @@ def main() -> int:
     test_round2_fixes()
     test_round3_fixes()
     test_pipeline_selection()
+    test_round4_fixes()
     test_render_structural()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
