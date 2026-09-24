@@ -167,18 +167,31 @@ jobs:
 
           # The summary's "Completed" row is not authoritative once a review has been DISMISSED: GitHub
           # leaves the row stale on dismissal, so a dismissed code review would still read as converged
-          # here and spend the paid security review on an invalidated review. Mirror the auto-merge gate's
-          # dismissal check (auto-merge-foundation-prs.yml): the reviews API is the real-time state, so if
-          # the latest Codex review OBJECT for the current head is DISMISSED, require a fresh code review
-          # before requesting the security review.
+          # here and spend the paid security review on an invalidated review. Consult the reviews API (the
+          # real-time state) for the CURRENT head, and treat a dismissal as decisive ONLY when no clean
+          # re-review has completed since it:
+          #   * Select the latest Codex review OBJECT whose commit_id IS the current head — a review of a
+          #     different commit (possibly with a later submitted_at) must never stand in for this head's.
+          #   * A CLEAN re-review posts NO new review object and only refreshes the summary's Code Review
+          #     "Completed" timestamp (see auto-merge-foundation-prs.yml). So if that timestamp is newer
+          #     than the dismissed review, a clean re-review has since validated this head -> converged.
+          #     Only when the dismissal is at least as recent as the last completion is the head still
+          #     invalidated; then require a fresh code review. This avoids a deadlock in which a dismissed-
+          #     then-cleanly-re-reviewed head could otherwise never obtain its (sole-triggered) security
+          #     review without an unrelated new push.
           reviews_json="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --slurp \
             | jq 'add // []')" || { echo "Cannot read PR reviews; skipping."; exit 0; }
-          codex_latest="$(jq -c --arg bot "$CODEX_BOT_LOGIN" \
-            '[ .[] | select(.user.login==$bot) ] | (sort_by(.submitted_at) | last) // {}' <<<"$reviews_json")"
-          codex_review_state="$(jq -r '.state // ""' <<<"$codex_latest")"
-          codex_review_sha="$(jq -r '.commit_id // ""' <<<"$codex_latest")"
-          if [[ "$codex_review_state" == "DISMISSED" && "$codex_review_sha" == "$head_sha" ]]; then
-            echo "Latest Codex code review of the current head is DISMISSED; a fresh code review is required before the security review. Skipping."; exit 0
+          codex_head_review="$(jq -c --arg bot "$CODEX_BOT_LOGIN" --arg sha "$head_sha" \
+            '[ .[] | select(.user.login==$bot and .commit_id==$sha) ] | (sort_by(.submitted_at) | last) // {}' <<<"$reviews_json")"
+          if [[ "$(jq -r '.state // ""' <<<"$codex_head_review")" == "DISMISSED" ]]; then
+            dismissed_at="$(jq -r '.submitted_at // ""' <<<"$codex_head_review")"
+            completed_at="$(grep -oE 'datetime="[^"]+"' <<<"$code_row" | head -1 | sed -E 's/^datetime="//; s/"$//')"
+            dismissed_epoch="$(date -d "$dismissed_at" +%s 2>/dev/null || echo 0)"
+            completed_epoch="$(date -d "$completed_at" +%s 2>/dev/null || echo 0)"
+            if (( completed_epoch <= dismissed_epoch )); then
+              echo "Latest Codex code review of the current head is DISMISSED with no newer clean re-review; a fresh code review is required before the security review. Skipping."; exit 0
+            fi
+            echo "Current head's code review was dismissed but a later clean re-review completed (${completed_at} > ${dismissed_at}); treating as converged."
           fi
 
           # Belt-and-suspenders on top of the marker: if Codex has already flipped the Security Review
