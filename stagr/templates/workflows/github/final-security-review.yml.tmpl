@@ -170,6 +170,22 @@ jobs:
           code_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$code_row" | head -1 | tr -d '`' || true)"
           [[ -n "$code_sha" && "$head_sha" == "$code_sha"* ]] || { echo "Code review is bound to a different head; skipping."; exit 0; }
 
+          # The summary's "Completed" row is not authoritative once a review has been DISMISSED: GitHub
+          # leaves the row stale on dismissal, so a dismissed code review would still read as converged
+          # here and spend the paid security review on an invalidated review. Mirror the auto-merge gate's
+          # dismissal check (auto-merge-foundation-prs.yml): the reviews API is the real-time state, so if
+          # the latest Codex review OBJECT for the current head is DISMISSED, require a fresh code review
+          # before requesting the security review.
+          reviews_json="$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews?per_page=100" --slurp \
+            | jq 'add // []')" || { echo "Cannot read PR reviews; skipping."; exit 0; }
+          codex_latest="$(jq -c --arg bot "$CODEX_BOT_LOGIN" \
+            '[ .[] | select(.user.login==$bot) ] | (sort_by(.submitted_at) | last) // {}' <<<"$reviews_json")"
+          codex_review_state="$(jq -r '.state // ""' <<<"$codex_latest")"
+          codex_review_sha="$(jq -r '.commit_id // ""' <<<"$codex_latest")"
+          if [[ "$codex_review_state" == "DISMISSED" && "$codex_review_sha" == "$head_sha" ]]; then
+            echo "Latest Codex code review of the current head is DISMISSED; a fresh code review is required before the security review. Skipping."; exit 0
+          fi
+
           # Belt-and-suspenders on top of the marker: if Codex has already flipped the Security Review
           # row to Running/Completed for this head, there is nothing to do.
           sec_row="$(grep -i 'Security Review' <<<"$summary" | head -1 || true)"

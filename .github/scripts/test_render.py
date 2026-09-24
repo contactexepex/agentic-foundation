@@ -313,6 +313,13 @@ def test_pipeline_selection() -> None:
           "select: codex_review_secret NAME substituted into request-review")
     check(not re.search(r"ghp_[A-Za-z0-9]{8,}", rendered["resolve-threads.yml"]),
           "select: resolve-threads inlines no secret value")
+    # Regression (#14): the final security lane must not treat a DISMISSED code review as converged
+    # (GitHub leaves the summary's "Completed" row stale on dismissal). The rendered workflow must
+    # carry the reviews-API dismissal guard, so it can never be silently dropped from the template.
+    _sec = rendered["final-security-review.yml"]
+    check('"$codex_review_state" == "DISMISSED"' in _sec
+          and "/pulls/${PR_NUMBER}/reviews" in _sec,
+          "select: final-security-review guards against a dismissed code review (#14)")
 
     # No codex review stage -> the review lane is NOT emitted (module-aware, not glob-all).
     minimal = {"version": 2, "profile": "custom",
