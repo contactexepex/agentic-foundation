@@ -26,6 +26,7 @@ name = "stagr"
 dynamic = ["version"]
 description = "A control plane that turns one declarative file into a governed, multi-stage agentic SDLC pipeline on your existing CI/SCM."
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
   "pyyaml>=6",
@@ -37,10 +38,9 @@ classifiers = [
   "Environment :: Console",
   "Topic :: Software Development :: Build Tools",
   "Intended Audience :: Developers",
+  # Source-available under the Business Source License 1.1 (not an OSI-approved license).
+  "License :: Other/Proprietary License",
 ]
-
-# NOTE (pre-publish): add a LICENSE file and set `license`/a license classifier here before
-# publishing to PyPI. Nothing is published by this change.
 
 [project.scripts]
 stagr = "stagr.cli:main"
@@ -63,4 +63,5 @@ include = [
   "README.md",
   "AGENTS.md",
   "CLAUDE.md",
+  "LICENSE",
 ]

@@ -177,4 +177,5 @@ pipx install dist/stagr-*.whl   # smoke-test the built wheel
 ```
 
 The single wheel is what every install path uses (`pipx`, `pip`, and — later — any OS package that
-wraps it). Publishing to PyPI is a future step (add a LICENSE first).
+wraps it). The project is licensed (Business Source License 1.1); publishing to PyPI is a future
+step — reserve the `stagr` name and run `twine upload dist/*`.
