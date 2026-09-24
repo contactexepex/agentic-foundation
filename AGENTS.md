@@ -60,10 +60,12 @@ clarification, treat the answer as evidence and re-run the affected validation.
 
 - Never work directly on `main`; use a focused branch and one PR.
 - Open every PR **ready for review — never a draft** — so review runs immediately.
-- **Every PR is reviewed by Codex (code + security).** Findings — code or security — block the merge
-  as unresolved review threads; the gate proves a head-bound Codex *code* review plus zero unresolved
-  threads (a security finding blocks as a thread). The deterministic fast-path lane may merge a
-  trivial docs/text change without a paid review. Self-review never substitutes for a required review.
+- **Every PR is sent to Codex for code + security review.** The merge gate requires a head-bound
+  Codex *code* review and zero unresolved review threads; it does **not** wait for security-review
+  completion, so a security finding blocks only via a review thread present at merge time. (Gating on
+  a head-bound security-review completion signal is roadmap — see `docs/CHARTER.md` §7.) The
+  deterministic fast-path lane may merge a trivial docs/text change without a paid review. Self-review
+  never substitutes for a required review.
 - Keep changes scoped to the requested task; read existing code before replacing it.
 - Do not overwrite unrelated human changes; do not force-push over concurrent work.
 - Do not merge a PR while mandatory CI, tests, or security checks are red or pending.
