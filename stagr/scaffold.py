@@ -116,7 +116,12 @@ _IMPLEMENT_SNIPPET = """\
     triggers: [manual]"""
 
 def _review_snippet(gate: str) -> str:
-    note = ("blocks the PR until its findings are resolved" if gate == GATE_BLOCKING
+    # "blocking" means a finding posts a review thread that the merge gate treats as unresolved.
+    # The enforcing gate (the foundation auto-merge gate / branch protection) is the operator's to
+    # enable and is roadmap in stagr's rendered output (CHARTER §7), so this is worded as intent,
+    # not a claim that stagr itself blocks the merge today.
+    note = ("blocking: findings block via review threads (enforced by the merge gate / branch "
+            "protection — roadmap, CHARTER §7)" if gate == GATE_BLOCKING
             else "advisory: reports, does not block")
     return (
         f"  # Reviewer — Codex code review ({note}).\n"

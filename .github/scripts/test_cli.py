@@ -319,6 +319,27 @@ def test_init_rejects_pasted_credential_value() -> None:
         scaffold.run_wizard = original_run_wizard
 
 
+def test_init_next_steps_carry_custom_config_path() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        dest = Path(d) / "custom" / "stagr.yml"
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cli.main(["init", "--profile", "minimal", "--config", str(dest)])
+        out = buf.getvalue()
+        check(rc == 0 and dest.exists(), "init: writes to a custom --config path")
+        check(f"--config {dest}" in out,
+              "init: next-steps commands carry the custom --config path")
+
+
+def test_init_reports_write_failure_without_traceback() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        blocker = Path(d) / "afile"
+        blocker.write_text("x")  # a regular file where init expects a parent directory
+        dest = blocker / "config.yml"  # mkdir/write_text will raise OSError
+        rc = cli.main(["init", "--profile", "minimal", "--config", str(dest)])
+        check(rc == 1, "init: a filesystem write failure exits 1 (concise error, no traceback)")
+
+
 def test_init_print_keeps_stdout_yaml_only() -> None:
     # Interactive stdin + redirected stdout (`stagr init --print > .agentic/config.yml`): the
     # wizard's UI must go to stderr and validation must run, so stdout is pure, valid YAML.
@@ -463,6 +484,8 @@ def main() -> int:
     test_init_refuses_symlink_destination()
     test_init_rejects_values_the_pipeline_would_reject()
     test_init_rejects_pasted_credential_value()
+    test_init_next_steps_carry_custom_config_path()
+    test_init_reports_write_failure_without_traceback()
     test_init_print_keeps_stdout_yaml_only()
     test_init_full_profile_keeps_security_blocking()
     test_init_review_gate_derived_from_profile()

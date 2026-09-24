@@ -379,10 +379,20 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"init: {dest} already exists — use --force to overwrite, or --print to preview.",
               file=sys.stderr)
         return 1
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(text)
+    # Report a write failure (unwritable location, a file where a parent dir is expected, a
+    # directory at the destination) as a concise error and exit 1 — not an uncaught traceback.
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(text)
+    except OSError as exc:
+        print(f"init: could not write {dest}: {exc}", file=sys.stderr)
+        return 1
     print(f"init: wrote {dest} (profile: {choices['profile']}).")
-    print("next: `stagr doctor` to validate, `stagr plan` to preview, `stagr apply` to write workflows.")
+    # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, tell the user to
+    # pass the same --config so doctor/plan/apply operate on the file they just created.
+    config_flag = "" if dest == Path(".agentic/config.yml") else f" --config {dest}"
+    print(f"next: `stagr doctor{config_flag}` to validate, `stagr plan{config_flag}` to preview, "
+          f"`stagr apply{config_flag}` to write workflows.")
     return 0
 
 
