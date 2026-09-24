@@ -42,9 +42,10 @@ than duplicating branches, commits, or PRs.
 Self-review with `git diff --check`, `git diff --stat`, `git diff`, and `git status`; remove debug
 artifacts and unrelated changes. Commit only after self-review and relevant validation pass.
 
-Push the task branch and open one PR targeting `main`; never hand-merge it. The PR description states
-the task and acceptance criteria, what changed and why, checks run with results, and assumptions or
-open questions.
+Push the task branch and open one PR targeting `main`, **ready for review — never a draft** — so Codex
+review runs immediately; never hand-merge it. The PR description states the task and acceptance
+criteria, what changed and why, checks run with results, and assumptions or open questions. **Every
+PR must pass Codex code + security review before it can merge** (see "Codex review handoff").
 
 Know the merge lane (see `AGENTS.md`). A **foundation** PR is merged automatically by the
 `Auto-merge foundation PRs` gate once green and Codex-clean — do not hand-merge and do not wait on a

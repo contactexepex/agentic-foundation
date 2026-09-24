@@ -59,6 +59,9 @@ clarification, treat the answer as evidence and re-run the affected validation.
 ## Git and pull-request rules
 
 - Never work directly on `main`; use a focused branch and one PR.
+- Open every PR **ready for review — never a draft** — so review runs immediately.
+- **Every PR goes through Codex review (code + security) before merge.** Self-review never
+  substitutes for it; a PR that has not been Codex-reviewed is not ready.
 - Keep changes scoped to the requested task; read existing code before replacing it.
 - Do not overwrite unrelated human changes; do not force-push over concurrent work.
 - Do not merge a PR while mandatory CI, tests, or security checks are red or pending.
@@ -94,6 +97,39 @@ stop to avoid review.
 - Reference credentials by secret **name**; never place a secret value in config or logs.
 - Least privilege for every workflow (minimal `permissions:` block) and integration.
 - Keep model-provider trace/sensitive-data inclusion disabled unless explicitly justified.
+
+## Engineering principles
+
+- Follow **SOLID, DRY, KISS, and clean-code** practices. Prefer the simplest design that works.
+- **Simple, but scalable.** New stages, configuration, integrations, and platforms slot in through
+  the existing generic contract + templates + renderer — extend the shared pattern, don't fork it.
+- **Reusable generic templates over one-offs.** A new stage type, backend, or platform renderer
+  reuses the shared token/template pattern rather than bespoke code.
+- **Never over-engineer.** No speculative abstraction, no cleverness that hurts readability. If one
+  new capability needs many new moving parts, reconsider the design.
+- **Stay a control plane:** declare, initialize, and govern — never execute (see `docs/CHARTER.md`).
+
+## Documentation principles
+
+- Docs are read by other people, including non-experts: use **simple, plain language** any technical
+  reader understands. Say what a thing is, why it exists, and how to configure it.
+- **No gaps.** A doc is self-contained and correct end to end — no step that points at something
+  which does not exist.
+- **Keep the set minimal.** Do not create a new document when an existing one is the right home.
+  Fewer, clearer files beat many overlapping ones.
+- **Simple names and content.** File names and headings are as plain and descriptive as the body. If
+  a reader cannot guess a file's contents from its name, rename it.
+
+## Agents and skills design
+
+The toolkit ships a small set of default agents and skills; any can be overridden by id. Each must be:
+
+- **Explicit and well-scoped.** Clear instructions and enough context that, used out of the box, the
+  agent does exactly its job — and nothing unwanted or out of scope.
+- **Bounded in output.** Concise, structured results (a code review, a security review, a stage run)
+  — no walls of generated text. Say what matters, then stop.
+- **Overridable, not sprawling.** Ship a few strong reference skills; users bring their own by id. Do
+  not accumulate a large skill library in the core (see `docs/CHARTER.md` non-goals).
 
 ## Testing strategy (fast to slow)
 
