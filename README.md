@@ -58,9 +58,10 @@ with `code-review` and `security-review` skills + presets; drop one in with `fro
 override only what you need, or register/override your own by id. See
 [skills & agents](docs/ARCHITECTURE.md#3a-skills-and-agents--content-vs-wiring).
 
-**Simple by default, advanced when you want it.** The only required key is `version`; a `profile`
-(`minimal`/`standard`/`full`) expands to a default stage graph and `platform` defaults to GitHub —
-so a minimal file is a few lines. Define `stages` only to take finer control.
+**Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
+(`minimal`/`standard`/`full`, which expands to a default stage graph), a `platform`, and a model
+binding (`defaults.models.<provider>`, or a per-stage model) — model resolution is fail-loud, so
+there is no hidden default. That is still just a few lines; define `stages` only for finer control.
 
 **Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,
 username, or password), never stores them, and keeps them out of `.agentic/config.yml` — see
@@ -97,20 +98,21 @@ assume a language.
 
 ## Quickstart
 
-> **Status:** the one-command installer/CLI (`doctor`/`plan`/`apply`) and the front-door skill are
-> **not shipped yet** (M3/M4 — see the roadmap). Until then, follow the manual flow below; the
-> automated flow in step 3 describes the intended M3 experience.
+> **Status:** the renderer (M2) and the one-command CLI (`doctor`/`plan`/`apply`, M3) and front-door
+> skill (M4) are **not shipped on `main` yet** — see the roadmap. Until then, follow the manual flow
+> below; step 3's "Planned" note describes the intended automated experience.
 
 1. In your target repo, add `.agentic/config.yml` (copy `templates/config/agentic.config.yml.tmpl`
    and edit it — set a `profile` and `platform`).
 2. Create the secrets your stages/providers and platform require — see
    [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for names and service-account vs PAT guidance.
-3. **Today (manual):** copy/adapt the workflows from this repo's `.github/workflows/` into your repo.
-   Once pushed, the `Validate` workflow checks your `.agentic/config.yml` in CI. (The toolkit's own
-   `.github/scripts/validate_config.py` validates *this* repo's tree, not an arbitrary target, so
-   it is not a local check you run inside your repo.)
-   **Planned (M3):** run `agentic doctor` to validate your config locally, then `agentic apply` —
-   it renders the enabled stages for your `platform` and opens a bootstrap PR/MR.
+3. **Today (manual):** hand-adapt the automation you need. The workflows in this repo's
+   `.github/workflows/` are the toolkit's *own* pipeline — e.g. `validate.yml` runs
+   `validate_config.py` against *this* repo's contract tree — so they are references to adapt, **not
+   files to copy verbatim** into a target repo (a verbatim copy would fail CI on the missing
+   validator). There is no standalone target-repo config validator until the renderer/CLI land.
+   **Planned (M2/M3):** the renderer generates your `.github/workflows/` from `.agentic/config.yml`,
+   and `agentic doctor` / `agentic apply` validate the config and install the pipeline for you.
 4. Merge it. The pipeline is live.
 
 Full field reference, provider→secret mapping, and troubleshooting:

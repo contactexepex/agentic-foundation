@@ -53,9 +53,11 @@ defaults the workflows read; keep them unless you also update the rendered workf
 Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is validated against
 `install/config.schema.json`.
 
-**Simple by default, advanced when you want it.** The only required key is `version`. A `profile`
-(default `standard`) expands to a stage graph, and `platform` defaults to GitHub — so a minimal
-config is a few lines. Add `stages` and other blocks only to take finer control. See
+**Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
+(default `standard`, which expands to a stage graph), a `platform` (defaults to GitHub), and a model
+binding (`defaults.models.<provider>`, or a per-stage model) — model resolution is fail-loud (see
+below), so a schema-valid config with no model still fails to render rather than picking a hidden
+default. That is still a few lines; add `stages` and other blocks only to take finer control. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```yaml

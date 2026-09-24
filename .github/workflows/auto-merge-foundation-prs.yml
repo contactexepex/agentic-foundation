@@ -330,11 +330,15 @@ jobs:
             # `sonarqubecloud` check IS present: a present check that is not a clean success blocks the
             # merge (`neutral`/`skipped` are not a passing Quality Gate). Self-restoring once analysis
             # reports; re-tighten to require presence then (see .agentic/config.yml modules.sonar).
-            local sonar_present sonar_ok
+            # Count Sonar runs that are NOT a clean success (any incomplete run, or a completed run
+            # whose conclusion is not `success` — `neutral`/`skipped`/`failure`/etc.). Requiring one
+            # success is not enough: a success alongside a separate neutral/skipped run must still
+            # block, so EVERY present Sonar check must be a clean success.
+            local sonar_present sonar_bad
             sonar_present="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud") ] | length' <<<"$cr_json")"
-            sonar_ok="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud" and .status=="completed" and .conclusion=="success") ] | length' <<<"$cr_json")"
-            if [[ "$sonar_present" != "0" && "$sonar_ok" == "0" ]]; then
-              skip "$pr" "SonarCloud (sonarqubecloud) analysis present but not a clean success on the head"; echo '::endgroup::'; return 0
+            sonar_bad="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud") | select(.status != "completed" or .conclusion != "success") ] | length' <<<"$cr_json")"
+            if [[ "$sonar_bad" != "0" ]]; then
+              skip "$pr" "SonarCloud (sonarqubecloud) has $sonar_bad present check-run(s) that are not a clean success on the head"; echo '::endgroup::'; return 0
             fi
             if [[ "$sonar_present" == "0" ]]; then
               echo "::warning::SonarCloud check-run absent on head $head_sha; not blocking on Sonar (temporary policy — automatic analysis not yet reporting). Re-tighten once confirmed."
