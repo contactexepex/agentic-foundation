@@ -180,3 +180,14 @@ and `.github/workflows/` are the hand-written **reference implementation** the G
 > renderer + generic backend, and the installable `stagr` CLI (`doctor`/`plan`/`apply`) are in place,
 > alongside the toolkit's own live Claude+Codex automation. Next: multi-stage rendering, more platform
 > renderers, and the front-door skill (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).
+
+## License
+
+stagr is **source-available** under the [Business Source License 1.1](LICENSE) — not a
+traditional open-source license. In short: you may read, modify, and use it free of charge for
+internal and non-production work, and in production within your own organization on repositories you
+control. Offering stagr to third parties as a hosted/managed service, embedding it in a product sold
+to others, or reselling it requires a commercial license. Each released version converts to Apache
+2.0 four years after its publication.
+
+For commercial licensing, contact contact.exepex@gmail.com.
