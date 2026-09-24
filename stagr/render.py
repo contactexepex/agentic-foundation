@@ -69,11 +69,7 @@ REVIEW_LANE_TYPES = {"review", "security"}
 # Preset -> default build commands (pre-fill; explicit build.commands override per key).
 # Mirrors docs/CONFIGURATION.md "Presets".
 PRESET_COMMANDS: dict[str, dict[str, str]] = {
-    # Layout-robust install: works for requirements.txt AND pyproject/setup.py repos, and does not
-    # hard-fail when either file is absent (a modern pyproject-only repo has no requirements.txt).
-    "python": {"install": "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi\n"
-                          "if [ -f pyproject.toml ] || [ -f setup.py ]; then pip install -e .; fi",
-               "lint": "ruff check .", "test": "python -m pytest"},
+    "python": {"install": "pip install -r requirements.txt", "lint": "ruff check .", "test": "python -m pytest"},
     "maven": {"install": "mvn -q -N install", "lint": "mvn -q spotless:check", "test": "mvn -q verify"},
     "gradle": {"install": "./gradlew dependencies", "lint": "./gradlew check -x test", "test": "./gradlew test"},
     "node": {"install": "npm ci", "lint": "npm run lint", "test": "npm test"},

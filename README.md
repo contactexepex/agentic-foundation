@@ -115,8 +115,8 @@ assume a language.
    stagr init --profile standard # generate a commented config directly
    ```
    Profiles: `minimal` / `standard` / `full` / `custom`. `init` autodetects your build toolchain
-   (Python, Node, Go, Maven/Gradle, Rust, .NET) and proposes the matching `build.preset`. See
-   [docs/CLI.md](docs/CLI.md).
+   (Python, Node, Go, Maven/Gradle, Rust, .NET) and proposes the matching `build.preset` when the repo
+   has the marker its commands need, else `custom`. See [docs/CLI.md](docs/CLI.md).
 3. Validate and preview:
    ```bash
    stagr doctor                # validate the contract + list the secret NAMES to configure

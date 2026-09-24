@@ -77,11 +77,14 @@ Create a starter `.agentic/config.yml` so you never hand-write YAML from scratch
   This is also the non-interactive / CI path.
 
 Either way, `init` **autodetects your build toolchain** from marker files in the repo and proposes the
-matching `build.preset` as the default (the wizard pre-selects it; `--profile` generation uses it):
-`pyproject.toml`/`setup.py`/`requirements.txt` → `python`, `pom.xml` → `maven`, `build.gradle[.kts]` →
-`gradle`, `package.json` → `node`, `go.mod` → `go`, `Cargo.toml` → `rust`, `*.csproj`/`*.sln` →
-`dotnet`, and `custom` when nothing is recognized. Detection reads only these top-level filenames
-(offline, no file contents), and the value stays overridable. A preset determines the install/lint/test
+matching `build.preset` as the default (the wizard pre-selects it; `--profile` generation uses it).
+Detection is **conservative**: it picks a preset only when the repo has the marker that preset's
+commands actually need, so a proposed preset always renders a Validate workflow that can run —
+`requirements.txt` → `python`, `pom.xml` → `maven`, `gradlew` → `gradle`, `package-lock.json`/
+`npm-shrinkwrap.json` → `node`, `go.mod` → `go`, `Cargo.toml` → `rust`, `*.csproj`/`*.sln` → `dotnet`.
+Anything else — including a `package.json` with no lockfile or a `pyproject`-only project — proposes
+`custom` (you fill in the commands) rather than a preset whose commands would fail. Detection reads
+only these top-level filenames (offline, no file contents), and the value stays overridable. A preset determines the install/lint/test
 commands the rendered Validate workflow runs (see [CONFIGURATION.md §4 Presets](CONFIGURATION.md#4-presets));
 preview the exact rendered commands with `python -m stagr.render --print` (or run `stagr apply` and read
 `.github/workflows/`), and override any that don't fit by setting them under `build.commands` in the config.

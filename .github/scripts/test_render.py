@@ -199,9 +199,6 @@ def test_round2_fixes() -> None:
     # preset pre-fills commands; multiline command indents every line -> valid YAML
     steps = render._build_steps({"build": {"preset": "python"}})
     check("pytest" in steps, "build_steps: preset python pre-fills commands")
-    # The python preset install must not hard-fail on a pyproject-only repo (no requirements.txt).
-    check("[ -f requirements.txt ]" in steps and "pip install -e ." in steps,
-          "build_steps: python preset install is layout-robust (pyproject-only and requirements)")
     ml = render._build_steps({"build": {"commands": {"test": "echo one\necho two"}}})
     check("\n          echo two" in ml, "build_steps: multiline command lines are all indented")
 

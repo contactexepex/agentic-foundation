@@ -535,11 +535,12 @@ def test_default_token_secret_is_neutral() -> None:
 
 def test_detect_build_preset() -> None:
     from stagr import scaffold
-    # one representative marker per toolchain resolves to the schema preset it signals.
+    # Each preset is selected only by the marker its build commands actually need (conservative).
     marker_to_preset = {
-        "pyproject.toml": "python", "setup.py": "python", "requirements.txt": "python",
-        "pom.xml": "maven", "build.gradle": "gradle", "build.gradle.kts": "gradle",
-        "package.json": "node", "go.mod": "go", "Cargo.toml": "rust",
+        "requirements.txt": "python",
+        "pom.xml": "maven", "gradlew": "gradle",
+        "package-lock.json": "node", "npm-shrinkwrap.json": "node",
+        "go.mod": "go", "Cargo.toml": "rust",
         "App.csproj": "dotnet", "Solution.sln": "dotnet",
     }
     for marker, expected in marker_to_preset.items():
@@ -547,6 +548,15 @@ def test_detect_build_preset() -> None:
             (Path(d) / marker).write_text("x")
             got = scaffold.detect_build_preset(Path(d))
             check(got == expected, f"detect: {marker} -> {expected} (got {got})")
+
+    # A toolchain marker WITHOUT the file its commands need -> custom (never a preset that would fail):
+    # a package.json with no lockfile (npm ci), a pyproject/setup.py with no requirements file, a
+    # Gradle build script with no wrapper.
+    for lonely in ("package.json", "pyproject.toml", "setup.py", "build.gradle", "build.gradle.kts"):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / lonely).write_text("x")
+            check(scaffold.detect_build_preset(Path(d)) == scaffold.CUSTOM_PRESET,
+                  f"detect: {lonely} without its build marker -> custom (conservative)")
 
     with tempfile.TemporaryDirectory() as d:
         (Path(d) / "README.md").write_text("x")
@@ -557,8 +567,8 @@ def test_detect_build_preset() -> None:
 
     # precedence is deterministic when several markers coexist (python precedes node).
     with tempfile.TemporaryDirectory() as d:
-        (Path(d) / "pyproject.toml").write_text("x")
-        (Path(d) / "package.json").write_text("x")
+        (Path(d) / "requirements.txt").write_text("x")
+        (Path(d) / "package-lock.json").write_text("x")
         check(scaffold.detect_build_preset(Path(d)) == "python",
               "detect: precedence is deterministic (python before node)")
 

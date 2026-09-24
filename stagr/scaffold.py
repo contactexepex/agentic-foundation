@@ -41,14 +41,19 @@ _BUILD_PRESET_OPTIONS = " | ".join(BUILD_PRESETS)
 # own default, so a detected `custom` means "you fill in the commands yourself".
 CUSTOM_PRESET = "custom"
 
-# Top-level repo markers that identify a build toolchain, in precedence order (first match wins, so a
-# repo carrying several markers resolves deterministically). Each entry pairs a schema `build.preset`
-# with the filename globs that signal it; literal names and globs (e.g. `*.csproj`) both work.
+# Top-level repo markers that select a build preset, in precedence order (first match wins, so a repo
+# carrying several markers resolves deterministically). A preset is chosen ONLY when the repo carries
+# the marker its build commands actually need — an npm lockfile for `npm ci`, a Gradle wrapper for
+# `./gradlew`, a requirements file for `pip install -r requirements.txt` — so a detected preset always
+# renders a Validate workflow that can run. A repo missing that marker (e.g. a package.json with no
+# lockfile, or a pyproject-only project) falls back to `CUSTOM_PRESET`, so `init` proposes a safe empty
+# default rather than a preset whose commands would fail before lint or tests. (`maven`/`go`/`rust`/
+# `dotnet` need only their manifest — those toolchains are provided by the runner.)
 _PRESET_SIGNALS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("python", ("pyproject.toml", "setup.py", "requirements.txt")),
+    ("python", ("requirements.txt",)),
     ("maven", ("pom.xml",)),
-    ("gradle", ("build.gradle", "build.gradle.kts")),
-    ("node", ("package.json",)),
+    ("gradle", ("gradlew",)),
+    ("node", ("package-lock.json", "npm-shrinkwrap.json")),
     ("go", ("go.mod",)),
     ("rust", ("Cargo.toml",)),
     ("dotnet", ("*.csproj", "*.sln")),
