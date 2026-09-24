@@ -42,7 +42,8 @@ jobs:
       github.event.pull_request.base.ref == github.event.repository.default_branch &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Budget covers the router wait (≤120s) plus the security-review serialization wait (≤180s).
+    timeout-minutes: 10
     steps:
       - name: Post @codex review for the current head
         shell: bash
@@ -125,6 +126,22 @@ jobs:
             echo "Head moved to ${CURRENT_HEAD_SHA} during the router wait; a later run will request the review."
             exit 0
           fi
+
+          # Serialize against the final security review. If a push lands while the final security review
+          # is Running, requesting the code review now would run the two concurrently and hit Codex's
+          # backend collision — the very failure this pipeline exists to avoid. So wait (bounded) for any
+          # in-flight security review on this PR to stop running before requesting the code review. If it
+          # does not clear within the budget, proceed anyway (fail-safe toward a head-bound review; a
+          # rare late collision is recoverable by re-requesting).
+          sec_deadline=$(( SECONDS + 180 ))
+          while (( SECONDS < sec_deadline )); do
+            sec_summary="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --slurp \
+              | jq -r '[ add[]? | select(.user.login=="chatgpt-codex-connector[bot]") | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' 2>/dev/null || echo "")"
+            sec_row="$(grep -i 'Security Review' <<<"$sec_summary" | head -1 || true)"
+            grep -qi 'Running' <<<"$sec_row" || break
+            echo "A Codex security review is still running on PR #${PR_NUMBER}; waiting before requesting the code review to avoid a concurrent pair."
+            sleep 10
+          done
 
           # Ask Codex to re-review the new head — CODE review only — so the gate can evaluate this
           # exact commit. The SECURITY review is NOT requested here: it runs once, as the final step

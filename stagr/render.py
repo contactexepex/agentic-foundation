@@ -688,13 +688,16 @@ def _ensure_supported_review_graph(stages: list[dict[str, Any]]) -> None:
     code_triggers: set[str] = set().union(*(_pr_review_triggers(s) for s in code_stages))
     for sec in security_stages:
         sec_triggers = _pr_review_triggers(sec)
-        if not sec_triggers <= code_triggers:
+        if sec_triggers != code_triggers:
             raise RenderError(
-                "a Codex security-review stage must run only on PR triggers its Codex code-review "
-                "('review') stage also runs on — the security review runs after the code review "
-                f"converges on that event. Security triggers {sorted(sec_triggers)} are not covered by "
-                f"code-review triggers {sorted(code_triggers)}; align the security stage's "
-                "pr_opened/pr_updated triggers with the review stage."
+                "a Codex security-review stage must run on exactly the same PR triggers as its Codex "
+                "code-review ('review') stage. The final security review renders as a single, "
+                "event-agnostic workflow that fires whenever the code review converges on the head, so "
+                "it cannot honour a narrower or wider trigger set — a subset would still run security on "
+                "events the stage did not request, a superset would have no code review to converge "
+                f"behind. Security triggers {sorted(sec_triggers)} != code-review triggers "
+                f"{sorted(code_triggers)}; set them equal (or omit triggers on both to default to "
+                "pr_opened+pr_updated)."
             )
 
 

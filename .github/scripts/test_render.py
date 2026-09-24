@@ -384,19 +384,32 @@ def test_pipeline_selection() -> None:
     check(render._needs_codex_pat(render.expand_stages(pr_opened_only)),
           "select: PAT is required for a pr_opened-only security graph (doctor must report it)")
 
-    # Mismatched code/security PR triggers are rejected: a security stage running on an event the code
-    # review does not run on has no converged code review to gate behind.
-    mismatched = {"version": 2, "profile": "custom",
+    # Code/security PR triggers must be EQUAL: the final security review renders as one event-agnostic
+    # workflow (fires whenever the code review converges), so it cannot honour a narrower or wider set.
+    # (a) superset — security runs on an event with no converged code review behind it:
+    sec_superset = {"version": 2, "profile": "custom",
+                    "platform": {"type": "github", "default_branch": "main"},
+                    "defaults": {"provider": "openai", "models": {}},
+                    "stages": [{"id": "review", "type": "review", "provider": "openai",
+                                "backend": {"name": "codex"}, "triggers": ["pr_opened"]},
+                               {"id": "security", "type": "security", "provider": "openai",
+                                "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
+    expect_raises(lambda: render.render_all(sec_superset, "github"),
+                  "select: security trigger not covered by code review fails loud (render)")
+    expect_raises(lambda: render.validate_config(sec_superset),
+                  "validate: security trigger not covered by code review fails loud (front door)")
+    # (b) subset — security narrower than code review would still fire on the code review's other events:
+    sec_subset = {"version": 2, "profile": "custom",
                   "platform": {"type": "github", "default_branch": "main"},
                   "defaults": {"provider": "openai", "models": {}},
                   "stages": [{"id": "review", "type": "review", "provider": "openai",
-                              "backend": {"name": "codex"}, "triggers": ["pr_opened"]},
+                              "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]},
                              {"id": "security", "type": "security", "provider": "openai",
                               "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
-    expect_raises(lambda: render.render_all(mismatched, "github"),
-                  "select: mismatched code/security PR triggers fail loud (render)")
-    expect_raises(lambda: render.validate_config(mismatched),
-                  "validate: mismatched code/security PR triggers fail loud (front door)")
+    expect_raises(lambda: render.render_all(sec_subset, "github"),
+                  "select: security triggers narrower than code review fail loud (render)")
+    expect_raises(lambda: render.validate_config(sec_subset),
+                  "validate: security triggers narrower than code review fail loud (front door)")
 
     # The dogfood config has a codex security stage -> the security review is requested ONLY from the
     # final-security-review lane (never alongside the code review), so the two never run concurrently.
