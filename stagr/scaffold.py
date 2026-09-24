@@ -30,7 +30,7 @@ def _schema_build_presets() -> tuple[str, ...]:
     Deriving them here keeps the wizard's offered choices and validation in lockstep with the
     schema, so a mistyped preset can't produce a config that then fails `stagr doctor`.
     """
-    schema = json.loads((Path(__file__).resolve().parent / "config.schema.json").read_text())
+    schema = json.loads((Path(__file__).resolve().parent / "config.schema.json").read_text(encoding="utf-8"))
     return tuple(schema["properties"]["build"]["properties"]["preset"]["enum"])
 
 

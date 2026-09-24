@@ -133,7 +133,7 @@ def _read_skill_file(base: Path, root: Path, what: str) -> str:
     path = _confine(candidate, root, what)
     if not path.is_file():
         raise FileNotFoundError(f"skill content not found at {candidate}")
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[str, ...] = ()) -> str:
@@ -220,7 +220,7 @@ def build_invocation(
                     raise
                 confined = None  # genuinely inline text that merely contains a slash
             if confined is not None and confined.is_file():
-                methodology = confined.read_text()
+                methodology = confined.read_text(encoding="utf-8")
 
     guardrails = guardrails or cfg.get("guardrails", {}) or {}
     untrusted = guardrails.get("untrusted_inputs", DEFAULT_UNTRUSTED)

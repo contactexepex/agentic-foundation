@@ -182,7 +182,7 @@ def _classify(out_dir: Path, rendered: dict[str, str]) -> list[tuple[str, str]]:
         target = out_dir / name
         if not target.exists():
             result.append(("new", name))
-        elif target.read_text() == content:
+        elif target.read_text(encoding="utf-8") == content:
             result.append(("unchanged", name))
         else:
             result.append(("changed", name))
@@ -201,7 +201,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         marker = {"new": "+ new     ", "changed": "~ changed ", "unchanged": "= unchanged"}[status]
         print(f"  {marker} {name}")
         if status == "changed" and args.diff:
-            current = (out_dir / name).read_text().splitlines()
+            current = (out_dir / name).read_text(encoding="utf-8").splitlines()
             new = rendered[name].splitlines()
             for line in difflib.unified_diff(current, new, fromfile=f"a/{name}", tofile=f"b/{name}", lineterm=""):
                 print(f"      {line}")
@@ -235,7 +235,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         if status == "unchanged":
             print(f"  = unchanged {name}")
             continue
-        (out_dir / name).write_text(rendered[name])
+        (out_dir / name).write_text(rendered[name], encoding="utf-8")
         written += 1
         print(f"  {'+ wrote    ' if status == 'new' else '~ updated  '} {name}")
 

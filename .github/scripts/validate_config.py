@@ -39,7 +39,7 @@ def fail(msg: str) -> None:
 
 
 def load_yaml(path: Path):
-    with path.open() as handle:
+    with path.open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
 
 
@@ -108,7 +108,7 @@ def check_stage_graph(cfg, label: str) -> None:
 
 def check_skill(skill_md: Path) -> None:
     rel = skill_md.relative_to(ROOT).as_posix()
-    text = skill_md.read_text()
+    text = skill_md.read_text(encoding="utf-8")
     if not text.startswith("---"):
         fail(f"{rel}: missing YAML frontmatter")
         return
@@ -153,7 +153,7 @@ def check_skill(skill_md: Path) -> None:
 def main() -> int:
     schema_path = ROOT / "stagr" / "config.schema.json"
     try:
-        schema = json.loads(schema_path.read_text())
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(schema)
         print(f"OK  schema is valid JSON Schema: {schema_path.relative_to(ROOT)}")
     except Exception as exc:  # noqa: BLE001

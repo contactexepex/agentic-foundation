@@ -210,7 +210,7 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def validate_config(cfg: dict[str, Any]) -> None:
-    schema = json.loads(SCHEMA_PATH.read_text())
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda err: list(err.path))
     if errors:
         details = "; ".join(
@@ -543,7 +543,7 @@ def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
         tpl = tpl_dir / name
         if not tpl.is_file():
             raise RenderError(f"selected template '{name}' not found in {tpl_dir}")
-        out[name[: -len(".tmpl")]] = render_template(tpl.read_text(), context)
+        out[name[: -len(".tmpl")]] = render_template(tpl.read_text(encoding="utf-8"), context)
     if not out:
         raise RenderError(f"no templates selected for platform '{platform}'")
     return out
@@ -577,7 +577,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
     for name, content in rendered.items():
-        (args.out / name).write_text(content)
+        (args.out / name).write_text(content, encoding="utf-8")
         print(f"wrote {args.out / name}")
     return 0
 
