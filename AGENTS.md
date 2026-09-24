@@ -86,12 +86,12 @@ needing human judgment stays human-gated.
   which is fail-closed: the PR must be open, non-draft, same-repo (no forks), target the default
   branch, come from a trusted author, carry no `human-merge` label, have no merge conflict, have
   every commit status and check-run green (including the `Publish fast review result` router status),
-  have zero unresolved review threads and no reviewer requesting changes, and — for the substantive
-  lane — carry a Codex code review of the current head. The fast-path lane is disabled in this
-  repository (see Git rules above), so every PR takes the substantive lane and must carry that Codex
-  code review. Every Codex finding (code or security) posts as a review thread, so it is caught by the
-  zero-unresolved-threads requirement. Any missing or unknown signal skips the merge; it is retried on
-  the next event or scheduled sweep.
+  have zero unresolved review threads and no reviewer requesting changes, and carry a Codex code
+  review of the current head. The fast-path lane is disabled in this repository (see Git rules above),
+  so the gate requires that head-bound Codex code review for **every** PR — it never waives it on a
+  router-status description, which any `statuses: write` actor could forge. Every Codex finding (code
+  or security) posts as a review thread, so it is caught by the zero-unresolved-threads requirement.
+  Any missing or unknown signal skips the merge; it is retried on the next event or scheduled sweep.
 - **Human-gated lane.** Any PR that needs human judgment carries the `human-merge` label, which the
   foundation gate treats as a hard stop. When in doubt, apply `human-merge`.
 
