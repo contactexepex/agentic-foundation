@@ -105,8 +105,10 @@ Per stage, per change tier, the model resolves **most-specific-first**:
 A resolved value that matches a `models.aliases` name expands to that alias's model ID
 for the stage's provider. `tier` (trivial/standard/complex) comes from the deterministic
 classifier (change size + paths) only when tiering is on. There is **no hidden toolkit
-fallback**: if none of layers 1–3 yields a model, the toolkit **fails loudly** and never
-guesses a version. This is how "same provider,
+fallback**: for a stage whose backend consumes a contract model (`generic`/`claude-code-action`),
+if none of layers 1–3 yields a model the toolkit **fails loudly** and never guesses a version. App
+backends (e.g. `codex`) supply their own model, so the rule does not apply to them. This is how
+"same provider,
 different models" or "multiple providers, any permutation" is expressed — independently
 per stage.
 

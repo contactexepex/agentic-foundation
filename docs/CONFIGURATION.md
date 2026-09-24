@@ -237,8 +237,11 @@ the toolkit walks this chain and uses the first model it finds:
 | 2 | **Stage model** | `stages[].model.tiers.<tier>`, then `stages[].model.default`. |
 | 3 | **Org/account default** | `defaults.models.<provider>.tiers.<tier>`, then `defaults.models.<provider>.default` (provider = the stage's provider, or `defaults.provider`). |
 
-If none of layers 1–3 yields a model, resolution **fails loudly** (see below) — there is no hidden
-built-in default, so the toolkit never silently picks a model version.
+For a stage whose backend consumes a contract model (the built-in `generic`/`claude-code-action`),
+if none of layers 1–3 yields a model, resolution **fails loudly** (see below) — there is no hidden
+built-in default, so the toolkit never silently picks a model version. App backends (e.g. `codex`)
+supply their own model, so this rule does not apply to them: an all-app-backed graph is valid with
+no `defaults.models`.
 
 Key points:
 
