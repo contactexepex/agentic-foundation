@@ -55,16 +55,17 @@ def test_report() -> None:
     rep = cli.collect_report(cfg, "github")
     check(rep["profile"] == "custom" and rep["default_branch"] == "main", "doctor: platform basics")
     ids = {s["id"] for s in rep["stages"]}
-    check({"implement-claude", "implement-codex", "review", "security"} <= ids, "doctor: stages present")
-    # claude implementer (claude-code-action) resolves a real model; codex stages are app-supplied.
+    # implement-codex is a disabled roadmap stage (Codex implementer not rendered yet), so it is
+    # dropped from the expanded graph; the active stages are the Claude implementer + Codex reviewers.
+    check({"implement-claude", "review", "security"} <= ids, "doctor: stages present")
+    check("implement-codex" not in ids, "doctor: disabled roadmap codex implementer is dropped")
+    # anthropic implementer (Claude Code) resolves a real model; codex stages are app-supplied.
     impl = next(s for s in rep["stages"] if s["id"] == "implement-claude")
-    check(impl["model"] == "claude-sonnet-5", "doctor: claude implementer model resolved")
-    codex = next(s for s in rep["stages"] if s["id"] == "implement-codex")
-    check("app-supplied" in str(codex["model"]), "doctor: codex implementer model is app-supplied")
-    # secret NAMES surfaced, never values. The claude implementer (generic-family backend) needs
-    # ANTHROPIC_API_KEY; the openai stages are all codex (app) backend, so OPENAI_API_KEY is NOT
+    check(impl["model"] == "claude-sonnet-5", "doctor: anthropic implementer model resolved")
+    # secret NAMES surfaced, never values. The anthropic implementer (Claude Code) needs
+    # ANTHROPIC_API_KEY; the openai stages run via the Codex app, so OPENAI_API_KEY is NOT
     # required (the app does not read a provider API key); the codex review lane needs the PAT.
-    check("ANTHROPIC_API_KEY" in rep["secret_names"], "doctor: claude key secret NAME surfaced")
+    check("ANTHROPIC_API_KEY" in rep["secret_names"], "doctor: anthropic key secret NAME surfaced")
     check("OPENAI_API_KEY" not in rep["secret_names"],
           "doctor: openai key NOT required when openai is used only via the codex app backend")
     check("REMEDIATION_TOKEN" in rep["secret_names"], "doctor: codex review PAT NAME surfaced")

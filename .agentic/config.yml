@@ -15,26 +15,28 @@ platform:
   auth: { token_secret: REMEDIATION_TOKEN }
 
 defaults:
-  provider: claude
+  # Provider is the knob; the tool is derived (anthropic -> Claude Code, openai -> Codex).
+  provider: anthropic
   models:
     # Real IDs here (this is the toolkit's own repo, not a shipped template).
     # Override via repo variable vars.AGENTIC_IMPLEMENTER_MODEL in the workflow.
-    claude: { default: claude-sonnet-5 }
+    anthropic: { default: claude-sonnet-5 }
 
 stages:
-  # Implementer A: Claude, manual/safe entry point (workflow_dispatch).
+  # Implementer: Claude Code, manual/safe entry point (workflow_dispatch).
   - id: implement-claude
     type: implement
-    provider: claude
-    backend: { name: claude-code-action }
+    provider: anthropic
     triggers: [manual]
 
-  # Implementer B: Codex, dispatched by the `codex-engineering` issue label,
-  # through the untrusted-implement -> validate -> trusted-publish (remediation) flow.
+  # Roadmap: a Codex implementer, dispatched by the `codex-engineering` issue label through the
+  # untrusted-implement -> validate -> trusted-publish (remediation) flow. stagr does not render a
+  # Codex implementer yet, so this stage is disabled; the flow lives in the hand-written
+  # authorized-engineering-task.yml until the renderer supports it.
   - id: implement-codex
     type: implement
     provider: openai
-    backend: { name: codex }
+    enabled: false
     triggers: [issue_labeled]
 
   # Reviewer: Codex code review (via @codex review), gates the PR.
@@ -42,7 +44,6 @@ stages:
     type: review
     provider: openai
     skill: code-review
-    backend: { name: codex }
     gate: blocking
     triggers: [pr_opened, pr_updated]
 
@@ -51,7 +52,6 @@ stages:
     type: security
     provider: openai
     skill: security-review
-    backend: { name: codex }
     gate: blocking
     triggers: [pr_opened, pr_updated]
 

@@ -8,8 +8,7 @@ type: review
 name: Code Review
 description: Reviews the diff for correctness, safety, and maintainability; gates on blockers.
 skill: code-review                 # -> templates/skills/code-review/SKILL.md
-backend:
-  name: generic                    # or pr-agent | claude-code-action | codex
+provider: openai                   # OpenAI/Codex is the rendered reviewer; override per stage
 gate: blocking
 triggers: [pr_opened, pr_updated]
 # Model is intentionally unset so this preset works out of the box: it resolves via the stage's

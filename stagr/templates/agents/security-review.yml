@@ -8,8 +8,7 @@ type: security
 name: Security Review
 description: Assesses the diff for security risk (injection, authz, secrets, deps, exposure); gates on high+.
 skill: security-review             # -> templates/skills/security-review/SKILL.md
-backend:
-  name: generic
+provider: openai                   # OpenAI/Codex is the rendered reviewer; override per stage
 gate: blocking
 triggers: [pr_opened, pr_updated]
 # Model is intentionally unset so this preset works out of the box: it resolves via the stage's

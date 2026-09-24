@@ -26,7 +26,7 @@ defaults the workflows read; keep them unless you also update the rendered workf
 
 | Purpose | Name | Type | Required when | Scope / notes |
 |---|---|---|---|---|
-| Claude model access | `ANTHROPIC_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: claude` | Never a personal key. Rotate independently. |
+| Claude model access | `ANTHROPIC_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: anthropic` | Never a personal key. Rotate independently. |
 | OpenAI/Codex model access | `OPENAI_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: openai` | Never a personal key. |
 | Codex comment-trigger / PR publication | `REMEDIATION_TOKEN` | **Fine-grained PAT (real user)** | reviewer or dispatch uses Codex's `@codex` comment flow | Least scope: **Contents: R/W** + **Pull requests: R/W**. **No** admin/merge. Must be a real, attributable user — bot/App tokens do not reliably trigger `@codex`. |
 | SonarQube/SonarCloud token | `SONAR_TOKEN` | **Service account** | `modules.sonar: true` | Read/analysis scope for the project. |
@@ -69,12 +69,12 @@ way the file is validated against
 [`stagr/config.schema.json`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/config.schema.json).
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
-(default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). A stage
-whose backend consumes a model (the built-in `generic`/`claude-code-action`) also needs a model
-binding (`defaults.models.<provider>`, or a per-stage model); app backends (e.g. `codex`) supply
-their own model, so an all-app-backed graph needs no `defaults.models`. Model resolution is
-fail-loud (see below) — no hidden default. That is still a few lines; add `stages` and other blocks
-only to take finer control. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
+(default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). An
+`anthropic` stage (Claude Code) also needs a model binding (`defaults.models.anthropic`, or a
+per-stage model); an `openai` stage (Codex) supplies its own model, so an all-Codex graph needs no
+`defaults.models`. Model resolution is fail-loud (see below) — no hidden default. That is still a
+few lines; add `stages` and other blocks only to take finer control. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```yaml
 # Minimal config — profile expands to a stage graph; models resolve from defaults/org.
@@ -82,9 +82,9 @@ version: 2
 profile: standard
 platform: { type: github, default_branch: main }
 defaults:
-  provider: claude
+  provider: anthropic
   models:
-    claude: { default: "<claude-default-model>" }
+    anthropic: { default: "<anthropic-default-model>" }
     openai: { default: "<openai-default-model>" }
 ```
 
@@ -145,13 +145,14 @@ via `stages[].skill`.
 | `skills.<id>.extends` | Base skill id to layer on top of (base first, this overrides) — e.g. a house style over `code-review`. |
 
 **Skills vs. agents vs. stages:** a *skill* is the content; an *agent preset* (`stagr/templates/agents/<id>.yml`)
-is a pre-wired stage (type + skill + backend + gate + triggers, with an **optional** model binding —
+is a pre-wired stage (type + skill + provider + gate + triggers, with an **optional** model binding —
 presets may omit it so the model resolves via `defaults`) you drop in via `stages[].from`; a *stage*
 is that agent placed in the pipeline graph.
 
 ### `stages` (optional — the agent graph)
 Omit to use the profile's stages. Anything you list is **merged onto** the profile (a stage with the
-same `id` overrides). Each stage is one agent; mix providers, models, and backends freely.
+same `id` overrides). Each stage is one agent; mix providers and models freely (the executor is
+derived from the provider).
 
 | Field | Meaning |
 |---|---|
@@ -160,10 +161,10 @@ same `id` overrides). Each stage is one agent; mix providers, models, and backen
 | `from` | Agent-preset id (from `stagr/templates/agents/`, e.g. `code-review`, `security-review`) to base this stage on. Fields you set here override the preset. |
 | `name` | Human-readable label. |
 | `enabled` | `false` to keep a stage defined but off. Default `true`. |
-| `provider` | Provider id for this stage. Omit to inherit `defaults.provider`. |
+| `provider` | **The primary knob.** `anthropic` runs Claude Code (implement stages); `openai` runs Codex (review/security stages). The executor is derived from this, so a stage normally sets only `provider` + `model`. Omit to inherit `defaults.provider`. |
 | `model` (+ `.default`, `.tiers.*`) | Optional model binding; inherits per the resolution chain. A value may be a literal ID or a `models.aliases` name. |
 | `skill` | Skill id (from `skills` registry or a built-in) supplying this stage's methodology. Takes precedence over inline `instructions`. |
-| `backend` | The stage executor (see below). Today an **implement** stage always renders the Claude implementer (`implementor.yml`, via `claude-code-action`) regardless of this field; a **review/security** stage renders its lane only with `codex`. Other names — including the default `generic` — are roadmap, so a review/security stage left on `generic` renders no lane yet. |
+| `backend` | **Optional override** (see below). Normally omit it — the executor is derived from `provider`. Set it only to pin a specific tool or point at a custom adapter. |
 | `triggers` | Any of `issue_labeled`, `pr_opened`, `pr_updated`, `comment_command`, `push`, `schedule`, `manual`. |
 | `gate` | `advisory` (comment only) or `blocking` (emits a required status check). Omit to use the type's default. |
 | `tiering` | Per-stage override of global `tiering.enabled`. |
@@ -171,14 +172,16 @@ same `id` overrides). Each stage is one agent; mix providers, models, and backen
 | `budgets` | Per-stage cost/token ceilings (same shape as global `budgets`). |
 | `instructions` | Inline prompt/policy for the stage, or a path to a prompt file. |
 
-#### `stages[].backend`
+#### `stages[].backend` (optional override)
+Normally you do **not** set `backend` — the executor is **derived from `provider`** (`anthropic` → Claude Code, `openai` → Codex). Set it only to pin a specific tool or point at a custom adapter.
+
 | Field | Meaning |
 |---|---|
-| `name` | The executor. **Rendered today:** `claude-code-action` (Anthropic) for implement stages, `codex` (OpenAI, via the Codex GitHub App) for review/security stages. **Roadmap** (accepted by the schema so configs stay forward-compatible, but not rendered yet): `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom`. |
+| `name` | The executor to pin. **Rendered today:** `claude-code-action` (the Anthropic implementer) and `codex` (the OpenAI review/security lane). **Roadmap** (accepted so configs stay forward-compatible, not rendered yet): `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom`. |
 | `uses` | Action ref or container image (for `custom`, or to pin/override an adapter). |
 | `with` | Backend-specific inputs, passed through unchanged. |
 
-> **Supported today:** the toolkit runs **Anthropic** via `claude-code-action` for implement stages and **OpenAI** via `codex` for review/security stages — pick the one that matches the stage type. The other backend and provider names are accepted by the schema for forward-compatibility only; they are **roadmap** (not part of the supported set yet), and adding one later is a small change (a new lane in the renderer's registry). Model binding applies only where a model is consumed: an implement stage runs `claude-code-action` and takes a free-form Anthropic model ID via `stages[].model`, `defaults.models.<provider>`, or `models.aliases`; a review/security `codex` stage is app-backed and supplies its own model, so a binding there is ignored.
+> **Supported today:** set `provider` to `anthropic` (runs **Claude Code** — implement stages) or `openai` (runs **Codex** — review/security stages) and the tool follows. Other provider/backend names are accepted for forward-compatibility but are **roadmap** (not rendered yet); adding one later is a small change (a new entry in the renderer's provider→tool map and lane registry). Model binding applies only where a model is consumed: an `anthropic` stage takes a free-form Anthropic model ID via `stages[].model`, `defaults.models.anthropic`, or `models.aliases`; an `openai`/Codex stage is app-backed and supplies its own model, so a binding there is ignored. An **implement** stage must be `anthropic` — an `openai` implement stage is roadmap (a Codex implementer is not rendered yet) and fails loud at render.
 
 See **Model resolution** below for the full precedence order.
 
@@ -264,11 +267,10 @@ the toolkit walks this chain and uses the first model it finds:
 | 2 | **Stage model** | `stages[].model.tiers.<tier>`, then `stages[].model.default`. |
 | 3 | **Org/account default** | `defaults.models.<provider>.tiers.<tier>`, then `defaults.models.<provider>.default` (provider = the stage's provider, or `defaults.provider`). |
 
-For a stage whose backend consumes a contract model (the built-in `generic`/`claude-code-action`),
-if none of layers 1–3 yields a model, resolution **fails loudly** (see below) — there is no hidden
-built-in default, so the toolkit never silently picks a model version. App backends (e.g. `codex`)
-supply their own model, so this rule does not apply to them: an all-app-backed graph is valid with
-no `defaults.models`.
+For an `anthropic` stage (Claude Code consumes a contract model), if none of layers 1–3 yields a
+model, resolution **fails loudly** (see below) — there is no hidden built-in default, so the toolkit
+never silently picks a model version. An `openai` stage (Codex) supplies its own model, so this rule
+does not apply to it: an all-Codex graph is valid with no `defaults.models`.
 
 Key points:
 
@@ -287,14 +289,14 @@ provider than the implementer (any permutation is valid):
 
 ```yaml
 defaults:
-  provider: claude
+  provider: anthropic
   models:
-    claude: { default: "<claude-default>" }
+    anthropic: { default: "<anthropic-default>" }
     openai: { default: "<openai-default>", tiers: { complex: "<openai-complex>" } }
 stages:
   - id: implement
     type: implement
-    provider: claude                                          # -> <claude-default>
+    provider: anthropic                                       # -> <anthropic-default>
   - id: review
     type: review
     provider: openai
@@ -366,13 +368,13 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 > For a reproducible install, pin the URL to a commit SHA or release tag instead of `main`. See
 > [CLI.md](CLI.md) for full options.
 
-> **Prerequisite — the Codex GitHub App (only for the `codex` backend).** A stage using the
-> **`codex`** backend (the default reviewer) requires the **Codex GitHub App** to be installed on the
-> repo/org and configured to review pull requests — that app is what performs the review on PR open
-> and acts on the `@codex` comments the rendered `request-review.yml` posts on each push. Without it,
-> a PR can open with no review despite a `pr_opened` trigger in the config, so install/enable it
-> **before** relying on the pipeline and confirm on a test PR that the review runs. Other backends do
-> **not** need a GitHub App: the `claude-code-action` implementer runs the pinned action from
+> **Prerequisite — the Codex GitHub App (only for `openai` review/security stages).** A stage with
+> `provider: openai` (the reviewer, which runs **Codex**) requires the **Codex GitHub App** to be
+> installed on the repo/org and configured to review pull requests — that app is what performs the
+> review on PR open and acts on the `@codex` comments the rendered `request-review.yml` posts on each
+> push. Without it, a PR can open with no review despite a `pr_opened` trigger in the config, so
+> install/enable it **before** relying on the pipeline and confirm on a test PR that the review runs.
+> The `anthropic` implementer needs no GitHub App: it runs the pinned Claude Code action from
 > `workflow_dispatch` and authenticates directly with the `ANTHROPIC_API_KEY` secret (`doctor` lists
 > the exact secret NAMES your config needs).
 

@@ -50,14 +50,26 @@ GITHUB_ROLE_MAP = {
     "contributor": "CONTRIBUTOR",
 }
 
-# Backend names, referenced in routing/model logic across modules — kept as named constants so the
-# strings are not repeated as literals in comparisons.
-BACKEND_GENERIC = "generic"          # the built-in, provider-agnostic runner (the default)
-BACKEND_CLAUDE_ACTION = "claude-code-action"
-BACKEND_CODEX = "codex"
+# Provider ids. Provider is the primary knob: a stage declares which vendor runs it, and the
+# toolkit renders OpenAI via Codex and Anthropic via Claude Code today. The executor/tool below is
+# derived from the provider unless a stage pins `backend` explicitly.
+PROVIDER_OPENAI = "openai"
+PROVIDER_ANTHROPIC = "anthropic"
 
-# Backends that consume a resolved model from the contract. App backends (codex,
-# openhands, swe-agent, pr-agent) choose their own model, so resolution is skipped.
+# Backend (executor/tool) names, referenced in routing/model logic across modules — kept as named
+# constants so the strings are not repeated as literals in comparisons.
+BACKEND_GENERIC = "generic"                     # the provider-agnostic runner (roadmap adapter)
+BACKEND_CLAUDE_ACTION = "claude-code-action"    # Anthropic's Claude Code
+BACKEND_CODEX = "codex"                         # OpenAI's Codex
+
+# The coding tool the toolkit renders for each provider when a stage does not pin `backend`.
+PROVIDER_TOOL = {
+    PROVIDER_ANTHROPIC: BACKEND_CLAUDE_ACTION,
+    PROVIDER_OPENAI: BACKEND_CODEX,
+}
+
+# Backends that consume a resolved model from the contract. App backends (codex, openhands,
+# swe-agent, pr-agent) choose their own model, so resolution is skipped.
 BACKENDS_NEEDING_MODEL = {BACKEND_GENERIC, BACKEND_CLAUDE_ACTION}
 
 # Gate strengths a stage can carry.
@@ -312,7 +324,27 @@ def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
         else:
             stages_by_id[stage_id] = resolved
             order.append(stage_id)
-    return [stages_by_id[stage_id] for stage_id in order if stages_by_id[stage_id].get("enabled", True)]
+    expanded = [stages_by_id[stage_id] for stage_id in order if stages_by_id[stage_id].get("enabled", True)]
+    _apply_backend_defaults(cfg, expanded)
+    return expanded
+
+
+def _apply_backend_defaults(cfg: dict[str, Any], stages: list[dict[str, Any]]) -> None:
+    """Fill each stage's effective backend/tool from its provider when it does not pin one.
+
+    Provider is the primary knob: a stage that names `provider` (or inherits `defaults.provider`)
+    gets the tool the toolkit renders for that provider (anthropic -> Claude Code, openai -> Codex).
+    An explicit `stages[].backend` wins (override / custom adapter). A stage whose provider has no
+    known tool is left without one (`_stage_backend` -> the generic runner), so an unsupported or
+    roadmap provider never silently masquerades as a supported tool.
+    """
+    default_provider = (cfg.get("defaults", {}) or {}).get("provider")
+    for stage in stages:
+        if (stage.get("backend") or {}).get("name"):
+            continue
+        tool = PROVIDER_TOOL.get(stage.get("provider") or default_provider)
+        if tool:
+            stage["backend"] = {"name": tool}
 
 
 # -------------------------------------------------------------------- model resolve
@@ -433,10 +465,19 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
 
     stages = {stage["id"]: stage for stage in expand_stages(cfg)}
     implement_stage = next((stage for stage in stages.values() if stage.get("type") == "implement"), None)
-    # Resolve the implementer model ONLY when the backend consumes one; otherwise the
-    # app backend supplies it. Do NOT swallow a resolution error — fail loud.
+    # The implementer workflow runs Claude Code, so an implement stage must resolve to a
+    # model-consuming tool (Anthropic / Claude Code, or the generic runner). A stage that resolves to
+    # Codex or another app backend cannot implement here yet (roadmap): fail loud rather than emit an
+    # implementer with an empty model. Do NOT swallow a resolution error either.
     implementer_model = ""
-    if implement_stage and _stage_backend(implement_stage) in BACKENDS_NEEDING_MODEL:
+    if implement_stage:
+        tool = _stage_backend(implement_stage)
+        if tool not in BACKENDS_NEEDING_MODEL:
+            raise RenderError(
+                f"implement stage '{implement_stage.get('id')}' resolves to the '{tool}' tool, which "
+                "stagr does not render as an implementer yet; an implement stage runs Claude Code "
+                "(provider 'anthropic'). Use provider 'anthropic' for it, or disable the stage."
+            )
         implementer_model = resolve_model(cfg, implement_stage, "standard")
         # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a
         # quote or expression metacharacter could break out and inject another operand (e.g. a

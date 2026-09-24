@@ -163,8 +163,7 @@ _IMPLEMENT_SNIPPET = """\
   # Implementer — Claude addresses review findings (manual/dispatch entry point).
   - id: implement
     type: implement
-    provider: claude
-    backend: { name: claude-code-action }
+    provider: anthropic
     triggers: [manual]"""
 
 def _review_snippet(gate: str) -> str:
@@ -179,9 +178,8 @@ def _review_snippet(gate: str) -> str:
         f"  # Reviewer — Codex code review ({note}).\n"
         "  - id: review\n"
         "    type: review\n"
-        "    provider: openai\n"
+        "    provider: openai            # OpenAI/Codex is the rendered reviewer (tool derived from provider)\n"
         "    skill: code-review          # built-in; override with your own via the `skills:` registry\n"
-        "    backend: { name: codex }\n"
         f"    gate: {gate}\n"
         # On PR open the Codex app reviews natively (that is what services `pr_opened`); stagr's
         # rendered workflow re-requests a review on each push (`pr_updated`), which Codex does not
@@ -195,18 +193,16 @@ def _review_snippet(gate: str) -> str:
 _CUSTOM_SKELETON = """\
 # Define your pipeline here (this block is commented so the config is valid until you fill it in).
 # Stage types: plan | implement | review | security | test | integration-test | docs | release | custom
-# Example — Claude implementer + Codex code review:
+# Example — Claude implementer + Codex code review (the tool is derived from `provider`):
 # stages:
 #   - id: implement
 #     type: implement
-#     provider: claude
-#     backend: { name: claude-code-action }
+#     provider: anthropic
 #     triggers: [manual]
 #   - id: review
 #     type: review
 #     provider: openai
 #     skill: code-review
-#     backend: { name: codex }
 #     gate: blocking
 #     triggers: [pr_opened, pr_updated]"""
 
@@ -223,9 +219,8 @@ def _security_snippet(blocking: bool) -> str:
         f"  # Security reviewer — Codex security review ({note}).\n"
         "  - id: security\n"
         "    type: security\n"
-        "    provider: openai\n"
+        "    provider: openai            # OpenAI/Codex is the rendered reviewer (tool derived from provider)\n"
         "    skill: security-review      # built-in; override via the `skills:` registry\n"
-        "    backend: { name: codex }\n"
         f"    gate: {gate}\n"
         # As with the code review: Codex reviews security on PR open via its app; stagr re-requests
         # on each push.
@@ -298,10 +293,11 @@ platform:
   auth: {{ token_secret: {token_secret} }}
 
 defaults:
-  provider: claude
+  # Provider is the knob; the tool is derived (anthropic -> Claude Code, openai -> Codex).
+  provider: anthropic
   models:
     # Model the Claude implementer uses. Change to your provider's model id.
-    claude: {{ default: {model} }}
+    anthropic: {{ default: {model} }}
 
 build:
   # What "green" means for THIS repo — your own checks. Omit the whole block for a docs-only repo.

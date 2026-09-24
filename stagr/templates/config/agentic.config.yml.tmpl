@@ -53,10 +53,10 @@ build:
     typecheck: ""
 
 # ===========================================================================
-# MODEL DEFAULTS (required for model-consuming backends) + ADVANCED (optional).
-# Resolution is fail-loud: a stage on a `generic`/`claude-code-action` backend needs a
-# model from `defaults.models.<provider>` (or its own `stages[].model`). App backends
-# (codex, …) supply their own model, so an all-app-backed graph needs no `defaults.models`.
+# MODEL DEFAULTS (required for the Anthropic implementer) + ADVANCED (optional).
+# Resolution is fail-loud: an `anthropic` stage (Claude Code) needs a model from
+# `defaults.models.anthropic` (or its own `stages[].model`). An `openai` stage (Codex)
+# supplies its own model, so an all-Codex graph needs no `defaults.models`.
 # Every OTHER block below is optional — delete any one to accept its default.
 # ===========================================================================
 
@@ -71,16 +71,16 @@ build:
 # The toolkit ships placeholders, never hardcoded versions.
 # ---------------------------------------------------------------------------
 
-# Org/account-level defaults, keyed by provider id (any provider).
+# Org/account-level defaults, keyed by provider id. Supported: anthropic, openai.
 defaults:
-  provider: claude             # default provider for stages that omit one
+  provider: anthropic          # default provider for stages that omit one (anthropic -> Claude Code)
   models:
-    claude:
-      default: "<claude-default-model>"
+    anthropic:
+      default: "<anthropic-default-model>"
       tiers:
-        trivial:  "<claude-low-cost-model>"
-        standard: "<claude-default-model>"
-        complex:  "<claude-high-capability-model>"
+        trivial:  "<anthropic-low-cost-model>"
+        standard: "<anthropic-default-model>"
+        complex:  "<anthropic-high-capability-model>"
     openai:
       default: "<openai-default-model>"
       tiers:
@@ -93,14 +93,14 @@ defaults:
 # model is expected; map each per provider so ID churn touches one place.
 # models:
 #   aliases:
-#     fast:     { claude: "<claude-fast>",   openai: "<openai-fast>",   gemini: "<gemini-fast>" }
-#     balanced: { claude: "<claude-bal>",    openai: "<openai-bal>" }
-#     strong:   { claude: "<claude-strong>", openai: "<openai-strong>" }
+#     fast:     { anthropic: "<anthropic-fast>",   openai: "<openai-fast>" }
+#     balanced: { anthropic: "<anthropic-bal>",    openai: "<openai-bal>" }
+#     strong:   { anthropic: "<anthropic-strong>", openai: "<openai-strong>" }
 
 # Provider connections (optional). Point at self-hosted / Azure OpenAI / Vertex /
 # proxy / on-prem gateways. Supply only the NAME of the key secret, never the key.
 # providers:
-#   claude:  { api_key_secret: ANTHROPIC_API_KEY }
+#   anthropic: { api_key_secret: ANTHROPIC_API_KEY }
 #   openai:
 #     base_url: ""                       # e.g. https://<resource>.openai.azure.com
 #     api_version: ""                    # e.g. Azure OpenAI api-version
@@ -120,35 +120,34 @@ defaults:
 # OPTIONAL. Omit to use the profile's stages. Anything you list here is merged
 # onto the profile (a stage with the same id overrides). Build a stage from a
 # pre-wired agent preset with `from:` and override only what you need; or define
-# it fully. Any provider/model/backend permutation works, per stage.
+# it fully. Any provider/model works per stage; the tool is derived from the provider
+# (anthropic -> Claude Code, openai -> Codex), so a stage sets provider + model, not a backend.
 #
-# Example: a fuller SDLC mixing presets, providers, models, backends, and skills.
+# Example: a fuller SDLC mixing presets, providers, models, and skills.
 # stages:
 #   - id: plan
 #     type: plan
-#     provider: claude
+#     provider: anthropic
 #     model: { default: strong }
-#     backend: { name: generic }
 #     triggers: [issue_labeled]
 #     gate: advisory
 #
 #   - id: implement
 #     type: implement
-#     provider: claude
+#     provider: anthropic
 #     model: { tiers: { trivial: fast, standard: balanced, complex: strong } }
-#     backend: { name: claude-code-action }   # or: openhands | codex | swe-agent | generic
 #     depends_on: [plan]
 #     triggers: [issue_labeled, comment_command]
 #
 #   - id: security
 #     from: security-review              # pre-wired preset (skill + gate + triggers)
-#     provider: openai                   # override just the provider
+#     provider: openai                   # OpenAI/Codex reviewer
 #     depends_on: [implement]
 #
 #   - id: review
-#     from: code-review                  # pre-wired preset
-#     backend: { name: pr-agent }        # override the backend with a mature OSS reviewer
+#     from: code-review                  # pre-wired preset (defaults to the OpenAI/Codex reviewer)
 #     depends_on: [implement]
+#     # backend: { name: custom, uses: … }  # advanced: pin/override the tool (roadmap adapters)
 
 # --- Dynamic model selection -------------------------------------------------
 # Deterministic classifier reuses the review router's change-size + path signal,
