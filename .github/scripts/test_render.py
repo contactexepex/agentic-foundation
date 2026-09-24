@@ -176,6 +176,14 @@ def test_new_behaviors() -> None:
                                       "stages": [{"id": "implement", "type": "implement", "backend": {"name": "codex"}}]}),
         "render: codex implement stage fails loud (not a rendered implementer)",
     )
+    # provider openai + an explicit claude-code-action backend must still fail: the implementer reads
+    # ANTHROPIC_API_KEY, so the effective PROVIDER (not just the tool) must be anthropic.
+    expect_raises(
+        lambda: render.build_context({"profile": "custom", "defaults": {"provider": "anthropic", "models": {"openai": {"default": "m"}}},
+                                      "stages": [{"id": "implement", "type": "implement", "provider": "openai",
+                                                  "backend": {"name": "claude-code-action"}, "model": {"default": "m"}}]}),
+        "render: openai implement with explicit claude-code-action backend fails loud",
+    )
     # a bare anthropic implement stage with no resolvable model still fails loud on the model.
     expect_raises(
         lambda: render.build_context({"profile": "custom", "defaults": {"provider": "anthropic", "models": {}},

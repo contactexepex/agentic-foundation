@@ -455,15 +455,18 @@ def _resolve_implementer_model(cfg: dict[str, Any], implement_stage: dict[str, A
     """
     if implement_stage is None:
         return ""
-    # The implementer workflow is hardcoded to Claude Code, so the stage must resolve to exactly that
-    # tool. Any other tool (Codex, the roadmap generic runner, another app backend) would render the
-    # Claude workflow with the wrong provider's model/key, so reject it rather than emit that mismatch.
+    # The implementer workflow is hardcoded to Claude Code (reads ANTHROPIC_API_KEY, runs the resolved
+    # model as a Claude model), so BOTH the provider and the tool must be Anthropic/Claude Code.
+    # Checking the tool alone is not enough: `provider: openai` with an explicit
+    # `backend: claude-code-action` would otherwise render the Claude workflow with an OpenAI model id.
+    provider = implement_stage.get("provider") or (cfg.get("defaults", {}) or {}).get("provider")
     tool = _stage_backend(implement_stage)
-    if tool != BACKEND_CLAUDE_ACTION:
+    if provider != PROVIDER_ANTHROPIC or tool != BACKEND_CLAUDE_ACTION:
         raise RenderError(
-            f"implement stage '{implement_stage.get('id')}' resolves to the '{tool}' tool; the "
-            f"implementer runs Claude Code, so an implement stage must be provider 'anthropic' "
-            f"(backend '{BACKEND_CLAUDE_ACTION}'). Use provider 'anthropic' for it, or disable the stage."
+            f"implement stage '{implement_stage.get('id')}' must be provider '{PROVIDER_ANTHROPIC}' "
+            f"(Claude Code), which reads ANTHROPIC_API_KEY; got provider '{provider}', tool '{tool}'. "
+            f"stagr renders no other implementer yet. Use provider '{PROVIDER_ANTHROPIC}', or disable "
+            "the stage."
         )
     model = resolve_model(cfg, implement_stage, "standard")
     # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a quote
