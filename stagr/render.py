@@ -25,8 +25,9 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -540,27 +541,51 @@ def _review_request_lines(stages: list[dict[str, Any]]) -> tuple[str, str]:
     return code, security
 
 
-def select_templates(stages: list[dict[str, Any]]) -> list[str]:
-    """Choose which workflow templates to emit for this config.
-
-    Module-aware, not glob-all: a config with no codex review stage does not get the review
-    lane, and the lane is emitted only when a codex review/security stage actually runs on
-    pushed heads (honoring its `triggers`). (The `modules.auto_merge` gate template is
-    intentionally not emitted yet — its trust model is under review; see PR #2 — so an
-    auto_merge config still renders its core pipeline without a half-decided security gate.)
-    """
-    names = list(CORE_TEMPLATES)
+def _has_implement_stage(stages: list[dict[str, Any]]) -> bool:
     # The implementer workflow is emitted only when the graph actually has an implement stage;
     # without one it would render with an empty model and a provider key the pipeline never uses.
-    if any(stage.get("type") == "implement" for stage in stages):
-        names.append(IMPLEMENTOR_TEMPLATE)
-    if any(
+    return any(stage.get("type") == "implement" for stage in stages)
+
+
+def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
+    # The codex review lane renders only when a codex review/security stage runs on pushed heads.
+    return any(
         stage.get("type") in REVIEW_LANE_TYPES
         and _stage_backend(stage) == BACKEND_CODEX
         and _wants_push_review(stage)
         for stage in stages
-    ):
-        names += REVIEW_TEMPLATES
+    )
+
+
+@dataclass(frozen=True)
+class Lane:
+    """One rendered workflow lane: its `templates` are emitted when `applies` holds for the
+    fully-expanded stage graph. `LANES` is the single place a lane is wired in, so a future lane
+    (multi-stage gates, other platforms — CHARTER §7) is one entry here, not another branch.
+    """
+
+    name: str
+    applies: Callable[[list[dict[str, Any]]], bool]
+    templates: tuple[str, ...]
+
+
+# The lane registry, in emit order. `core` (the repo's "green" check + review router) always
+# applies; each other lane is module-aware and renders only when a matching stage exists. (The
+# `modules.auto_merge` gate is intentionally not a lane yet — its trust model is under review; see
+# PR #2 — so an auto_merge config still renders its core pipeline.)
+LANES: tuple[Lane, ...] = (
+    Lane("core", lambda stages: True, tuple(CORE_TEMPLATES)),
+    Lane("implementor", _has_implement_stage, (IMPLEMENTOR_TEMPLATE,)),
+    Lane("codex-review", _has_codex_push_review, tuple(REVIEW_TEMPLATES)),
+)
+
+
+def select_templates(stages: list[dict[str, Any]]) -> list[str]:
+    """Choose which workflow templates to emit, driven by the `LANES` registry (emit order)."""
+    names: list[str] = []
+    for lane in LANES:
+        if lane.applies(stages):
+            names.extend(lane.templates)
     return names
 
 
