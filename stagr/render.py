@@ -55,6 +55,9 @@ GITHUB_ROLE_MAP = {
 # derived from the provider unless a stage pins `backend` explicitly.
 PROVIDER_OPENAI = "openai"
 PROVIDER_ANTHROPIC = "anthropic"
+# The Anthropic provider id was previously `claude`; rejected with a migration error (see
+# _validate_semantics) so an upgraded config fails loud instead of resolving the wrong key secret.
+RENAMED_ANTHROPIC_PROVIDER = "claude"
 
 # Backend (executor/tool) names, referenced in routing/model logic across modules — kept as named
 # constants so the strings are not repeated as literals in comparisons.
@@ -92,24 +95,27 @@ PRESET_COMMANDS: dict[str, dict[str, str]] = {
     "custom": {},
 }
 
+# Profile stages carry a provider so a profile renders correctly out of the box: implement/plan/docs
+# run Claude Code (anthropic), review/security/test run Codex (openai). Without it, an unprovidered
+# review stage would inherit `defaults.provider` and silently render no Codex lane.
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
-        {"id": "implement", "type": "implement", "gate": GATE_ADVISORY},
-        {"id": "review", "type": "review", "gate": GATE_ADVISORY},
+        {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
+        {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_ADVISORY},
     ],
     "standard": [
-        {"id": "implement", "type": "implement"},
-        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
-        {"id": "security", "type": "security", "gate": GATE_ADVISORY},
+        {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC},
+        {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "security", "type": "security", "provider": PROVIDER_OPENAI, "gate": GATE_ADVISORY},
     ],
     "full": [
-        {"id": "plan", "type": "plan", "gate": GATE_ADVISORY},
-        {"id": "implement", "type": "implement"},
-        {"id": "security", "type": "security", "gate": GATE_BLOCKING},
-        {"id": "test", "type": "test", "gate": GATE_BLOCKING},
-        {"id": "integration-test", "type": "integration-test", "gate": GATE_BLOCKING},
-        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
-        {"id": "docs", "type": "docs", "gate": GATE_ADVISORY},
+        {"id": "plan", "type": "plan", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
+        {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC},
+        {"id": "security", "type": "security", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "test", "type": "test", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "integration-test", "type": "integration-test", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
+        {"id": "docs", "type": "docs", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
     ],
     "custom": [],
 }
@@ -280,6 +286,18 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
                 "vendor it locally and use source: path (remote fetch is future work)"
             )
 
+    # The Anthropic provider id was renamed `claude` -> `anthropic`. Reject the old id with a clear
+    # migration message rather than let it fall through to a wrong default key secret (MODEL_API_KEY)
+    # while the pipeline is reported healthy.
+    providers_in_use = [(cfg.get("defaults", {}) or {}).get("provider")]
+    providers_in_use += [(stage or {}).get("provider") for stage in (cfg.get("stages", []) or [])]
+    if RENAMED_ANTHROPIC_PROVIDER in providers_in_use:
+        raise RenderError(
+            f"provider '{RENAMED_ANTHROPIC_PROVIDER}' was renamed to '{PROVIDER_ANTHROPIC}'; update "
+            f"defaults.provider / stages[].provider (and defaults.models.{RENAMED_ANTHROPIC_PROVIDER} "
+            f"-> defaults.models.{PROVIDER_ANTHROPIC}) to '{PROVIDER_ANTHROPIC}'."
+        )
+
 
 # ------------------------------------------------------------------------- stages
 
@@ -437,12 +455,15 @@ def _resolve_implementer_model(cfg: dict[str, Any], implement_stage: dict[str, A
     """
     if implement_stage is None:
         return ""
+    # The implementer workflow is hardcoded to Claude Code, so the stage must resolve to exactly that
+    # tool. Any other tool (Codex, the roadmap generic runner, another app backend) would render the
+    # Claude workflow with the wrong provider's model/key, so reject it rather than emit that mismatch.
     tool = _stage_backend(implement_stage)
-    if tool not in BACKENDS_NEEDING_MODEL:
+    if tool != BACKEND_CLAUDE_ACTION:
         raise RenderError(
-            f"implement stage '{implement_stage.get('id')}' resolves to the '{tool}' tool, which "
-            "stagr does not render as an implementer yet; an implement stage runs Claude Code "
-            "(provider 'anthropic'). Use provider 'anthropic' for it, or disable the stage."
+            f"implement stage '{implement_stage.get('id')}' resolves to the '{tool}' tool; the "
+            f"implementer runs Claude Code, so an implement stage must be provider 'anthropic' "
+            f"(backend '{BACKEND_CLAUDE_ACTION}'). Use provider 'anthropic' for it, or disable the stage."
         )
     model = resolve_model(cfg, implement_stage, "standard")
     # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a quote

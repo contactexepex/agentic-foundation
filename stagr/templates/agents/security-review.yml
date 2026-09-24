@@ -11,6 +11,5 @@ skill: security-review             # -> templates/skills/security-review/SKILL.m
 provider: openai                   # OpenAI/Codex is the rendered reviewer; override per stage
 gate: blocking
 triggers: [pr_opened, pr_updated]
-# Model is intentionally unset so this preset works out of the box: it resolves via the stage's
-# provider + `defaults.models`. Security review benefits from a strong model — pin one by setting
-# `model:` on the stage that uses this preset (or via `models.aliases`).
+# No model binding: Codex (the OpenAI reviewer) supplies its own model. A `model:` set on a Codex
+# stage is ignored — model bindings apply only to the model-consuming provider (anthropic).

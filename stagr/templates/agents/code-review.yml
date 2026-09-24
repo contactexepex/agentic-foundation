@@ -2,7 +2,7 @@
 # A pre-wired stage. Use it from .agentic/config.yml with:
 #   stages:
 #     - { id: review, from: code-review }          # accept defaults
-#     - { id: review, from: code-review, provider: openai, model: { default: strong } }  # override
+#     - { id: review, from: code-review, gate: advisory }   # override any field
 # Fields you set on the stage override the preset; the preset overrides toolkit defaults.
 type: review
 name: Code Review
@@ -11,6 +11,5 @@ skill: code-review                 # -> templates/skills/code-review/SKILL.md
 provider: openai                   # OpenAI/Codex is the rendered reviewer; override per stage
 gate: blocking
 triggers: [pr_opened, pr_updated]
-# Model is intentionally unset so this preset works out of the box: it resolves via the stage's
-# provider + `defaults.models` (and tiering). To pin models, set `model:` on the stage that uses
-# this preset, or define `models.aliases` and reference them there.
+# No model binding: Codex (the OpenAI reviewer) supplies its own model. A `model:` set on a Codex
+# stage is ignored — model bindings apply only to the model-consuming provider (anthropic).

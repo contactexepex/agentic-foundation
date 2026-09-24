@@ -164,19 +164,38 @@ def test_new_behaviors() -> None:
     check("make test" in steps, "build_steps: includes configured test command")
     check("No build commands" in render._build_steps({}), "build_steps: empty -> no-op message")
 
-    # fail-loud: a generic-backed stage with no resolvable model raises during render
+    # the implementer runs Claude Code, so a non-claude-code-action implement tool fails loud rather
+    # than rendering the Claude workflow with the wrong provider's model/key.
     expect_raises(
         lambda: render.build_context({"profile": "custom", "defaults": {"provider": "openai", "models": {}},
                                       "stages": [{"id": "implement", "type": "implement", "backend": {"name": "generic"}}]}),
-        "render: build_context fails loud on unresolved generic implementer model",
+        "render: non-Anthropic implement tool (generic) fails loud",
     )
-    # a Codex-backed implement stage is roadmap (no Codex implementer is rendered yet) -> fail loud,
-    # rather than silently emitting a Claude implementer with an empty model.
     expect_raises(
         lambda: render.build_context({"profile": "custom", "defaults": {"provider": "openai", "models": {}},
                                       "stages": [{"id": "implement", "type": "implement", "backend": {"name": "codex"}}]}),
         "render: codex implement stage fails loud (not a rendered implementer)",
     )
+    # a bare anthropic implement stage with no resolvable model still fails loud on the model.
+    expect_raises(
+        lambda: render.build_context({"profile": "custom", "defaults": {"provider": "anthropic", "models": {}},
+                                      "stages": [{"id": "implement", "type": "implement", "provider": "anthropic"}]}),
+        "render: anthropic implement stage fails loud on unresolved model",
+    )
+    # provider `claude` was renamed to `anthropic` -> rejected with a migration error.
+    expect_raises(
+        lambda: render.validate_config({"version": 2, "profile": "custom",
+                                        "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+                                        "stages": [{"id": "implement", "type": "implement"}]}),
+        "validate: renamed provider 'claude' fails loud with a migration error",
+    )
+    # the standard profile's review/security stages carry provider openai, so the codex review lane
+    # renders out of the box (regression: profile review stages must not inherit the anthropic default
+    # and silently drop the lane).
+    std = render.render_all({"version": 2, "profile": "standard",
+                             "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m"}}}})
+    check("request-review.yml" in std and "implementor.yml" in std,
+          "select: standard profile renders the implementer + codex review lane out of the box")
 
 
 def test_round2_fixes() -> None:

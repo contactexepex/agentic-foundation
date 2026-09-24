@@ -72,14 +72,25 @@ def test_report() -> None:
     check("request-review.yml" in rep["workflows"], "doctor: review lane in render set")
     check(not rep["problems"], "doctor: healthy config has no problems")
 
-    # A model-consuming (generic) backend on openai DOES require the provider key.
-    generic_cfg = {"version": 2, "profile": "custom",
+    # An anthropic implement stage (Claude Code) requires the provider key and renders cleanly.
+    anthro_cfg = {"version": 2, "profile": "custom",
+                  "platform": {"type": "github", "default_branch": "main"},
+                  "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m"}}},
+                  "stages": [{"id": "impl", "type": "implement", "provider": "anthropic"}]}
+    rep_anthro = cli.collect_report(anthro_cfg, "github")
+    check("ANTHROPIC_API_KEY" in rep_anthro["secret_names"],
+          "doctor: anthropic key IS required for the Claude implementer")
+    check(not rep_anthro["problems"], "doctor: anthropic implement config is healthy")
+
+    # A codex review stage WITHOUT pr_updated renders no push-review lane, so doctor must NOT ask for
+    # the review PAT — the secret predicate mirrors lane selection.
+    no_push_cfg = {"version": 2, "profile": "custom",
                    "platform": {"type": "github", "default_branch": "main"},
-                   "defaults": {"provider": "openai", "models": {"openai": {"default": "m"}}},
-                   "stages": [{"id": "impl", "type": "implement", "backend": {"name": "generic"}}]}
-    rep_generic = cli.collect_report(generic_cfg, "github")
-    check("OPENAI_API_KEY" in rep_generic["secret_names"],
-          "doctor: openai key IS required for a model-consuming (generic) backend")
+                   "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m"}}},
+                   "stages": [{"id": "review", "type": "review", "provider": "openai", "triggers": ["pr_opened"]}]}
+    rep_no_push = cli.collect_report(no_push_cfg, "github")
+    check("REMEDIATION_TOKEN" not in rep_no_push["secret_names"],
+          "doctor: no review PAT required when no push-review lane renders")
 
 
 def test_doctor_no_secret_values_and_exit() -> None:
