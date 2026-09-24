@@ -2,15 +2,15 @@ name: Fast AI Code Review
 
 # Deterministic review router — no model call, no secrets.
 #
-# Trivial documentation/text changes are fast-path approved and skip the full Codex review;
-# every substantive change is routed to Codex, the independent reviewer. This keeps token/cost
-# discipline (no LLM call for changes that do not need one) while ensuring real changes are
-# still reviewed.
+# The fast-path lane is DISABLED for this repository (.agentic/config.yml -> routing.fast_path.enabled:
+# false): every PR — documentation included — is routed to Codex, the independent reviewer. This is a
+# shared toolkit whose docs other people rely on, so no change merges without review. (The fast-path
+# remains a toolkit capability other repos can enable; it is simply off here.)
 #
-# It runs as pull_request_target so the trusted workflow definition comes from the base branch
-# and the required `Publish fast review result` status can be published on the PR head. It reads
-# only the PR's changed-file list through the API as data — no PR content is checked out or
-# executed, and no repository secret is used.
+# It runs as pull_request_target so the trusted workflow definition comes from the base branch and the
+# required `Publish fast review result` status can be published on the PR head. No PR content is checked
+# out or executed, and no repository secret is used. The merge gate reads the resulting success status
+# and then requires a head-bound Codex code review; every Codex finding blocks the merge as a thread.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, edited]
@@ -21,37 +21,18 @@ concurrency:
   group: fast-ai-review-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'review' }}
   cancel-in-progress: true
 
+# Least privilege: only publishing a commit status. No PR comment is posted, so no pull-requests
+# write and no contents access are needed.
 permissions:
-  contents: read
-  pull-requests: write
   statuses: write
 
 env:
   # The published commit-status context. Keep it identical to the branch-protection required check.
   REVIEW_STATUS_CONTEXT: Publish fast review result
-  # A change is fast-path approved only when EVERY changed file matches one of these shell globs,
-  # is NOT in DENY_GLOBS, is textual, and (for a rename/copy) its source path also qualifies, and
-  # the change stays within the trivial budget below. Anything touching code, tests, workflows,
-  # infrastructure, dependencies, or the container image fails a match and is routed to Codex.
-  # These globs are matched with shell `case`, where `*` also matches `/`, so `*.md` matches a
-  # markdown file at any depth; the DENY_GLOBS below re-exclude the sensitive subset.
-  TRIVIAL_GLOBS: '*.md LICENSE .gitignore .gitattributes .editorconfig'
-  # Never fast-path these even if they match TRIVIAL_GLOBS. Matched with `case` (so `*` spans `/`):
-  # - AGENTS.md / CLAUDE.md at the repository root AND at any nested path (`*/AGENTS.md`), because a
-  #   directory-scoped agent contract governs behaviour/policy just like the root one.
-  # - everything under docs/ — this repository's docs hold operational/security contracts
-  #   (authorization, token scopes, branch protection, safety boundaries), not cosmetic text, so
-  #   they must be independently reviewed rather than fast-path approved.
-  # - everything under .agentic/ — the contract + skills/agent instructions and review policy live
-  #   here; a substantive Markdown change (e.g. .agentic/skills/*/SKILL.md) must be reviewed, not
-  #   fast-path approved (the `*.md` trivial glob spans `/`).
-  DENY_GLOBS: 'AGENTS.md */AGENTS.md CLAUDE.md */CLAUDE.md docs/* .agentic/*'
-  TRIVIAL_MAX_FILES: '20'
-  TRIVIAL_MAX_LINES: '200'
 
 jobs:
   route:
-    name: Route review (fast-path or Codex)
+    name: Route review to Codex
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
@@ -60,88 +41,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Classify change and publish routing status
+      - name: Publish routing status
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          publish_status() {
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
-              -f state="$1" -f context="$REVIEW_STATUS_CONTEXT" -f description="$2" \
-              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null
-          }
-          publish_status pending 'Classifying change to route the review'
-
-          # Read the PR's changed files as data only (no checkout, no code execution).
-          # Columns: path, churn, has-textual-diff, status, source-path.
-          # `(.patch != null)` records whether GitHub returned a textual diff — the API omits `patch`
-          # for binary content and for diffs too large to return. `status` and `previous_filename`
-          # expose renames/copies whose source path the destination name would otherwise hide.
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
-            --jq '.[] | [.filename, (.additions + .deletions), (.patch != null), .status, (.previous_filename // "")] | @tsv' > "$RUNNER_TEMP/files.tsv"
-
-          FILE_COUNT=0
-          TOTAL_LINES=0
-          TRIVIAL=true
-          read -ra GLOBS <<< "$TRIVIAL_GLOBS"
-          read -ra DENY <<< "$DENY_GLOBS"
-
-          # A path is trivial only when it matches a TRIVIAL glob AND no DENY glob. Both are matched
-          # with `case`, where `*` also matches `/`, so a deny pattern re-excludes nested matches.
-          matches_trivial_path() {
-            local path="$1" glob deny hit=false
-            for glob in "${GLOBS[@]}"; do
-              # shellcheck disable=SC2254  # $glob is intentionally a glob pattern, not a literal.
-              case "$path" in $glob) hit=true; break;; esac
-            done
-            [[ "$hit" == true ]] || return 1
-            for deny in "${DENY[@]}"; do
-              # shellcheck disable=SC2254  # $deny is intentionally a glob pattern, not a literal.
-              case "$path" in $deny) return 1;; esac
-            done
-            return 0
-          }
-
-          while IFS=$'\t' read -r name churn has_patch status prev; do
-            [[ -n "$name" ]] || continue
-            FILE_COUNT=$((FILE_COUNT + 1))
-            TOTAL_LINES=$((TOTAL_LINES + churn))
-            file_trivial=true
-            # The destination path must be a trivial, non-denied file.
-            matches_trivial_path "$name" || file_trivial=false
-            # It must be textual/reviewable. Binary content (and diffs too large for the API to
-            # return) carry no `patch` and report zero churn, so a binary payload named e.g. `x.md`
-            # would otherwise slip under the budget and be auto-approved. Route it to Codex instead.
-            [[ "$has_patch" == true ]] || file_trivial=false
-            # A rename/copy carries a source path the destination name hides. Require the source to
-            # qualify too, so e.g. renaming a workflow to `docs/ci.md` cannot be fast-path approved.
-            case "$status" in
-              renamed|copied)
-                [[ -z "$prev" ]] || matches_trivial_path "$prev" || file_trivial=false ;;
-            esac
-            [[ "$file_trivial" == true ]] || TRIVIAL=false
-          done < "$RUNNER_TEMP/files.tsv"
-
-          # An empty or oversized change is never fast-pathed.
-          (( FILE_COUNT >= 1 )) || TRIVIAL=false
-          (( FILE_COUNT <= TRIVIAL_MAX_FILES )) || TRIVIAL=false
-          (( TOTAL_LINES <= TRIVIAL_MAX_LINES )) || TRIVIAL=false
-
-          if [[ "$TRIVIAL" == true ]]; then
-            publish_status success "Trivial docs/text change (${FILE_COUNT} files, ${TOTAL_LINES} lines) — fast-path approved; full Codex review not required."
-            {
-              echo '<!-- fast-ai-review -->'
-              echo '## Fast review — trivial change fast-path'
-              echo
-              echo "All ${FILE_COUNT} changed file(s) are documentation/text within the trivial budget (at most ${TRIVIAL_MAX_FILES} files and ${TRIVIAL_MAX_LINES} changed lines), so this change is auto-approved and does not need a full Codex review."
-            } > "$RUNNER_TEMP/comment.md"
-            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md" >/dev/null || echo 'Comment post failed (non-fatal); status already published.'
-          else
-            publish_status success "Substantive change (${FILE_COUNT} files, ${TOTAL_LINES} lines) — routed to Codex for independent review."
-          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state=success -f context="$REVIEW_STATUS_CONTEXT" \
+            -f description='Fast-path disabled — routed to Codex for independent review.' \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null
 
       - name: Mark routing failed
         if: failure()

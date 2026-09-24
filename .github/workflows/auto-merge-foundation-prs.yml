@@ -190,11 +190,15 @@ jobs:
             status_state="$(jq -r '.state' <<<"$status_json")"
             [[ "$status_state" == "success" ]] || { skip "$pr" "combined status=$status_state"; echo '::endgroup::'; return 0; }
 
-            # The review router status must be success, and its description selects the review lane.
-            local router
-            router="$(jq -r --arg c "$REVIEW_STATUS_CONTEXT" \
-              '[.statuses[] | select(.context==$c)] | (sort_by(.updated_at) | last) // {} | ((.state // "missing") + "\t" + (.description // ""))' <<<"$status_json")"
-            local router_state="${router%%$'\t'*}" router_text="${router#*$'\t'}"
+            # The review router status must be present and successful (it is part of "every status
+            # green"). Its DESCRIPTION is deliberately NOT read to select a review lane: this repository
+            # routes every PR to Codex, so the gate unconditionally requires a head-bound Codex code
+            # review below. A commit status can be published by any actor with `statuses: write` on a
+            # same-repo PR, so trusting a "fast-path approved" string in the description to waive that
+            # review would be a forgeable bypass of the every-PR-reviewed rule.
+            local router_state
+            router_state="$(jq -r --arg c "$REVIEW_STATUS_CONTEXT" \
+              '[.statuses[] | select(.context==$c)] | (sort_by(.updated_at) | last) | (.state // "missing")' <<<"$status_json")"
             [[ "$router_state" == "success" ]] || { skip "$pr" "review router status=$router_state"; echo '::endgroup::'; return 0; }
 
             # EVERY check-run on the head must be completed and passing — with no name-based
@@ -253,74 +257,70 @@ jobs:
                               | map(select(.state=="CHANGES_REQUESTED")) | length' <<<"$reviews_json")"
             [[ "$blocking" == "0" ]] || { skip "$pr" "$blocking reviewer(s) requested changes"; echo '::endgroup::'; return 0; }
 
-            # Lane-specific Codex requirement.
-            if [[ "$router_text" == *"fast-path approved"* ]]; then
-              echo "#$pr: trivial fast-path lane — independent Codex review not required."
-            else
-              # Substantive lane: the current head must carry a Codex CODE review, and the review must
-              # be clean. "Clean" is enforced by the zero-unresolved-threads check above: every Codex
-              # finding — code OR security — is posted as a review thread, so any real issue leaves an
-              # unresolved thread and blocks the merge.
-              #
-              # The gate deliberately does NOT parse Codex's `codex-security-review` marker. Codex runs
-              # the security review only on open/ready (not on push), it does not always post the marker,
-              # and matching a marker to the current head races the review that a ready event triggers —
-              # so the marker is an unreliable gate signal. The security review still runs and its
-              # findings still block as threads; we simply do not require its completion marker.
-              #
-              # Codex's CODE review must have completed for the current head. Codex posts a formal
-              # review OBJECT only when it has suggestions; a CLEAN review posts no review object and
-              # only updates its "Codex Review Summary" comment. So detect "reviewed current head" from
-              # EITHER signal:
-              #  (a) the latest non-dismissed Codex review object whose commit_id is the current head
-              #      (covers reviews that carried suggestions), OR
-              #  (b) Codex's summary comment (the one carrying the `codex-pull-request-review-summary`
-              #      marker) showing the Code Review row as "Completed" for the current head — the
-              #      always-present, head-bound signal that also covers a clean review.
-              # A running review reads "Running" in (b) (not "Completed") and correctly holds the merge;
-              # any finding is still an unresolved thread, already blocked above.
-              local codex_head_reviewed=false
+            # Codex code review is required UNCONDITIONALLY. The fast path is disabled for this
+            # repository (every PR is reviewed), and the gate never waives this requirement on the basis
+            # of a router status description — that string is forgeable (see the router-status note
+            # above). The current head must carry a Codex CODE review, and the review must be clean.
+            # "Clean" is enforced by the zero-unresolved-threads check above: every Codex finding — code
+            # OR security — is posted as a review thread, so any real issue leaves an unresolved thread
+            # and blocks the merge.
+            #
+            # The gate deliberately does NOT parse Codex's `codex-security-review` marker. Codex runs
+            # the security review only on open/ready (not on push), it does not always post the marker,
+            # and matching a marker to the current head races the review that a ready event triggers —
+            # so the marker is an unreliable gate signal. The security review still runs and its
+            # findings still block as threads; we simply do not require its completion marker.
+            #
+            # Codex's CODE review must have completed for the current head. Codex posts a formal
+            # review OBJECT only when it has suggestions; a CLEAN review posts no review object and
+            # only updates its "Codex Review Summary" comment. So detect "reviewed current head" from
+            # EITHER signal:
+            #  (a) the latest non-dismissed Codex review object whose commit_id is the current head
+            #      (covers reviews that carried suggestions), OR
+            #  (b) Codex's summary comment (the one carrying the `codex-pull-request-review-summary`
+            #      marker) showing the Code Review row as "Completed" for the current head — the
+            #      always-present, head-bound signal that also covers a clean review.
+            # A running review reads "Running" in (b) (not "Completed") and correctly holds the merge;
+            # any finding is still an unresolved thread, already blocked above.
+            local codex_head_reviewed=false
 
-              # (a) formal review object: take the latest Codex review first.
-              local codex_latest codex_sha codex_state
-              codex_latest="$(jq -c --arg bot "$CODEX_BOT_LOGIN" \
-                '[ .[] | select(.user.login==$bot) ] | (sort_by(.submitted_at) | last) // {}' <<<"$reviews_json")"
-              codex_sha="$(jq -r '.commit_id // ""' <<<"$codex_latest")"
-              codex_state="$(jq -r '.state // ""' <<<"$codex_latest")"
-              # Dismissal is DECISIVE for the current head: if the latest Codex review object is a
-              # DISMISSED review of the current head, do not merge and do NOT fall through to the
-              # summary-row path — GitHub does not update the summary comment's stale "Completed" row on
-              # dismissal, so that fallback would otherwise bypass an explicitly invalidated review. A
-              # new push (or re-review) is required to clear it.
-              if [[ "$codex_state" == "DISMISSED" && "$codex_sha" == "$head_sha" ]]; then
-                skip "$pr" "latest Codex review of the current head is DISMISSED"; echo '::endgroup::'; return 0
-              fi
-              if [[ "$codex_sha" == "$head_sha" ]]; then
-                codex_head_reviewed=true
-              fi
+            # (a) formal review object: take the latest Codex review first.
+            local codex_latest codex_sha codex_state
+            codex_latest="$(jq -c --arg bot "$CODEX_BOT_LOGIN" \
+              '[ .[] | select(.user.login==$bot) ] | (sort_by(.submitted_at) | last) // {}' <<<"$reviews_json")"
+            codex_sha="$(jq -r '.commit_id // ""' <<<"$codex_latest")"
+            codex_state="$(jq -r '.state // ""' <<<"$codex_latest")"
+            # Dismissal is DECISIVE for the current head: if the latest Codex review object is a
+            # DISMISSED review of the current head, do not merge and do NOT fall through to the
+            # summary-row path — GitHub does not update the summary comment's stale "Completed" row on
+            # dismissal, so that fallback would otherwise bypass an explicitly invalidated review. A
+            # new push (or re-review) is required to clear it.
+            if [[ "$codex_state" == "DISMISSED" && "$codex_sha" == "$head_sha" ]]; then
+              skip "$pr" "latest Codex review of the current head is DISMISSED"; echo '::endgroup::'; return 0
+            fi
+            if [[ "$codex_sha" == "$head_sha" ]]; then
+              codex_head_reviewed=true
+            fi
 
-              # (b) summary comment's Code Review row: fetch PR comments, take the latest Codex summary
-              # comment, and require its Code Review row to read "Completed" with a commit that is a
-              # prefix of the current head (the summary shows an abbreviated SHA).
-              if [[ "$codex_head_reviewed" != true ]]; then
-                local pr_comments summary_body code_row row_sha
-                pr_comments="$(gh api --paginate "repos/$REPO/issues/$pr/comments?per_page=100" --slurp \
-                  | jq 'add // []')" || { skip "$pr" "cannot read PR comments for Codex review summary"; echo '::endgroup::'; return 0; }
-                summary_body="$(jq -r --arg bot "$CODEX_BOT_LOGIN" \
-                  '[ .[] | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$pr_comments")"
-                code_row="$(grep -i 'Code Review' <<<"$summary_body" | head -1 || true)"
-                if grep -qi 'Completed' <<<"$code_row"; then
-                  row_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$code_row" | head -1 | tr -d '`' || true)"
-                  if [[ -n "$row_sha" && "$head_sha" == "$row_sha"* ]]; then
-                    codex_head_reviewed=true
-                  fi
+            # (b) summary comment's Code Review row: fetch PR comments, take the latest Codex summary
+            # comment, and require its Code Review row to read "Completed" with a commit that is a
+            # prefix of the current head (the summary shows an abbreviated SHA).
+            if [[ "$codex_head_reviewed" != true ]]; then
+              local pr_comments summary_body code_row row_sha
+              pr_comments="$(gh api --paginate "repos/$REPO/issues/$pr/comments?per_page=100" --slurp \
+                | jq 'add // []')" || { skip "$pr" "cannot read PR comments for Codex review summary"; echo '::endgroup::'; return 0; }
+              summary_body="$(jq -r --arg bot "$CODEX_BOT_LOGIN" \
+                '[ .[] | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$pr_comments")"
+              code_row="$(grep -i 'Code Review' <<<"$summary_body" | head -1 || true)"
+              if grep -qi 'Completed' <<<"$code_row"; then
+                row_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$code_row" | head -1 | tr -d '`' || true)"
+                if [[ -n "$row_sha" && "$head_sha" == "$row_sha"* ]]; then
+                  codex_head_reviewed=true
                 fi
               fi
-
-              [[ "$codex_head_reviewed" == true ]] || { skip "$pr" "no completed Codex code review for current head $head_sha (no head-matching review object or summary row)"; echo '::endgroup::'; return 0; }
-
-              : # (Codex code review is required only in the substantive lane, above.)
             fi
+
+            [[ "$codex_head_reviewed" == true ]] || { skip "$pr" "no completed Codex code review for current head $head_sha (no head-matching review object or summary row)"; echo '::endgroup::'; return 0; }
 
             # SonarCloud gate — applies to BOTH lanes (fast-path and substantive), so a fast-path PR
             # cannot bypass a present-but-failing Sonar analysis. SonarCloud is the security-analysis

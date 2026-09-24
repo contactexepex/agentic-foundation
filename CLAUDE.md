@@ -42,9 +42,15 @@ than duplicating branches, commits, or PRs.
 Self-review with `git diff --check`, `git diff --stat`, `git diff`, and `git status`; remove debug
 artifacts and unrelated changes. Commit only after self-review and relevant validation pass.
 
-Push the task branch and open one PR targeting `main`; never hand-merge it. The PR description states
-the task and acceptance criteria, what changed and why, checks run with results, and assumptions or
-open questions.
+Push the task branch and open one PR targeting `main`, **ready for review — never a draft** — so Codex
+review runs immediately; never hand-merge it. The PR description states the task and acceptance
+criteria, what changed and why, checks run with results, and assumptions or open questions. **Every
+PR is sent to Codex for code + security review; findings block the merge as unresolved threads** (see
+"Codex review handoff"). The gate requires a head-bound *code* review and zero unresolved threads; it
+does not wait for security-review completion (that stronger gate is roadmap — `docs/CHARTER.md` §7).
+The fast-path lane is disabled for this repository (`.agentic/config.yml` →
+`routing.fast_path.enabled: false`), so every PR — documentation included — goes through Codex review;
+nothing merges without it.
 
 Know the merge lane (see `AGENTS.md`). A **foundation** PR is merged automatically by the
 `Auto-merge foundation PRs` gate once green and Codex-clean — do not hand-merge and do not wait on a

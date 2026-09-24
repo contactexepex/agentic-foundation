@@ -184,9 +184,13 @@ Omit `build` entirely (or leave `commands` empty) for a repo with no build gate,
 ### `routing.fast_path`
 | Field | Meaning |
 |---|---|
+| `enabled` | `false` disables the fast path so every PR (docs included) is routed to the reviewer. Default `true`. |
 | `globs` | Paths eligible for fast-path approval without a model review. |
 | `max_files` / `max_lines` | Size ceiling for the fast path. |
 | `exclude` | Paths never fast-pathed (e.g. `AGENTS.md`, `.agentic/**`). |
+
+Set `enabled: false` when every change must go through review — e.g. a shared toolkit whose
+documentation other people depend on. This repository does exactly that.
 
 ### `modules`
 | Field | Meaning |

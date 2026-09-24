@@ -151,7 +151,7 @@ later generate:
   untrusted-implement → validate → trusted-publish (remediation) flow.
 - **Codex reviews** — code and security — is re-requested on every push
   (`request-codex-review-on-push.yml`); the deterministic router (`fast-ai-code-review.yml`)
-  fast-paths trivial docs changes.
+  routes every PR to Codex (the fast path is disabled here, so docs are reviewed too).
 - **`Validate`** (`validate.yml`) is the CI gate; **fixed Codex threads auto-resolve**
   (`resolve-fixed-codex-review-threads.yml`); the **fail-closed foundation gate**
   (`auto-merge-foundation-prs.yml`) merges provably-ready PRs. Humans keep authority via `human-merge`.
