@@ -5,7 +5,11 @@ name: Validate
 # on pushes to the default branch. It checks out only trusted repo content and uses no secrets.
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    # `edited` is included so a base-retarget (which arrives as an edited event, not
+    # synchronize) re-runs validation against the NEW base — otherwise the auto-merge gate
+    # could accept a Validate result produced against the previous base. The job guard below
+    # ignores edited events that are not a base change (title/body edits).
+    types: [opened, reopened, synchronize, ready_for_review, edited]
   push:
     branches: [main]
   workflow_dispatch: {}
@@ -22,6 +26,8 @@ jobs:
     # The job name IS the check-run name the auto-merge gate requires by name ("Validate").
     # Keep it exactly "Validate" (the descriptive detail lives in the step name below).
     name: Validate
+    # Skip metadata-only edited events (only re-run on base changes); always run otherwise.
+    if: github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
