@@ -312,6 +312,15 @@ def test_round4_fixes() -> None:
            "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
     expect_raises(lambda: render.build_context(inj), "render: unsafe implementer model fails loud")
 
+    # T-b: a model with ':' or '/' that the renderer accepts must also pass the rendered
+    # implementor's own runtime model check (aligned allowlists), or the workflow can't run.
+    modcfg = {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "main"},
+              "defaults": {"provider": "claude", "models": {"claude": {"default": "ns/model:tag"}}},
+              "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
+    check(render.build_context(modcfg)["implementer_model"] == "ns/model:tag", "render: ':'/'/' model accepted")
+    impl_wf = render.render_all(modcfg, "github")["implementor.yml"]
+    check("[A-Za-z0-9._:/-]" in impl_wf, "render: implementor runtime model regex matches renderer allowlist")
+
     # S3: agent contracts are always excluded from the fast path.
     ex = json.loads(ctx["fast_path_exclude_json"])
     check({"AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLAUDE.md"} <= set(ex), "render: AGENTS/CLAUDE always fast-path-excluded")

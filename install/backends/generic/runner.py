@@ -115,10 +115,14 @@ def _confine_to_repo(path: Path, what: str = "path") -> Path:
     return _confine(path, REPO_ROOT, what)
 
 
-def _read_skill_file(base: Path) -> str:
-    path = base / "SKILL.md" if base.is_dir() else base
+def _read_skill_file(base: Path, root: Path, what: str) -> str:
+    # A skill dir holds SKILL.md; pick the actual file first, then resolve + confine THAT path so a
+    # symlinked SKILL.md pointing outside `root` (e.g. -> /proc/self/environ) is rejected, not just
+    # the containing directory.
+    candidate = base / "SKILL.md" if base.is_dir() else base
+    path = _confine(candidate, root, what)
     if not path.is_file():
-        raise FileNotFoundError(f"skill content not found at {path}")
+        raise FileNotFoundError(f"skill content not found at {candidate}")
     return path.read_text()
 
 
@@ -151,9 +155,9 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[st
         loc = reg.get("path")
         if not loc:
             raise ValueError(f"skill '{skill_id}' has source: path but no path")
-        content = _read_skill_file(_confine_to_repo(REPO_ROOT / loc, f"skill '{skill_id}' path"))
+        content = _read_skill_file(REPO_ROOT / loc, REPO_ROOT, f"skill '{skill_id}' path")
     else:  # builtin — the id must name a skill directly under SKILLS_DIR, not an absolute/`..` path
-        content = _read_skill_file(_confine(SKILLS_DIR / skill_id, SKILLS_DIR, f"builtin skill '{skill_id}'"))
+        content = _read_skill_file(SKILLS_DIR / skill_id, SKILLS_DIR, f"builtin skill '{skill_id}'")
 
     base_id = reg.get("extends")
     if base_id:

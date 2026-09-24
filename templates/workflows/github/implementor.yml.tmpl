@@ -34,8 +34,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$IMPLEMENTER_MODEL" =~ ^[A-Za-z0-9._-]+$ ]] || {
-            echo "Invalid implementer model '$IMPLEMENTER_MODEL' (allowed: letters, digits, dot, underscore, hyphen)."; exit 1;
+          [[ "$IMPLEMENTER_MODEL" =~ ^[A-Za-z0-9._:/-]+$ ]] || {
+            echo "Invalid implementer model '$IMPLEMENTER_MODEL' (allowed: letters, digits, and . _ : / -)."; exit 1;
           }
 
       - name: Checkout repository
