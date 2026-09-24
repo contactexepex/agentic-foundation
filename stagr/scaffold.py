@@ -13,6 +13,7 @@ and renders, which the tests assert.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable
 
 from .render import (  # shared contract vocabulary
@@ -21,6 +22,20 @@ from .render import (  # shared contract vocabulary
     GATE_BLOCKING,
     PROFILE_STAGES,
 )
+
+
+def _schema_build_presets() -> tuple[str, ...]:
+    """The valid `build.preset` values, read from the packaged schema (single source of truth).
+
+    Deriving them here keeps the wizard's offered choices and validation in lockstep with the
+    schema, so a mistyped preset can't produce a config that then fails `stagr doctor`.
+    """
+    schema = json.loads((Path(__file__).resolve().parent / "config.schema.json").read_text())
+    return tuple(schema["properties"]["build"]["properties"]["preset"]["enum"])
+
+
+BUILD_PRESETS = _schema_build_presets()
+_BUILD_PRESET_OPTIONS = " | ".join(BUILD_PRESETS)
 
 # Public doc links, so a generated config dropped into ANOTHER repo points at docs that exist there
 # (a relative `docs/…` reference would resolve inside the consumer repo, where they do not exist).
@@ -197,7 +212,7 @@ defaults:
 
 build:
   # What "green" means for THIS repo — your own checks. Omit the whole block for a docs-only repo.
-  preset: {c['build_preset']}                # python | node | maven | gradle | go | rust | dotnet | custom
+  preset: {c['build_preset']}                # {_BUILD_PRESET_OPTIONS}
   commands:
     test: {json.dumps(test_cmd)}{test_hint}
 
@@ -251,8 +266,12 @@ def run_wizard(inp: Callable[[str], str] = input, out: Callable[[str], None] = p
     token_secret = _ask(inp, out, "Secret NAME for the remediation/publish PAT", DEFAULT_TOKEN_SECRET)
 
     out('\n── Build ("green" checks) ──')
-    build_preset = _ask(inp, out, "Build preset", "custom",
-                        "python | node | maven | gradle | go | rust | dotnet | custom")
+    build_preset = _ask(inp, out, "Build preset", "custom", _BUILD_PRESET_OPTIONS)
+    if build_preset not in BUILD_PRESETS:
+        # The schema permits only the listed presets; a typo would generate a config that
+        # immediately fails `stagr doctor`. Fall back to the toolchain-agnostic 'custom'.
+        out(f"  (unknown preset '{build_preset}', using 'custom')")
+        build_preset = "custom"
     build_test = _ask(inp, out, "Test command (blank to fill later)", "")
 
     security_blocking = _profile_security_blocking(profile)

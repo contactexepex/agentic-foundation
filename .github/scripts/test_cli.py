@@ -208,6 +208,20 @@ def test_init_refuses_symlink_destination() -> None:
         check(rc == 1 and not (outside / "config.yml").exists(),
               "init: refuses to write through a symlinked ancestor directory")
 
+    # Same symlinked ancestor, but the outside target file ALREADY exists: --force must not
+    # overwrite it (the leaf exists via the symlink, so an exists()-based boundary would miss it).
+    with tempfile.TemporaryDirectory() as d:
+        outside = Path(d) / "outside"
+        outside.mkdir()
+        sentinel = outside / "config.yml"
+        sentinel.write_text("do-not-clobber\n")
+        linked_dir = Path(d) / ".agentic"
+        os.symlink(outside, linked_dir)
+        dest = linked_dir / "config.yml"  # exists as a real file via the symlinked parent
+        rc = cli.main(["init", "--profile", "minimal", "--config", str(dest), "--force"])
+        check(rc == 1 and sentinel.read_text() == "do-not-clobber\n",
+              "init: refuses to overwrite an existing outside file via a symlinked ancestor (--force)")
+
 
 def test_init_full_profile_keeps_security_blocking() -> None:
     from stagr import scaffold
@@ -229,6 +243,30 @@ def test_init_full_profile_keeps_security_blocking() -> None:
     sec2 = next(s for s in cfg2["stages"] if s.get("type") == "security")
     check(sec2.get("gate") == render.GATE_ADVISORY,
           "init --profile standard: security stage is advisory (matches canonical profile)")
+
+
+def test_init_build_presets_match_schema_and_wizard_validates() -> None:
+    import json as _json
+    from stagr import scaffold
+    schema = _json.loads((REPO_ROOT / "stagr" / "config.schema.json").read_text())
+    schema_presets = set(schema["properties"]["build"]["properties"]["preset"]["enum"])
+    check(set(scaffold.BUILD_PRESETS) == schema_presets,
+          "init: BUILD_PRESETS matches the schema's build.preset enum (no drift)")
+
+    # A mistyped preset in the wizard falls back to a schema-valid value, so the generated
+    # config still passes doctor rather than emitting `preset: pyhton`.
+    answers = iter(["", "", "", "", "pyhton", "", "n"])  # profile,branch,model,token,preset,test,gov
+    ch = scaffold.run_wizard(inp=lambda _p: next(answers), out=lambda _m: None)
+    check(ch["build_preset"] == "custom",
+          "wizard: an unknown build preset falls back to 'custom'")
+    text = scaffold.generate(ch)
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "c.yml"
+        p.write_text(text)
+        cfg = render.load_config(p)
+        render.validate_config(cfg)
+    check(cfg["build"]["preset"] in schema_presets,
+          "wizard: generated build preset is schema-valid after fallback")
 
 
 def test_default_token_secret_is_neutral() -> None:
@@ -257,6 +295,7 @@ def main() -> int:
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
     test_init_full_profile_keeps_security_blocking()
+    test_init_build_presets_match_schema_and_wizard_validates()
     test_default_token_secret_is_neutral()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)

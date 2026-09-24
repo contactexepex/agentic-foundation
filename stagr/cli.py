@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -246,16 +247,21 @@ def cmd_apply(args: argparse.Namespace) -> int:
 def _symlink_in_chain(dest: Path) -> Path | None:
     """First symlink in `dest`'s chain up to the nearest existing real directory, else None.
 
-    Walks from the leaf upward, checking each component before it is created. The walk stops at
-    the first component that already exists as a real (non-symlink) directory — the boundary
-    `init` writes within — so pre-existing system symlinks further up (e.g. macOS `/tmp`) are not
-    flagged, while a symlinked leaf or a symlinked ancestor inside the checkout is caught.
+    Walks the destination (absolutized, symlinks NOT pre-resolved) from the leaf upward and
+    rejects any component that is a symlink: the leaf itself (`is_symlink` uses lstat, so even a
+    broken link is caught) OR an ancestor such as a crafted `.agentic` -> outside in an untrusted
+    checkout, which `mkdir`/`write_text` would follow to escape the repo. The walk stops only at
+    the first component that already exists as a real (non-symlink) *directory* — the safe
+    boundary init writes within. Using is_dir() (not exists()) as the boundary is deliberate: a
+    real-file leaf reached THROUGH a symlinked parent exists but is not a boundary, so the
+    symlinked parent is still inspected; and pre-existing system symlinks above that directory
+    (e.g. macOS `/tmp`) are never reached.
     """
-    cur = dest
+    cur = Path(os.path.abspath(dest))
     while True:
         if cur.is_symlink():
             return cur
-        if cur.exists():  # a real, non-symlink file/dir: safe boundary reached
+        if cur.is_dir():  # a real (non-symlink) directory: safe boundary reached
             return None
         parent = cur.parent
         if parent == cur:  # reached the filesystem anchor without hitting anything
