@@ -136,14 +136,23 @@ def test_new_behaviors() -> None:
         check(merged["defaults"]["models"]["openai"]["default"] == "o-child", "extends: child adds model")
 
     # extends confinement: a base resolving OUTSIDE the project root is rejected (untrusted config
-    # content must not read an arbitrary host file into the merged contract).
-    with _project_dir() as dp:
-        (dp.parent / "outside-base.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
-        (dp / "child.yml").write_text("version: 2\nextends: ../outside-base.yml\nprofile: custom\n")
-        expect_raises(
-            lambda: render.load_config(dp / "child.yml"),
-            "extends: a base outside the project root is rejected",
-        )
+    # content must not read an arbitrary host file into the merged contract). Keep BOTH the project
+    # and the out-of-repo base inside one managed temp dir so every fixture is cleaned up (never
+    # write a predictable sibling like /tmp/outside-base.yml).
+    with tempfile.TemporaryDirectory() as outer:
+        project = Path(outer) / "project"
+        project.mkdir()
+        (Path(outer) / "outside-base.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
+        (project / "child.yml").write_text("version: 2\nextends: ../outside-base.yml\nprofile: custom\n")
+        prev = Path.cwd()
+        os.chdir(project)
+        try:
+            expect_raises(
+                lambda: render.load_config(project / "child.yml"),
+                "extends: a base outside the project root is rejected",
+            )
+        finally:
+            os.chdir(prev)
 
     # from-preset expansion: a stage with only id+from gains the preset's type/skill
     stages = render.expand_stages({"profile": "custom", "stages": [{"id": "review", "from": "code-review"}]})

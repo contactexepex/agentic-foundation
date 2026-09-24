@@ -129,6 +129,18 @@ def test_config_path_confined_to_project_root() -> None:
         check(confined, "confine_config_path: rejects a path outside the project root")
 
 
+def test_config_path_symlink_loop_is_clean_error() -> None:
+    # A symlink loop in the path chain makes Path.resolve() raise RuntimeError; confinement must
+    # turn that into a clean exit-1 error, not an uncaught traceback.
+    with _project_dir() as d:
+        a = d / "a"
+        b = d / "b"
+        os.symlink(b, a)
+        os.symlink(a, b)  # a -> b -> a
+        rc = cli.main(["init", "--profile", "minimal", "--config", str(a / "config.yml"), "--force"])
+        check(rc == 1, "init: a symlink-loop --config exits 1 (clean error, no traceback)")
+
+
 def test_plan_apply_idempotent() -> None:
     config = REPO_ROOT / ".agentic" / "config.yml"
     with tempfile.TemporaryDirectory() as d:
@@ -526,6 +538,7 @@ def main() -> int:
     test_doctor_no_secret_values_and_exit()
     test_doctor_fail_loud()
     test_config_path_confined_to_project_root()
+    test_config_path_symlink_loop_is_clean_error()
     test_plan_apply_idempotent()
     test_init_profiles_generate_valid_configs()
     test_init_write_and_overwrite_guard()

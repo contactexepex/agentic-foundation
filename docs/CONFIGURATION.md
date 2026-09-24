@@ -91,7 +91,7 @@ defaults:
 ### `extends` (optional — config inheritance)
 | Field | Meaning |
 |---|---|
-| `extends` | A path/URI, or ordered list of them, to base configs merged **before** this file. Local values win. Layer an org base → team base → this repo. Maps deep-merge; scalars and arrays are replaced by the later (more specific) layer. |
+| `extends` | A path, or ordered list of paths, to base configs merged **before** this file. Local values win. Layer an org base → team base → this repo. Maps deep-merge; scalars and arrays are replaced by the later (more specific) layer. **Every base must live inside the repository checkout** (the project root): stagr operates on the current repo and treats config content as untrusted, so a base resolving outside the checkout (an absolute path, a `../` escape, or a symlink out) is **rejected at load time**. To share an org base, **vendor it into the repo** — commit it, add it as a submodule, or fetch it at checkout so it lands inside the tree — rather than pointing at a path outside the repo. (`uri:` remote bases are not fetched offline; vendor them locally.) |
 
 ### `profile`
 | Field | Meaning |

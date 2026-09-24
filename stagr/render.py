@@ -216,7 +216,13 @@ def _confine_to_project_root(path: Path, what: str) -> Path:
     (see `_load_agent_preset` and `backends/generic/runner._confine`).
     """
     root = Path.cwd().resolve()
-    resolved = path.resolve()
+    try:
+        resolved = path.resolve()
+    except (OSError, RuntimeError) as exc:
+        # An untrusted checkout can contain a symlink loop (a -> b -> a) in the path chain, which
+        # makes Path.resolve() raise RuntimeError (or OSError). Turn any resolution failure into a
+        # clean RenderError so callers report it, rather than crashing with a traceback.
+        raise RenderError(f"{what} '{path}' cannot be resolved: {exc}") from exc
     if not resolved.is_relative_to(root):
         raise RenderError(
             f"{what} '{path}' resolves outside the project root ({root}); "
