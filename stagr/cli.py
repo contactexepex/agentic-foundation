@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import re
 import stat
 import sys
 from pathlib import Path
@@ -31,6 +32,11 @@ import yaml
 
 from . import render, scaffold
 from .backends.generic.runner import DEFAULT_KEY_SECRET
+
+# Shapes of real credentials that must never be serialized into a generated config: GitHub tokens
+# (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_) and provider API keys (sk-…, incl. sk-ant-…). A secret
+# NAME never looks like these, so matching one means a value was pasted where a NAME was expected.
+_SECRET_VALUE_RE = re.compile(r"gh[porsu]_[A-Za-z0-9]{8,}|github_pat_[A-Za-z0-9_]{8,}|sk-[A-Za-z0-9-]{8,}")
 
 
 # --------------------------------------------------------------------------- helpers
@@ -89,8 +95,10 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
                 report["problems"].append(f"stage '{stage.get('id')}': {exc}")
         else:
             entry["model"] = f"(app-supplied by backend '{backend}')"
-        # Record the secret NAME this stage's provider needs (never a value).
-        if provider:
+        # Record the provider API-key NAME (never a value) ONLY for backends that consume a model
+        # key. App backends (e.g. codex) drive their own model via their GitHub App and never read
+        # the provider key, so reporting it would tell the operator to create an unused credential.
+        if provider and backend in render.BACKENDS_NEEDING_MODEL:
             secret_names.add(_key_secret_name(cfg, provider))
             extra = ((cfg.get("providers", {}) or {}).get(provider, {}) or {}).get("extra_headers_secret")
             if extra:
@@ -324,6 +332,17 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 1
 
     text = scaffold.generate(choices)
+
+    # Never let a real credential reach the file or stdout. If a user pastes a token/key VALUE
+    # where a secret NAME is expected (an easy onboarding mistake — `ghp_…`, `github_pat_…`, an
+    # `sk-…` API key), it can satisfy the secret-name regex and be serialized. Refuse to emit
+    # anything in that case; the value belongs only in the CI secret store, referenced by NAME.
+    leaked = _SECRET_VALUE_RE.search(text)
+    if leaked:
+        print("init: an entered value looks like a real credential, not a secret NAME. stagr never\n"
+              "  stores secret values — enter the NAME of the secret (its value lives in your CI\n"
+              "  secret store). Nothing was written.", file=sys.stderr)
+        return 1
 
     # Validate the generated config BEFORE printing or writing it, so neither `--print` (which a
     # user may redirect into .agentic/config.yml) nor a write ever emits a config that then fails

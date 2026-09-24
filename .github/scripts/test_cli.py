@@ -43,12 +43,24 @@ def test_report() -> None:
     check(impl["model"] == "claude-sonnet-5", "doctor: claude implementer model resolved")
     codex = next(s for s in rep["stages"] if s["id"] == "implement-codex")
     check("app-supplied" in str(codex["model"]), "doctor: codex implementer model is app-supplied")
-    # secret NAMES surfaced, never values.
+    # secret NAMES surfaced, never values. The claude implementer (generic-family backend) needs
+    # ANTHROPIC_API_KEY; the openai stages are all codex (app) backend, so OPENAI_API_KEY is NOT
+    # required (the app does not read a provider API key); the codex review lane needs the PAT.
     check("ANTHROPIC_API_KEY" in rep["secret_names"], "doctor: claude key secret NAME surfaced")
-    check("OPENAI_API_KEY" in rep["secret_names"], "doctor: openai key secret NAME surfaced")
+    check("OPENAI_API_KEY" not in rep["secret_names"],
+          "doctor: openai key NOT required when openai is used only via the codex app backend")
     check("REMEDIATION_TOKEN" in rep["secret_names"], "doctor: codex review PAT NAME surfaced")
     check("request-review.yml" in rep["workflows"], "doctor: review lane in render set")
     check(not rep["problems"], "doctor: healthy config has no problems")
+
+    # A model-consuming (generic) backend on openai DOES require the provider key.
+    generic_cfg = {"version": 2, "profile": "custom",
+                   "platform": {"type": "github", "default_branch": "main"},
+                   "defaults": {"provider": "openai", "models": {"openai": {"default": "m"}}},
+                   "stages": [{"id": "impl", "type": "implement", "backend": {"name": "generic"}}]}
+    rep_generic = cli.collect_report(generic_cfg, "github")
+    check("OPENAI_API_KEY" in rep_generic["secret_names"],
+          "doctor: openai key IS required for a model-consuming (generic) backend")
 
 
 def test_doctor_no_secret_values_and_exit() -> None:
@@ -278,6 +290,35 @@ def test_init_rejects_values_the_pipeline_would_reject() -> None:
         scaffold.run_wizard = original_run_wizard
 
 
+def test_init_rejects_pasted_credential_value() -> None:
+    # Pasting a real token VALUE where a secret NAME is expected must be refused before any output,
+    # so a live credential is never serialized into the config or --print.
+    from stagr import scaffold
+    bad_choices = {**scaffold.default_choices("minimal"), "token_secret": "ghp_" + "A" * 24}
+    original_run_wizard = scaffold.run_wizard
+    scaffold.run_wizard = lambda *a, **k: bad_choices
+
+    class _TTY:
+        def isatty(self) -> bool:
+            return True
+    old_stdin = sys.stdin
+    sys.stdin = _TTY()  # type: ignore[assignment]
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / ".agentic" / "config.yml"
+            rc = cli.main(["init", "--config", str(dest)])
+            check(rc == 1 and not dest.exists(),
+                  "init: a pasted token value is refused and no file is written")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc_print = cli.main(["init", "--print"])
+        check(rc_print == 1 and buf.getvalue() == "",
+              "init --print: a pasted token value is refused and nothing is printed")
+    finally:
+        sys.stdin = old_stdin
+        scaffold.run_wizard = original_run_wizard
+
+
 def test_init_print_keeps_stdout_yaml_only() -> None:
     # Interactive stdin + redirected stdout (`stagr init --print > .agentic/config.yml`): the
     # wizard's UI must go to stderr and validation must run, so stdout is pure, valid YAML.
@@ -421,6 +462,7 @@ def main() -> int:
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
     test_init_rejects_values_the_pipeline_would_reject()
+    test_init_rejects_pasted_credential_value()
     test_init_print_keeps_stdout_yaml_only()
     test_init_full_profile_keeps_security_blocking()
     test_init_review_gate_derived_from_profile()

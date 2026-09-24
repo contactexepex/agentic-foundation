@@ -156,7 +156,12 @@ _CUSTOM_SKELETON = """\
 
 def _security_snippet(blocking: bool) -> str:
     gate = GATE_BLOCKING if blocking else GATE_ADVISORY
-    note = "blocks the PR" if blocking else "advisory: reports, does not block"
+    # A security finding blocks the PR by posting a review thread (the merge gate requires zero
+    # unresolved threads). Gating on security-review *completion* (blocking even a clean review
+    # until it finishes) is roadmap — CHARTER §7 — so "blocking" here means findings block today,
+    # not that merge waits for the review to complete.
+    note = ("blocking: findings block via review threads; completion-gating is roadmap (CHARTER §7)"
+            if blocking else "advisory: reports, does not block")
     return (
         f"  # Security reviewer — Codex security review ({note}).\n"
         "  - id: security\n"
