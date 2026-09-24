@@ -151,8 +151,10 @@ is that agent placed in the pipeline graph.
 
 ### `stages` (optional — the agent graph)
 Omit to use the profile's stages. Anything you list is **merged onto** the profile (a stage with the
-same `id` overrides). Each stage is one agent; mix providers and models freely (the executor is
-derived from the provider).
+same `id` overrides). Each stage is one agent. Today an **implement** stage must be `anthropic`
+(Claude Code) and a **review/security** stage must be `openai` (Codex) — mix these per stage. Other
+pairings are roadmap: an `openai` implement stage fails loud at render, and an `anthropic`
+review/security stage renders no lane yet.
 
 | Field | Meaning |
 |---|---|
@@ -284,8 +286,8 @@ Key points:
 - **Fail loudly, never guess.** If no model resolves for a stage/tier, the installer/run stops with a
   clear error naming the stage and which key to set — it never silently picks a model version.
 
-**Example** — org sets the defaults; one review stage pins only its complex tier and uses a different
-provider than the implementer (any permutation is valid):
+**Example** — org sets the defaults; the review stage pins only its complex tier (the supported
+pairing: Anthropic implement, OpenAI review):
 
 ```yaml
 defaults:

@@ -113,6 +113,11 @@ _PROFILE_STAGES: dict[str, list[str]] = {
 # them, commented, so the intended graph is visible without emitting anything unexpected.
 _ROADMAP_STAGES = ("plan", "test", "integration-test", "docs")
 
+# Canonical provider per roadmap stage (mirrors render.PROFILE_STAGES): plan/docs run Claude Code,
+# test/integration-test run Codex. Serialized into the commented stages so uncommenting one keeps the
+# provider the profile intended instead of silently inheriting defaults.provider.
+_ROADMAP_STAGE_PROVIDER = {"plan": "anthropic", "docs": "anthropic", "test": "openai", "integration-test": "openai"}
+
 
 def _canonical_gate(profile: str, stage_type: str) -> str | None:
     """The gate the canonical profile (render.PROFILE_STAGES) assigns a stage type, or None.
@@ -245,7 +250,7 @@ def _stages_block(choices: dict[str, Any]) -> str:
 
     roadmap = [s for s in wanted if s in _ROADMAP_STAGES]
     if roadmap:
-        commented = "\n".join(f"  # - {{ id: {s}, type: {s} }}" for s in roadmap)
+        commented = "\n".join(f"  # - {{ id: {s}, type: {s}, provider: {_ROADMAP_STAGE_PROVIDER[s]} }}" for s in roadmap)
         parts.append(
             "  # Declared but NOT yet rendered to workflows (multi-stage rendering is roadmap —\n"
             f"  # {_DOCS_CHARTER} §7). Uncomment to declare intent; `stagr plan` shows what renders.\n"
