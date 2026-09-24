@@ -204,6 +204,27 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
     return _deep_merge(merged, child)
 
 
+def confine_config_path(path: Path) -> Path:
+    """Confine a CLI-supplied config path to the project root (the CWD) and return it resolved.
+
+    The `--config` value arrives from the command line. stagr is a control plane that operates on
+    the current repository, so its contract lives inside that checkout; a value resolving outside it
+    (`--config ../../etc/passwd`, an absolute host path) is either a mistake or — in an agentic flow,
+    where a CLI argument can be steered by untrusted data — an attempt to read an arbitrary host file
+    into the pipeline. Reject anything outside the project root, the same containment the toolkit
+    already applies to skill/preset/instruction paths (see `_load_agent_preset` and
+    `backends/generic/runner._confine`), so the read sink only ever sees a validated in-repo path.
+    """
+    root = Path.cwd().resolve()
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root):
+        raise RenderError(
+            f"config path '{path}' resolves outside the project root ({root}); "
+            "run stagr from your repository with the config inside it"
+        )
+    return resolved
+
+
 def load_config(path: Path) -> dict[str, Any]:
     cfg = _read_yaml(path)
     return resolve_extends(cfg, path.parent)
@@ -561,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        cfg = load_config(args.config)
+        cfg = load_config(confine_config_path(args.config))
         validate_config(cfg)
         platform = args.platform or (cfg.get("platform", {}) or {}).get("type", "github")
         rendered = render_all(cfg, platform)

@@ -75,6 +75,7 @@ def test_doctor_no_secret_values_and_exit() -> None:
 
 
 def test_doctor_fail_loud() -> None:
+    import os
     with tempfile.TemporaryDirectory() as d:
         bad = Path(d) / "config.yml"
         bad.write_text(
@@ -83,8 +84,31 @@ def test_doctor_fail_loud() -> None:
             "defaults: {provider: openai, models: {}}\n"
             "stages:\n  - {id: implement, type: implement, backend: {name: generic}}\n"
         )
-        rc = cli.main(["doctor", "--config", str(bad), "--json"])
+        # The config must sit inside the project root the CLI confines `--config` to, so this
+        # exercises the model-resolution failure (not the containment guard). Run from the tmp repo.
+        prev = Path.cwd()
+        os.chdir(d)
+        try:
+            rc = cli.main(["doctor", "--config", "config.yml", "--json"])
+        finally:
+            os.chdir(prev)
         check(rc == 1, "doctor: unresolvable generic implementer model exits 1")
+
+
+def test_config_path_confined_to_project_root() -> None:
+    # A `--config` resolving outside the project root (CWD) is rejected before any read, so an
+    # agentic caller cannot be steered into reading an arbitrary host file into the pipeline.
+    with tempfile.TemporaryDirectory() as outside:
+        target = Path(outside) / "secret.yml"
+        target.write_text("version: 2\n")
+        rc = cli.main(["doctor", "--config", str(target)])
+        check(rc == 1, "doctor: refuses a --config outside the project root")
+        try:
+            render.confine_config_path(target)
+            confined = False
+        except render.RenderError:
+            confined = True
+        check(confined, "confine_config_path: rejects a path outside the project root")
 
 
 def test_plan_apply_idempotent() -> None:
@@ -484,6 +508,7 @@ def main() -> int:
     test_report()
     test_doctor_no_secret_values_and_exit()
     test_doctor_fail_loud()
+    test_config_path_confined_to_project_root()
     test_plan_apply_idempotent()
     test_init_profiles_generate_valid_configs()
     test_init_write_and_overwrite_guard()

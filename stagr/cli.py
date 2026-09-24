@@ -36,7 +36,11 @@ from .backends.generic.runner import DEFAULT_KEY_SECRET
 # Shapes of real credentials that must never be serialized into a generated config: GitHub tokens
 # (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_) and provider API keys (sk-…, incl. sk-ant-…). A secret
 # NAME never looks like these, so matching one means a value was pasted where a NAME was expected.
-_SECRET_VALUE_RE = re.compile(r"gh[porsu]_[A-Za-z0-9]{8,}|github_pat_[A-Za-z0-9_]{8,}|sk-[A-Za-z0-9-]{8,}")
+_SECRET_VALUE_RE = re.compile(r"gh[porsu]_[A-Za-z0-9]{8,}|github_pat_\w{8,}|sk-[A-Za-z0-9-]{8,}")
+
+# The conventional in-repo location of the contract. Used as every command's `--config` default and
+# to detect when `init` wrote somewhere else, so its "next steps" hint can point at the right file.
+DEFAULT_CONFIG_PATH = Path(".agentic/config.yml")
 
 
 # --------------------------------------------------------------------------- helpers
@@ -119,7 +123,7 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
 
 
 def _load_validated(config_path: Path) -> tuple[dict[str, Any], str]:
-    cfg = render.load_config(config_path)
+    cfg = render.load_config(render.confine_config_path(config_path))
     render.validate_config(cfg)
     platform = (cfg.get("platform", {}) or {}).get("type", "github")
     return cfg, platform
@@ -310,45 +314,40 @@ def _prompt_from_stdin(prompt: str) -> str:
     return sys.stdin.readline()
 
 
-def cmd_init(args: argparse.Namespace) -> int:
-    """Scaffold a commented .agentic/config.yml — interactively, or from a profile."""
+def _resolve_init_choices(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Pick the wizard/profile answers for `init`.
+
+    Returns the choices, or None when setup cannot proceed (a `--profile` value the scaffold
+    rejects, or a non-interactive run with no `--profile`); the reason is printed to stderr.
+    """
     if args.profile or args.yes:
         try:
-            choices = scaffold.default_choices(args.profile or "standard")
+            return scaffold.default_choices(args.profile or "standard")
         except ValueError as exc:
             print(f"init: {exc}", file=sys.stderr)
-            return 1
-    elif sys.stdin.isatty():
+            return None
+    if sys.stdin.isatty():
         # The wizard is UI: route every prompt and message to stderr so stdout stays reserved for
         # the generated config (`--print`) or the result messages.
-        choices = scaffold.run_wizard(read_input=_prompt_from_stdin, write_line=_emit_to_stderr)
-    else:
-        print(
-            "init: not a terminal, and no --profile given.\n"
-            "  Run `stagr init` in a terminal for guided setup, or\n"
-            "  `stagr init --profile <minimal|standard|full|custom>` to generate a file directly.",
-            file=sys.stderr,
-        )
-        return 1
+        return scaffold.run_wizard(read_input=_prompt_from_stdin, write_line=_emit_to_stderr)
+    print(
+        "init: not a terminal, and no --profile given.\n"
+        "  Run `stagr init` in a terminal for guided setup, or\n"
+        "  `stagr init --profile <minimal|standard|full|custom>` to generate a file directly.",
+        file=sys.stderr,
+    )
+    return None
 
-    text = scaffold.generate(choices)
 
-    # Never let a real credential reach the file or stdout. If a user pastes a token/key VALUE
-    # where a secret NAME is expected (an easy onboarding mistake — `ghp_…`, `github_pat_…`, an
-    # `sk-…` API key), it can satisfy the secret-name regex and be serialized. Refuse to emit
-    # anything in that case; the value belongs only in the CI secret store, referenced by NAME.
-    leaked = _SECRET_VALUE_RE.search(text)
-    if leaked:
-        print("init: an entered value looks like a real credential, not a secret NAME. stagr never\n"
-              "  stores secret values — enter the NAME of the secret (its value lives in your CI\n"
-              "  secret store). Nothing was written.", file=sys.stderr)
-        return 1
+def _generated_config_is_valid(text: str) -> bool:
+    """Validate the generated config BEFORE it is printed or written.
 
-    # Validate the generated config BEFORE printing or writing it, so neither `--print` (which a
-    # user may redirect into .agentic/config.yml) nor a write ever emits a config that then fails
-    # the `doctor`/`plan` step init points at. This catches semantically invalid free-form values
-    # the schema alone accepts — a secret name with a hyphen, a branch with whitespace, a model id
-    # with expression metacharacters — which the renderer (the single source of truth) rejects.
+    So neither `--print` (which a user may redirect into .agentic/config.yml) nor a write ever
+    emits a config that then fails the `doctor`/`plan` step init points at. This catches
+    semantically invalid free-form values the schema alone accepts — a secret name with a hyphen,
+    a branch with whitespace, a model id with expression metacharacters — which the renderer (the
+    single source of truth) rejects. Returns True when valid; otherwise prints why and returns False.
+    """
     try:
         generated_cfg = yaml.safe_load(text)
         render.validate_config(generated_cfg)
@@ -357,13 +356,12 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"init: the chosen values produce a config the pipeline rejects: {exc}\n"
               "  Nothing was written. Re-run and choose values the message above accepts.",
               file=sys.stderr)
-        return 1
+        return False
+    return True
 
-    if args.print_only:
-        print(text, end="")
-        return 0
 
-    dest = args.config
+def _write_generated_config(dest: Path, text: str, force: bool) -> int:
+    """Write the generated config to `dest` with symlink/overwrite/IO guards. Returns an exit code."""
     # Refuse to write through a symlink anywhere in the destination's chain — the leaf OR an
     # ancestor (e.g. a crafted `.agentic` symlink in an untrusted checkout would redirect the
     # write outside the repo, and a broken symlink would even slip past the exists() guard).
@@ -375,7 +373,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"init: {dest} is reached through a symlink{which}; refusing to write through it. "
               f"Remove it or pass a different --config path.", file=sys.stderr)
         return 1
-    if dest.exists() and not args.force:
+    if dest.exists() and not force:
         print(f"init: {dest} already exists — use --force to overwrite, or --print to preview.",
               file=sys.stderr)
         return 1
@@ -390,16 +388,53 @@ def cmd_init(args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"init: could not write {dest}: {exc}", file=sys.stderr)
         return 1
-    print(f"init: wrote {dest} (profile: {choices['profile']}).")
+    return 0
+
+
+def _print_init_next_steps(dest: Path) -> None:
+    """Point the user at the follow-up commands after `init` writes the config."""
     # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, point the user at
     # the file. Show the path plainly rather than a copy-paste command: shells quote differently
     # (POSIX/PowerShell single quotes vs cmd.exe double quotes), so one quoted command can't be
     # correct everywhere — leave shell-specific quoting to the user.
-    if dest == Path(".agentic/config.yml"):
+    if dest == DEFAULT_CONFIG_PATH:
         print("next: `stagr doctor` to validate, `stagr plan` to preview, `stagr apply` to write workflows.")
     else:
         print(f"next: run `stagr doctor`, then `stagr plan`, then `stagr apply`, passing `--config` "
               f"with this file's path to each: {dest}  (quote it for your shell if it has spaces).")
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold a commented .agentic/config.yml — interactively, or from a profile."""
+    choices = _resolve_init_choices(args)
+    if choices is None:
+        return 1
+
+    text = scaffold.generate(choices)
+
+    # Never let a real credential reach the file or stdout. If a user pastes a token/key VALUE
+    # where a secret NAME is expected (an easy onboarding mistake — `ghp_…`, `github_pat_…`, an
+    # `sk-…` API key), it can satisfy the secret-name regex and be serialized. Refuse to emit
+    # anything in that case; the value belongs only in the CI secret store, referenced by NAME.
+    if _SECRET_VALUE_RE.search(text):
+        print("init: an entered value looks like a real credential, not a secret NAME. stagr never\n"
+              "  stores secret values — enter the NAME of the secret (its value lives in your CI\n"
+              "  secret store). Nothing was written.", file=sys.stderr)
+        return 1
+
+    if not _generated_config_is_valid(text):
+        return 1
+
+    if args.print_only:
+        print(text, end="")
+        return 0
+
+    dest = args.config
+    rc = _write_generated_config(dest, text, args.force)
+    if rc != 0:
+        return rc
+    print(f"init: wrote {dest} (profile: {choices['profile']}).")
+    _print_init_next_steps(dest)
     return 0
 
 
@@ -436,7 +471,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def add_common_arguments(command_parser: argparse.ArgumentParser) -> None:
-        command_parser.add_argument("--config", default=Path(".agentic/config.yml"), type=Path,
+        command_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, type=Path,
                                     help="path to the .agentic/config.yml contract")
         command_parser.add_argument("--platform", default=None, help="override platform.type (e.g. github)")
 
@@ -461,7 +496,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_parser = subparsers.add_parser(
         "init", help="scaffold a .agentic/config.yml (interactive, or --profile to generate)")
-    init_parser.add_argument("--config", default=Path(".agentic/config.yml"), type=Path, help="output path")
+    init_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, type=Path, help="output path")
     init_parser.add_argument("--profile", choices=list(scaffold.PROFILES),
                              help="generate non-interactively from this profile (skips the wizard)")
     init_parser.add_argument("--print", dest="print_only", action="store_true",
