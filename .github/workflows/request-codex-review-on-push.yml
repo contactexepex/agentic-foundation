@@ -127,18 +127,30 @@ jobs:
             exit 0
           fi
 
-          # Serialize against the final security review. If a push lands while the final security review
-          # is Running, requesting the code review now would run the two concurrently and hit Codex's
-          # backend collision — the very failure this pipeline exists to avoid. So wait (bounded) for any
-          # in-flight security review on this PR to stop running before requesting the code review. If it
-          # does not clear within the budget, proceed anyway (fail-safe toward a head-bound review; a
-          # rare late collision is recoverable by re-requesting).
+          # Serialize against the final security review — FAIL-CLOSED. If a push lands while the final
+          # security review is Running, requesting the code review now would run the two concurrently and
+          # hit Codex's backend collision — the very failure this pipeline exists to avoid. Wait (bounded)
+          # for any in-flight security review on this PR to stop; if it is STILL running at the deadline,
+          # or its state cannot be read, SKIP this run rather than post — deliberately starting a known
+          # concurrent pair is never safe. A later push re-requests the head-bound code review once
+          # security has stopped.
           sec_deadline=$(( SECONDS + 180 ))
-          while (( SECONDS < sec_deadline )); do
-            sec_summary="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --slurp \
-              | jq -r '[ add[]? | select(.user.login=="chatgpt-codex-connector[bot]") | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' 2>/dev/null || echo "")"
+          while :; do
+            if ! sec_comments="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --slurp 2>/dev/null)"; then
+              echo "Cannot read PR comments to check security-review state; skipping to avoid a concurrent pair. A later push will re-request the code review."
+              exit 0
+            fi
+            if ! sec_summary="$(jq -r '[ add[]? | select(.user.login=="chatgpt-codex-connector[bot]") | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$sec_comments" 2>/dev/null)"; then
+              echo "Cannot parse PR comments to check security-review state; skipping to avoid a concurrent pair."
+              exit 0
+            fi
             sec_row="$(grep -i 'Security Review' <<<"$sec_summary" | head -1 || true)"
+            # No security row, or it is not Running -> safe to request the code review.
             grep -qi 'Running' <<<"$sec_row" || break
+            if (( SECONDS >= sec_deadline )); then
+              echo "A Codex security review is still running on PR #${PR_NUMBER} after the wait budget; skipping to avoid a concurrent pair. A later push re-requests the code review once security stops."
+              exit 0
+            fi
             echo "A Codex security review is still running on PR #${PR_NUMBER}; waiting before requesting the code review to avoid a concurrent pair."
             sleep 10
           done
