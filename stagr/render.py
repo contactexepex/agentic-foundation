@@ -413,6 +413,28 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     fast_path_enabled = routing.get("enabled", True)
     fast_path_globs = list(routing.get("globs", ["**/*.md"])) if fast_path_enabled else []
 
+    # The on-push re-review requests are per-lane: ask Codex for a code review only when a codex
+    # code-review stage runs on pushes, and for a security review only when a codex security stage
+    # does. This keeps, e.g., the `minimal` profile (code review only) from firing a paid security
+    # review it never configured. request-review.yml is emitted only when at least one of these is
+    # present (select_templates), so at least one request line is always active.
+    def _requests_push_review(stage_type: str) -> bool:
+        return any(
+            stage.get("type") == stage_type
+            and _stage_backend(stage) == BACKEND_CODEX
+            and _wants_push_review(stage)
+            for stage in stages.values()
+        )
+
+    code_review_request = (
+        "post_codex '@codex review'" if _requests_push_review("review")
+        else "# no code-review stage configured; not requesting a Codex code review"
+    )
+    security_review_request = (
+        "post_codex '@codex security review'" if _requests_push_review("security")
+        else "# no security stage configured; not requesting a Codex security review"
+    )
+
     return {
         "default_branch": default_branch,
         "human_merge_label": labels.get("human_merge", "human-merge"),
@@ -428,6 +450,8 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
         "build_steps": _build_steps(cfg),
         "review_status_context": "Publish fast review result",
         "codex_review_secret": codex_review_secret,
+        "code_review_request": code_review_request,
+        "security_review_request": security_review_request,
     }
 
 
@@ -444,9 +468,11 @@ def render_template(text: str, context: dict[str, str]) -> str:
     return _TOKEN.sub(substitute_token, text)
 
 
-# The always-emitted core: the repo's "green" check, the review router that classifies each
-# change, and the manual implementer entry point.
-CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl", "implementor.yml.tmpl"]
+# The always-emitted core: the repo's "green" check and the review router that classifies each
+# change. The implementer entry point is emitted separately, only when an implement stage exists
+# (otherwise implementor.yml would carry an empty model and reference a key the graph never needs).
+CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl"]
+IMPLEMENTOR_TEMPLATE = "implementor.yml.tmpl"
 # The codex review lane: request a re-review of each pushed head, and auto-resolve outdated
 # Codex threads. Emitted only when a codex-backed review/security stage is configured.
 REVIEW_TEMPLATES = ["request-review.yml.tmpl", "resolve-threads.yml.tmpl"]
@@ -476,6 +502,10 @@ def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     auto_merge config still renders its core pipeline without a half-decided security gate.)
     """
     names = list(CORE_TEMPLATES)
+    # The implementer workflow is emitted only when the graph actually has an implement stage;
+    # without one it would render with an empty model and a provider key the pipeline never uses.
+    if any(stage.get("type") == "implement" for stage in stages):
+        names.append(IMPLEMENTOR_TEMPLATE)
     if any(
         stage.get("type") in REVIEW_LANE_TYPES
         and _stage_backend(stage) == BACKEND_CODEX

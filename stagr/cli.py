@@ -22,10 +22,11 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from . import render, scaffold
 from .backends.generic.runner import DEFAULT_KEY_SECRET
@@ -247,15 +248,19 @@ def cmd_apply(args: argparse.Namespace) -> int:
 def _symlink_in_chain(dest: Path) -> Path | None:
     """First symlink in `dest`'s chain, checking EVERY component, or None if there is none.
 
-    Walks the absolutized destination (symlinks NOT pre-resolved) from the leaf to the filesystem
-    root, testing each component with `is_symlink()` — which lstat's that single component without
-    following it. Any symlink is rejected: the leaf itself (so even a broken link is caught) OR an
-    ancestor such as a crafted `.agentic` -> outside in an untrusted checkout, which
-    `mkdir`/`write_text` would follow to escape the repo. Every component is inspected — there is
-    no early exists()/is_dir() boundary, because those follow symlinks in earlier components and so
-    could skip past a symlinked ancestor (e.g. `.agentic/nested` where `.agentic` is the link).
+    Walks the destination from the leaf to the filesystem root, testing each component with
+    `is_symlink()` — which lstat's that single component without following it. Any symlink is
+    rejected: the leaf itself (so even a broken link is caught) OR an ancestor such as a crafted
+    `.agentic` -> outside in an untrusted checkout, which `mkdir`/`write_text` would follow to
+    escape the repo. Every component is inspected — there is no early exists()/is_dir() boundary,
+    because those follow symlinks in earlier components and could skip a symlinked ancestor.
+
+    The absolute path is built by joining onto the (already symlink-free) cwd WITHOUT normalizing
+    `..`. `os.path.abspath`/`normpath` would collapse `link/../x` to `x` lexically, hiding the
+    `link` symlink the filesystem actually follows; Path joining and Path.parent are purely
+    lexical, so a symlinked component that precedes a `..` is still visited and rejected.
     """
-    cur = Path(os.path.abspath(dest))
+    cur = dest if dest.is_absolute() else Path.cwd() / dest
     while True:
         if cur.is_symlink():
             return cur
@@ -288,6 +293,20 @@ def cmd_init(args: argparse.Namespace) -> int:
     if args.print_only:
         print(text, end="")
         return 0
+
+    # Validate what we are about to write, so init never leaves behind a config that then fails the
+    # `doctor`/`plan` step it points the user at. This catches semantically invalid free-form values
+    # the schema alone accepts — a secret name with a hyphen, a branch with whitespace, a model id
+    # with expression metacharacters — which the renderer (the single source of truth) rejects.
+    try:
+        generated_cfg = yaml.safe_load(text)
+        render.validate_config(generated_cfg)
+        render.render_all(generated_cfg, (generated_cfg.get("platform", {}) or {}).get("type", "github"))
+    except (render.RenderError, yaml.YAMLError) as exc:
+        print(f"init: the chosen values produce a config the pipeline rejects: {exc}\n"
+              "  Nothing was written. Re-run and choose values the message above accepts.",
+              file=sys.stderr)
+        return 1
 
     dest = args.config
     # Refuse to write through a symlink anywhere in the destination's chain — the leaf OR an

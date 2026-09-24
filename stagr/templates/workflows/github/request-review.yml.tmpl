@@ -111,8 +111,11 @@ jobs:
             exit 0
           fi
 
-          # Ask Codex to re-review the new head — BOTH code and security. Codex acts on only one
-          # "@codex" command per comment, so post them as two separate comments.
+          # Ask Codex to re-review the new head. Which reviews are requested depends on the
+          # configured stages: a code-review request only when a codex code-review stage runs on
+          # pushes, a security-review request only when a codex security stage does (so a pipeline
+          # that omits one lane never triggers its paid review). Codex acts on only one "@codex"
+          # command per comment, so each request is a separate comment.
           post_codex() {
             local command="$1"
             {
@@ -125,6 +128,6 @@ jobs:
             } > "$RUNNER_TEMP/comment.md"
             GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           }
-          post_codex '@codex review'
-          post_codex '@codex security review'
-          echo "Requested Codex code + security re-review for ${EVENT_HEAD_SHA} on PR #${PR_NUMBER}."
+          {{ code_review_request }}
+          {{ security_review_request }}
+          echo "Requested Codex re-review for ${EVENT_HEAD_SHA} on PR #${PR_NUMBER}."

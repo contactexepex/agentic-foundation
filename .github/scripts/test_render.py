@@ -266,6 +266,35 @@ def test_pipeline_selection() -> None:
           "select: no review lane without a codex review stage")
     check("validate.yml" in r2, "select: core pipeline still emitted")
 
+    # No implement stage -> implementor.yml is NOT emitted (it would carry an empty model and a
+    # provider key the graph never uses); the review lane still renders for the review stage.
+    review_only = {"version": 2, "profile": "custom",
+                   "platform": {"type": "github", "default_branch": "main"},
+                   "defaults": {"provider": "openai", "models": {}},
+                   "stages": [{"id": "review", "type": "review", "provider": "openai",
+                               "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
+    r3 = render.render_all(review_only, "github")
+    check("implementor.yml" not in r3, "select: no implementor.yml without an implement stage")
+    check("validate.yml" in r3 and "request-review.yml" in r3,
+          "select: core + review lane still emitted for a review-only graph")
+
+    # Per-lane review requests: a code-review-only graph asks for @codex review but NOT security.
+    code_only = {"version": 2, "profile": "custom",
+                 "platform": {"type": "github", "default_branch": "main"},
+                 "defaults": {"provider": "openai", "models": {}},
+                 "stages": [{"id": "review", "type": "review", "provider": "openai",
+                             "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
+    # Assert on the actual command line (the template's header comment mentions both phrases).
+    req_code_only = render.render_all(code_only, "github")["request-review.yml"]
+    check("post_codex '@codex review'" in req_code_only
+          and "post_codex '@codex security review'" not in req_code_only,
+          "request-review: code-review-only graph does not request a security review")
+    # The dogfood config has both review and security stages -> both requests are present.
+    req_both = rendered["request-review.yml"]
+    check("post_codex '@codex review'" in req_both
+          and "post_codex '@codex security review'" in req_both,
+          "request-review: a graph with a security stage requests both reviews")
+
 
 def test_round4_fixes() -> None:
     from stagr.backends.generic import runner as gen

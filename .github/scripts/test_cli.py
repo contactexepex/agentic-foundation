@@ -235,6 +235,41 @@ def test_init_refuses_symlink_destination() -> None:
         check(rc == 1 and not (outside / "nested" / "config.yml").exists(),
               "init: refuses a symlinked ancestor even when a real subdir exists below it")
 
+    # A `..` AFTER a symlink must not slip past the guard: `link/../config.yml` normalizes lexically
+    # to just `config.yml`, but the filesystem follows `link` first, so the write lands outside.
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "outside" / "nested").mkdir(parents=True)
+        link = Path(d) / "link"
+        os.symlink(Path(d) / "outside" / "nested", link)  # link -> outside/nested
+        dest = link / ".." / "config.yml"  # follows link, then .. -> outside/config.yml
+        rc = cli.main(["init", "--profile", "minimal", "--config", str(dest), "--force"])
+        check(rc == 1 and not (Path(d) / "outside" / "config.yml").exists(),
+              "init: refuses a symlink followed by '..' (no lexical normalization bypass)")
+
+
+def test_init_rejects_values_the_pipeline_would_reject() -> None:
+    # A free-form value the schema accepts but the renderer rejects (a secret name with a hyphen)
+    # must make init fail WITHOUT writing a file, rather than leaving a config that fails doctor.
+    from stagr import scaffold
+    bad_choices = {**scaffold.default_choices("minimal"), "token_secret": "my-token"}
+    original_run_wizard = scaffold.run_wizard
+    scaffold.run_wizard = lambda *a, **k: bad_choices  # cmd_init calls this on the TTY path
+
+    class _TTY:
+        def isatty(self) -> bool:
+            return True
+    old_stdin = sys.stdin
+    sys.stdin = _TTY()  # type: ignore[assignment]
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            dest = Path(d) / ".agentic" / "config.yml"
+            rc = cli.main(["init", "--config", str(dest)])
+            check(rc == 1 and not dest.exists(),
+                  "init: an invalid secret name is rejected and no file is written")
+    finally:
+        sys.stdin = old_stdin
+        scaffold.run_wizard = original_run_wizard
+
 
 def test_init_full_profile_keeps_security_blocking() -> None:
     from stagr import scaffold
@@ -346,6 +381,7 @@ def main() -> int:
     test_help_command()
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
+    test_init_rejects_values_the_pipeline_would_reject()
     test_init_full_profile_keeps_security_blocking()
     test_init_review_gate_derived_from_profile()
     test_init_quotes_yaml_keyword_scalars()
