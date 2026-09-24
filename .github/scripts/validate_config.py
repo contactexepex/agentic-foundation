@@ -8,17 +8,21 @@ validation step. It has no network access and only reads repository files.
 Checks:
   1. install/config.schema.json is valid JSON Schema (2020-12).
   2. templates/config/agentic.config.yml.tmpl validates against the schema.
-  3. A representative minimal config validates.
-  4. Every agent preset (templates/agents/*.yml) references an existing skill dir
-     and has a `type`.
-  5. Every skill (templates/skills/*/SKILL.md) has YAML frontmatter and a
-     structured `verdict` output contract.
+  3. The repo's own .agentic/config.yml validates against the schema (dogfood).
+  4. A representative minimal config validates.
+  5. Stage-graph invariants the schema cannot express: unique stage ids, every
+     `depends_on` names an existing stage, and no dependency cycles.
+  6. Every agent preset (templates/agents/*.yml) is a mapping with a `type` and,
+     if it names a `skill`, that skill dir exists.
+  7. Every skill (templates/skills/*/SKILL.md) has parseable YAML frontmatter with
+     the required keys and a `verdict:` line inside a fenced code block.
 
 Exit code 0 = all pass; non-zero = at least one failure (details on stderr).
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +30,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[2]
+SKILL_REQUIRED_KEYS = {"id", "name", "stage_type", "version"}
 errors: list[str] = []
 
 
@@ -36,6 +41,110 @@ def fail(msg: str) -> None:
 def load_yaml(path: Path):
     with path.open() as fh:
         return yaml.safe_load(fh)
+
+
+def check_stage_graph(cfg, label: str) -> None:
+    """Unique ids, resolvable depends_on, and acyclicity — not expressible in JSON Schema."""
+    if not isinstance(cfg, dict):
+        return
+    stages = cfg.get("stages")
+    if not isinstance(stages, list) or not stages:
+        return
+    ids: list[str] = []
+    deps: dict[str, list[str]] = {}
+    for st in stages:
+        if not isinstance(st, dict):
+            continue
+        sid = st.get("id")
+        if not isinstance(sid, str):
+            continue
+        ids.append(sid)
+        d = st.get("depends_on")
+        # A schema-invalid but plausible value (e.g. `depends_on: 1`) is reported by the schema
+        # validator; guard here so graph checking never crashes on a non-list before that report.
+        deps[sid] = [x for x in d if isinstance(x, str)] if isinstance(d, list) else []
+
+    dup = sorted({i for i in ids if ids.count(i) > 1})
+    if dup:
+        fail(f"{label}: duplicate stage id(s): {', '.join(dup)}")
+    idset = set(ids)
+
+    # `depends_on` may reference profile-provided stages that a non-`custom` config does not list
+    # here (the profile is expanded by the renderer, not by this file). So only enforce that a
+    # dependency names an EXISTING stage when the config carries the complete graph (profile: custom).
+    # Self-dependency is always invalid; cycle detection below considers only listed edges, so it is
+    # safe for any profile.
+    complete_graph = cfg.get("profile", "standard") == "custom"
+    for sid, targets in deps.items():
+        for t in targets:
+            if t == sid:
+                fail(f"{label}: stage '{sid}' depends_on itself")
+            elif complete_graph and t not in idset:
+                fail(f"{label}: stage '{sid}' depends_on missing stage '{t}'")
+
+    # Cycle detection over the resolvable edges (DFS with colors).
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {i: WHITE for i in idset}
+
+    def visit(node: str, stack: list[str]) -> None:
+        color[node] = GRAY
+        for nxt in deps.get(node, []):
+            if nxt not in idset or nxt == node:
+                continue
+            if color[nxt] == GRAY:
+                cyc = " -> ".join(stack[stack.index(nxt):] + [nxt]) if nxt in stack else f"{node} -> {nxt}"
+                fail(f"{label}: dependency cycle: {cyc}")
+            elif color[nxt] == WHITE:
+                visit(nxt, stack + [nxt])
+        color[node] = BLACK
+
+    for i in idset:
+        if color[i] == WHITE:
+            visit(i, [i])
+
+
+def check_skill(skill_md: Path) -> None:
+    rel = skill_md.relative_to(ROOT).as_posix()
+    text = skill_md.read_text()
+    if not text.startswith("---"):
+        fail(f"{rel}: missing YAML frontmatter")
+        return
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        fail(f"{rel}: unterminated YAML frontmatter")
+        return
+    try:
+        meta = yaml.safe_load(parts[1]) or {}
+    except yaml.YAMLError as exc:
+        fail(f"{rel}: frontmatter is not valid YAML: {exc}")
+        return
+    if not isinstance(meta, dict):
+        fail(f"{rel}: frontmatter must be a mapping")
+        return
+    missing = SKILL_REQUIRED_KEYS - set(meta)
+    if missing:
+        fail(f"{rel}: frontmatter missing required key(s): {', '.join(sorted(missing))}")
+    # `verdict:` must live inside a fenced code block (the structured output contract),
+    # not merely be mentioned in prose.
+    in_fence = False
+    fence_marker = ""
+    verdict_in_fence = False
+    for line in parts[2].splitlines():
+        stripped = line.lstrip()
+        # Markdown allows both ``` and ~~~ fences; a fence closes only on its own marker.
+        if not in_fence and (stripped.startswith("```") or stripped.startswith("~~~")):
+            in_fence, fence_marker = True, stripped[0]
+            continue
+        if in_fence and stripped.startswith(fence_marker * 3):
+            in_fence, fence_marker = False, ""
+            continue
+        if in_fence and re.match(r"\s*verdict:", line):
+            verdict_in_fence = True
+            break
+    if not verdict_in_fence:
+        fail(f"{rel}: no `verdict:` line inside a fenced output block")
+    if not errors or errors[-1].split(":")[0] != rel:
+        print(f"OK  skill {rel}")
 
 
 def main() -> int:
@@ -51,7 +160,7 @@ def main() -> int:
     validator = Draft202012Validator(schema)
 
     def validate(obj, label: str) -> None:
-        errs = sorted(validator.iter_errors(obj), key=lambda e: e.path)
+        errs = sorted(validator.iter_errors(obj), key=lambda e: list(e.path))
         if errs:
             for e in errs:
                 loc = "/".join(str(p) for p in e.path) or "(root)"
@@ -59,14 +168,21 @@ def main() -> int:
         else:
             print(f"OK  {label} validates against schema")
 
-    # 2. Template config
-    tmpl = ROOT / "templates" / "config" / "agentic.config.yml.tmpl"
-    try:
-        validate(load_yaml(tmpl), tmpl.relative_to(ROOT).as_posix())
-    except Exception as exc:  # noqa: BLE001
-        fail(f"{tmpl.relative_to(ROOT)}: cannot parse: {exc}")
+    # 2/3. Real config files that must conform to the schema (+ graph invariants).
+    for rel in ("templates/config/agentic.config.yml.tmpl", ".agentic/config.yml"):
+        path = ROOT / rel
+        if not path.exists():
+            fail(f"{rel}: expected file is missing")
+            continue
+        try:
+            cfg = load_yaml(path)
+        except Exception as exc:  # noqa: BLE001
+            fail(f"{rel}: cannot parse: {exc}")
+            continue
+        validate(cfg, rel)
+        check_stage_graph(cfg, rel)
 
-    # 3. Minimal config
+    # 4. Minimal config.
     validate(
         {
             "version": 2,
@@ -77,34 +193,29 @@ def main() -> int:
         "minimal config",
     )
 
-    # 4. Agent presets
-    agents_dir = ROOT / "templates" / "agents"
-    for preset in sorted(agents_dir.glob("*.yml")):
+    # 6. Agent presets.
+    for preset in sorted((ROOT / "templates" / "agents").glob("*.yml")):
+        rel = preset.relative_to(ROOT).as_posix()
         try:
             a = load_yaml(preset)
         except Exception as exc:  # noqa: BLE001
-            fail(f"{preset.relative_to(ROOT)}: cannot parse: {exc}")
+            fail(f"{rel}: cannot parse: {exc}")
             continue
-        rel = preset.relative_to(ROOT).as_posix()
-        if not isinstance(a, dict) or "type" not in a:
+        if not isinstance(a, dict):
+            fail(f"{rel}: must be a YAML mapping")
+            continue
+        if "type" not in a:
             fail(f"{rel}: missing required 'type'")
-        skill = (a or {}).get("skill")
+            continue
+        skill = a.get("skill")
         if skill and not (ROOT / "templates" / "skills" / skill).is_dir():
             fail(f"{rel}: references missing skill '{skill}'")
-        else:
-            print(f"OK  agent preset {preset.name} -> skill '{skill}'")
+            continue
+        print(f"OK  agent preset {preset.name}" + (f" -> skill '{skill}'" if skill else " (no skill)"))
 
-    # 5. Skills
-    skills_dir = ROOT / "templates" / "skills"
-    for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
-        text = skill_md.read_text()
-        rel = skill_md.relative_to(ROOT).as_posix()
-        if not text.startswith("---"):
-            fail(f"{rel}: missing YAML frontmatter")
-        elif "verdict:" not in text:
-            fail(f"{rel}: missing structured 'verdict' output contract")
-        else:
-            print(f"OK  skill {rel}")
+    # 7. Skills.
+    for skill_md in sorted((ROOT / "templates" / "skills").glob("*/SKILL.md")):
+        check_skill(skill_md)
 
     if errors:
         print(f"\n{len(errors)} validation error(s):", file=sys.stderr)

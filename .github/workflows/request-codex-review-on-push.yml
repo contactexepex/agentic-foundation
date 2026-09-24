@@ -60,7 +60,7 @@ jobs:
           # Without the PAT the request can only be authored by github-actions[bot], which Codex does
           # not reliably act on; skip cleanly rather than post a comment that does nothing.
           if [[ -z "${CODEX_PAT:-}" ]]; then
-            echo "CODEX_REMEDIATION_TOKEN is not configured; cannot request a Codex review as a trusted user. Skipping."
+            echo "::warning::CODEX_REMEDIATION_TOKEN is not configured; Codex code+security re-review will NOT be requested for pushed heads. Substantive PRs will not become mergeable until it is set."
             exit 0
           fi
 

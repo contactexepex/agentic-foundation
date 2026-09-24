@@ -5,13 +5,26 @@ name: Validate
 # on pushes to the default branch. It checks out only trusted repo content and uses no secrets.
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    # `edited` is included so a base-retarget (which arrives as an edited event, not
+    # synchronize) re-runs validation against the NEW base — otherwise the auto-merge gate
+    # could accept a Validate result produced against the previous base. The job guard below
+    # ignores edited events that are not a base change (title/body edits).
+    types: [opened, reopened, synchronize, ready_for_review, edited]
   push:
     branches: [main]
   workflow_dispatch: {}
 
 concurrency:
-  group: validate-${{ github.event.pull_request.number || github.ref }}
+  # Real validation runs (push, synchronize, base-change edited, …) share the per-PR group, so a
+  # newer run supersedes an older one via cancel-in-progress. A metadata-only `edited` event
+  # (title/body — which the job below skips) is instead given a unique per-run group, so it can
+  # never cancel an in-flight real Validate run and leave the head with no successful result — a
+  # cancellation that would otherwise stall the fail-closed auto-merge gate until the next
+  # validation-triggering event.
+  group: >-
+    validate-${{ github.event.pull_request.number || github.ref }}${{
+      (github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null)
+      && format('-meta-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -19,7 +32,11 @@ permissions:
 
 jobs:
   validate:
-    name: Validate config schema, templates, skills & agents
+    # The job name IS the check-run name the auto-merge gate requires by name ("Validate").
+    # Keep it exactly "Validate" (the descriptive detail lives in the step name below).
+    name: Validate
+    # Skip metadata-only edited events (only re-run on base changes); always run otherwise.
+    if: github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base != null
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

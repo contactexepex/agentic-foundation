@@ -61,14 +61,23 @@ build:
   commands:
     test: "python .github/scripts/validate_config.py"
 
-# Fast-path trivial docs/text changes; route everything substantive to Codex.
+# Fast-path only trivial top-level text changes; route everything substantive to Codex.
+# Mirrors .github/workflows/fast-ai-code-review.yml exactly: docs/** is DENIED (docs hold
+# operational/security contracts and must be independently reviewed), as are AGENTS.md / CLAUDE.md
+# at the root and any nested path.
 routing:
   fast_path:
-    globs: ["**/*.md", "docs/**"]
+    globs: ["**/*.md", "LICENSE", ".gitignore", ".gitattributes", ".editorconfig"]
     max_files: 20
     max_lines: 200
-    exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
+    exclude: ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md", "docs/**", ".agentic/**"]
 
 modules:
   auto_merge: true                    # fail-closed foundation auto-merge gate is active
-  sonar: false
+  # SonarCloud is the intended security-analysis gate, provided by the SonarCloud GitHub App
+  # (automatic analysis, org-wide) rather than a rendered workflow — so no sonar-analysis.yml or
+  # SONAR_TOKEN is needed. TEMPORARY (owner direction, 2026-09-24): automatic analysis is not yet
+  # reporting a check-run on this repo, so the auto-merge gate currently ENFORCES Sonar only when a
+  # `sonarqubecloud` check is present and tolerates its absence (self-restoring once it reports).
+  # Revisit once Sonar is confirmed on this repo, then re-require presence in the gate.
+  sonar: true

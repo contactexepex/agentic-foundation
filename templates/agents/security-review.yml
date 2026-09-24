@@ -12,9 +12,6 @@ backend:
   name: generic
 gate: blocking
 triggers: [pr_opened, pr_updated]
-# Security review benefits from a strong model; default the standard tier up.
-model:
-  tiers:
-    trivial:  strong
-    standard: strong
-    complex:  strong
+# Model is intentionally unset so this preset works out of the box: it resolves via the stage's
+# provider + `defaults.models`. Security review benefits from a strong model — pin one by setting
+# `model:` on the stage that uses this preset (or via `models.aliases`).

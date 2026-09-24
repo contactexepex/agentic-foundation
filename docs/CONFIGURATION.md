@@ -53,10 +53,13 @@ defaults the workflows read; keep them unless you also update the rendered workf
 Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is validated against
 `install/config.schema.json`.
 
-**Simple by default, advanced when you want it.** The only required key is `version`. A `profile`
-(default `standard`) expands to a stage graph, and `platform` defaults to GitHub — so a minimal
-config is a few lines. Add `stages` and other blocks only to take finer control. See
-[ARCHITECTURE.md](ARCHITECTURE.md) for the design.
+**Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
+(default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). A stage
+whose backend consumes a model (the built-in `generic`/`claude-code-action`) also needs a model
+binding (`defaults.models.<provider>`, or a per-stage model); app backends (e.g. `codex`) supply
+their own model, so an all-app-backed graph needs no `defaults.models`. Model resolution is
+fail-loud (see below) — no hidden default. That is still a few lines; add `stages` and other blocks
+only to take finer control. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```yaml
 # Minimal config — profile expands to a stage graph; models resolve from defaults/org.
@@ -127,8 +130,9 @@ via `stages[].skill`.
 | `skills.<id>.extends` | Base skill id to layer on top of (base first, this overrides) — e.g. a house style over `code-review`. |
 
 **Skills vs. agents vs. stages:** a *skill* is the content; an *agent preset* (`templates/agents/<id>.yml`)
-is a pre-wired stage (type + skill + backend + gate + triggers + model tiers) you drop in via
-`stages[].from`; a *stage* is that agent placed in the pipeline graph.
+is a pre-wired stage (type + skill + backend + gate + triggers, with an **optional** model binding —
+presets may omit it so the model resolves via `defaults`) you drop in via `stages[].from`; a *stage*
+is that agent placed in the pipeline graph.
 
 ### `stages` (optional — the agent graph)
 Omit to use the profile's stages. Anything you list is **merged onto** the profile (a stage with the
@@ -172,7 +176,7 @@ See **Model resolution** below for the full precedence order.
 ### `build` (optional)
 | Field | Meaning |
 |---|---|
-| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `templates/presets/`. |
+| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `templates/presets/` (the presets directory is a planned M2 deliverable; until then, set `commands` directly). |
 | `commands.{install,lint,test,typecheck}` | What "green" means for this repo. The workflows run exactly these — **any language**. Override any preset value. |
 
 Omit `build` entirely (or leave `commands` empty) for a repo with no build gate, e.g. docs-only.
@@ -232,7 +236,12 @@ the toolkit walks this chain and uses the first model it finds:
 | 1 | **Per-request override** | A model supplied at dispatch time (a pipeline input or a dispatch-comment command). Wins over everything. |
 | 2 | **Stage model** | `stages[].model.tiers.<tier>`, then `stages[].model.default`. |
 | 3 | **Org/account default** | `defaults.models.<provider>.tiers.<tier>`, then `defaults.models.<provider>.default` (provider = the stage's provider, or `defaults.provider`). |
-| 4 | **Toolkit fallback** | The documented built-in for that provider. |
+
+For a stage whose backend consumes a contract model (the built-in `generic`/`claude-code-action`),
+if none of layers 1–3 yields a model, resolution **fails loudly** (see below) — there is no hidden
+built-in default, so the toolkit never silently picks a model version. App backends (e.g. `codex`)
+supply their own model, so this rule does not apply to them: an all-app-backed graph is valid with
+no `defaults.models`.
 
 Key points:
 
@@ -323,13 +332,19 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 ## 5. Setup steps
 
-1. Add `.agentic/config.yml` (edit the template, or let the Claude skill draft it). Start with a
-   `profile` and `platform`; add `stages` only if you need finer control.
-2. Create the secrets your stages/providers and platform require (section 2). `doctor` lists the exact
-   set by name.
-3. Run the installer / invoke the skill — it validates the config, renders the enabled stages for your
-   `platform`, and opens a bootstrap PR/MR.
-4. Merge the bootstrap PR/MR.
+> **Status:** the renderer (M2), the `doctor`/`plan`/`apply` CLI (M3), and the front-door skill (M4)
+> are **not shipped on `main` yet** (see the roadmap). Steps 3–4 below describe the intended automated
+> experience; today, follow the manual path noted in each.
+
+1. Add `.agentic/config.yml` (edit the template — the drafting skill is M4). Start with a `profile`,
+   a `platform`, and a model binding for any model-consuming stage; add `stages` only for finer control.
+2. Create the secrets your stages/providers and platform require (section 2). (`doctor` will list the
+   exact set by name once M3 ships.)
+3. **Planned (M2/M3):** run `agentic apply` — it validates the config, renders the enabled stages for
+   your `platform`, and installs the pipeline. **Today (manual):** hand-adapt the automation you need;
+   the toolkit's own `.github/workflows/` validate *this* repo's contract and are references, not
+   drop-in files.
+4. **Planned:** merge the bootstrap PR/MR. **Today:** commit the workflows you adapted.
 
 ---
 

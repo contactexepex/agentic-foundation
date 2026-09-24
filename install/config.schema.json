@@ -57,7 +57,7 @@
     },
 
     "defaults": {
-      "description": "Org/account-level fallbacks. A stage that does not set its own provider/model resolves here before the toolkit's built-in fallback.",
+      "description": "Org/account-level fallbacks. A stage that does not set its own provider/model resolves here; if nothing resolves the run fails loudly (there is no hidden toolkit fallback).",
       "type": "object",
       "additionalProperties": false,
       "properties": {

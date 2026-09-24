@@ -55,7 +55,7 @@ jobs:
           # Thread auto-resolution is a convenience, not a merge gate, and now runs on every PR.
           # If the token is absent, skip cleanly rather than red-X every PR's checks.
           if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "CODEX_REMEDIATION_TOKEN is not configured; skipping thread auto-resolution."
+            echo "::warning::CODEX_REMEDIATION_TOKEN is not configured; outdated Codex review threads will not be auto-resolved."
             exit 0
           fi
 

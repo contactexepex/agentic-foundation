@@ -36,10 +36,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # Model is configurable via a repository variable (no hardcoded version); falls back to a
-      # sensible default. Set vars.AGENTIC_IMPLEMENTER_MODEL to override.
+      # Model is configurable via a repository variable, with an INTENTIONAL hardcoded default so a
+      # fresh clone works out of the box (this is the toolkit's own dogfood workflow, not a shipped
+      # template). Set vars.AGENTIC_IMPLEMENTER_MODEL to override the default.
       IMPLEMENTER_MODEL: ${{ vars.AGENTIC_IMPLEMENTER_MODEL || 'claude-sonnet-5' }}
     steps:
+      - name: Validate implementer model
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The model is interpolated into `claude_args`; constrain it to a safe model-id shape so a
+          # crafted repo-variable value cannot inject an extra CLI argument.
+          [[ "$IMPLEMENTER_MODEL" =~ ^[A-Za-z0-9._-]+$ ]] || {
+            echo "Invalid AGENTIC_IMPLEMENTER_MODEL '$IMPLEMENTER_MODEL' (allowed: letters, digits, dot, underscore, hyphen)."; exit 1;
+          }
+
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:

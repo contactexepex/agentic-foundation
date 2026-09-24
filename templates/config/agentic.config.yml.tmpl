@@ -5,9 +5,11 @@
 # makes the toolkit portable: it never hardcodes a language, provider, model,
 # or SCM platform.
 #
-# EASY BY DEFAULT: pick a `profile` and a `platform` and you're done — the
-# profile expands to a default stage graph. ADD `stages:` only when you want
-# granular control. Everything else is optional and falls back to defaults.
+# EASY BY DEFAULT: pick a `profile` and a `platform`; the profile expands to a
+# default stage graph. ADD `stages:` only for granular control. Model resolution
+# is fail-loud (no hidden fallback): a stage on a model-consuming backend
+# (`generic`/`claude-code-action`) needs a resolvable model under `defaults` or
+# `stages[].model`; app backends (e.g. `codex`) supply their own. Else all optional.
 # Full reference: docs/CONFIGURATION.md   Design: docs/ARCHITECTURE.md
 # =============================================================================
 version: 2
@@ -19,7 +21,8 @@ version: 2
 #   - team/backend.yml
 
 # ===========================================================================
-# SIMPLE — a newcomer needs only these two.
+# SIMPLE — a profile + a platform. (Add a model default under `defaults` for any
+# stage whose backend consumes one; app backends like `codex` supply their own.)
 # ===========================================================================
 
 # Onboarding shortcut. Expands to a default stage graph you can override below.
@@ -46,7 +49,11 @@ build:
     typecheck: ""
 
 # ===========================================================================
-# ADVANCED — everything below is OPTIONAL. Delete any block to accept defaults.
+# MODEL DEFAULTS (required for model-consuming backends) + ADVANCED (optional).
+# Resolution is fail-loud: a stage on a `generic`/`claude-code-action` backend needs a
+# model from `defaults.models.<provider>` (or its own `stages[].model`). App backends
+# (codex, …) supply their own model, so an all-app-backed graph needs no `defaults.models`.
+# Every OTHER block below is optional — delete any one to accept its default.
 # ===========================================================================
 
 # --- Model resolution --------------------------------------------------------
@@ -54,7 +61,8 @@ build:
 #   1. Per-request override supplied at dispatch time (workflow input / command)
 #   2. This stage's model      -> stages[].model.(tiers.<tier> | default)
 #   3. Org/account default     -> defaults.models.<provider>.(tiers.<tier> | default)
-#   4. Toolkit built-in fallback   (installer fails loudly if nothing resolves)
+# If none of 1-3 resolves, the installer/run FAILS LOUDLY naming the stage/key —
+# there is no hidden toolkit fallback.
 # A resolved value that matches a `models.aliases` name expands per provider.
 # The toolkit ships placeholders, never hardcoded versions.
 # ---------------------------------------------------------------------------
@@ -154,13 +162,15 @@ tiering:
       min_lines: 400
 
 # --- Review routing ----------------------------------------------------------
-# Trivial textual changes are fast-path approved WITHOUT a model review.
+# Trivial textual changes are fast-path approved WITHOUT a model review. Note `docs/**` is EXCLUDED
+# from the fast path: docs often hold operational/security contracts and should be reviewed. Keep
+# AGENTS.md / CLAUDE.md (root and nested) excluded too.
 routing:
   fast_path:
-    globs: ["**/*.md", "docs/**"]
+    globs: ["**/*.md", "LICENSE", ".gitignore", ".gitattributes", ".editorconfig"]
     max_files: 20
     max_lines: 200
-    exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
+    exclude: ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md", "docs/**", ".agentic/**"]
 
 # --- Cost & token budgets ----------------------------------------------------
 # Optional ceilings, global or per-stage. on_exceed decides the action.

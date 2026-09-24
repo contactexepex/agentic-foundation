@@ -32,13 +32,14 @@ stage binds a **role/type** (plan, implement, security, test, integration-test, 
 | implement | claude | `strong` (alias) | `claude-code-action` |
 | security | openai | `complex` tier | `generic` |
 | review | gemini | `balanced` | `pr-agent` |
-| integration-test | — | — | `generic` |
+| integration-test | openai | `standard` | `generic` |
 
 Same provider with different models, multiple providers, or any frontier-model mix — all per stage.
 
 **Models are configurable, layered, and dynamic.** You need not specify a model at all: each stage
-resolves one through a precedence chain — **per-request override › stage model › org/account default ›
-toolkit fallback** — so *providing a model overrides the default*, and omitting it inherits.
+resolves one through a precedence chain — **per-request override › stage model › org/account
+default** (then it fails loudly if unresolved — no hidden fallback) — so *providing a model overrides
+the default*, and omitting it inherits.
 Optionally enable **tiering**: a trivial change runs on a low-cost model, a large/complex one
 escalates — selection is **deterministic** (change-size + path signal), no extra model call. See
 [Model resolution](docs/CONFIGURATION.md#3a-model-resolution).
@@ -57,9 +58,12 @@ with `code-review` and `security-review` skills + presets; drop one in with `fro
 override only what you need, or register/override your own by id. See
 [skills & agents](docs/ARCHITECTURE.md#3a-skills-and-agents--content-vs-wiring).
 
-**Simple by default, advanced when you want it.** The only required key is `version`; a `profile`
-(`minimal`/`standard`/`full`) expands to a default stage graph and `platform` defaults to GitHub —
-so a minimal file is a few lines. Define `stages` only to take finer control.
+**Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
+(`minimal`/`standard`/`full`, which expands to a default stage graph), and a `platform`. A stage
+whose backend consumes a model (the built-in `generic`/`claude-code-action`) also needs a model
+binding (`defaults.models.<provider>`, or a per-stage model); app backends (e.g. `codex`) supply
+their own. Model resolution is fail-loud — no hidden default. Still a few lines; define `stages`
+only for finer control.
 
 **Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,
 username, or password), never stores them, and keeps them out of `.agentic/config.yml` — see
@@ -96,13 +100,21 @@ assume a language.
 
 ## Quickstart
 
+> **Status:** the renderer (M2) and the one-command CLI (`doctor`/`plan`/`apply`, M3) and front-door
+> skill (M4) are **not shipped on `main` yet** — see the roadmap. Until then, follow the manual flow
+> below; step 3's "Planned" note describes the intended automated experience.
+
 1. In your target repo, add `.agentic/config.yml` (copy `templates/config/agentic.config.yml.tmpl`
-   — set a `profile` and `platform`; or let the Claude skill draft it).
+   and edit it — set a `profile` and `platform`).
 2. Create the secrets your stages/providers and platform require — see
    [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for names and service-account vs PAT guidance.
-3. Run the installer (or invoke the skill). It validates the config against
-   `install/config.schema.json`, renders the enabled stages for your `platform`, and opens a bootstrap
-   PR/MR.
+3. **Today (manual):** hand-adapt the automation you need. The workflows in this repo's
+   `.github/workflows/` are the toolkit's *own* pipeline — e.g. `validate.yml` runs
+   `validate_config.py` against *this* repo's contract tree — so they are references to adapt, **not
+   files to copy verbatim** into a target repo (a verbatim copy would fail CI on the missing
+   validator). There is no standalone target-repo config validator until the renderer/CLI land.
+   **Planned (M2/M3):** the renderer generates your `.github/workflows/` from `.agentic/config.yml`,
+   and `agentic doctor` / `agentic apply` validate the config and install the pipeline for you.
 4. Merge it. The pipeline is live.
 
 Full field reference, provider→secret mapping, and troubleshooting:
@@ -111,18 +123,21 @@ Full field reference, provider→secret mapping, and troubleshooting:
 ## Layout
 
 ```
-templates/workflows/<platform>/  per-platform pipeline templates (github first)
 templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
 templates/agents/<id>.yml        pre-wired agent presets that reference a skill
-templates/contract/              AGENTS.md / CLAUDE.md skeletons (domain-free)
 templates/config/                the .agentic/config.yml template
-templates/presets/               per-ecosystem command presets
-install/                         config.schema.json, modules.yml, installer
-skill/                           the Claude Code front-door skill
+install/                         config.schema.json, modules.yml
 docs/                            ARCHITECTURE.md, CONFIGURATION.md, LANDSCAPE.md
 .github/workflows/               this repo's live automation (reference impl for the renderer)
 .github/scripts/                 validate_config.py + docs
 .agentic/config.yml              this repo's own agentic contract (dogfood)
+
+# Planned (see ARCHITECTURE.md roadmap):
+templates/workflows/<platform>/  per-platform pipeline templates (M2; github first)
+templates/contract/              AGENTS.md / CLAUDE.md skeletons (M2)
+templates/presets/               per-ecosystem command presets (M2)
+install/ (installer/CLI)         doctor / plan / apply (M3)
+skill/                           the Claude Code front-door skill (M4)
 ```
 
 ## Dogfooding

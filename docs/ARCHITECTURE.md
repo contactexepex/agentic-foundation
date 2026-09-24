@@ -76,7 +76,7 @@ Three distinct concepts, cleanly layered so the domain knowledge is reusable and
 | Concept | Is | Lives in | Referenced by |
 |---|---|---|---|
 | **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `templates/skills/<id>/SKILL.md` (+ your own via the `skills` registry) | `stages[].skill` |
-| **Agent preset** | A *pre-wired stage* — type + default skill + backend + gate + triggers + model tiers. | `templates/agents/<id>.yml` | `stages[].from` |
+| **Agent preset** | A *pre-wired stage* — type + default skill + backend + gate + triggers, and an **optional** model binding (presets may omit it and resolve models via `defaults`). | `templates/agents/<id>.yml` | `stages[].from` |
 | **Stage** | An agent *placed in the pipeline graph* (with `depends_on`, overrides). | `.agentic/config.yml` `stages[]` | the pipeline |
 
 Why the split:
@@ -101,12 +101,14 @@ Per stage, per change tier, the model resolves **most-specific-first**:
 1. **Per-request override** (dispatch input / command)
 2. **Stage model** — `stages[].model.tiers.<tier>` → `.default`
 3. **Org/account default** — `defaults.models.<provider>.tiers.<tier>` → `.default`
-4. **Toolkit fallback**
 
 A resolved value that matches a `models.aliases` name expands to that alias's model ID
 for the stage's provider. `tier` (trivial/standard/complex) comes from the deterministic
-classifier (change size + paths) only when tiering is on. If nothing resolves, the
-toolkit **fails loudly** and never guesses a version. This is how "same provider,
+classifier (change size + paths) only when tiering is on. There is **no hidden toolkit
+fallback**: for a stage whose backend consumes a contract model (`generic`/`claude-code-action`),
+if none of layers 1–3 yields a model the toolkit **fails loudly** and never guesses a version. App
+backends (e.g. `codex`) supply their own model, so the rule does not apply to them. This is how
+"same provider,
 different models" or "multiple providers, any permutation" is expressed — independently
 per stage.
 

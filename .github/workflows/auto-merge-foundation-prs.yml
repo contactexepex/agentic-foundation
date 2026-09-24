@@ -48,6 +48,7 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
+  actions: read   # to query the Actions API for the trusted Validate workflow run (gate auth)
 
 # One evaluation per PR at a time (per-PR events), and a single shared slot for the whole-repo
 # sweeps (schedule / check_suite / workflow_dispatch). Never cancel an in-flight run — a cancelled
@@ -216,6 +217,26 @@ jobs:
                     | length' <<<"$cr_json")"
             [[ "$bad_checks" == "0" ]] || { skip "$pr" "$bad_checks check-run(s) pending/failed"; echo '::endgroup::'; return 0; }
 
+            # The all-check-runs-green sweep above validates only checks that EXIST — it is fail-OPEN
+            # for a required check that never registered. A PR that deletes or renames
+            # .github/workflows/validate.yml produces no `Validate` check-run, so nothing is failing and
+            # the merge would proceed, silently disabling the repository's own "green" gate. So require
+            # the mandatory Validate check to be PRESENT and successful — but authenticated, not by
+            # display name alone: a same-repo PR could add another job named "Validate". So require
+            # BOTH (a) a check-run named "Validate" from the GitHub Actions app that succeeded, and
+            # (b) a successful run of the trusted workflow FILE .github/workflows/validate.yml for
+            # this exact head SHA (Actions API, which is keyed by workflow path). A PR that deletes or
+            # renames validate.yml then produces no such run and is blocked. (Content substitution of
+            # a head-run workflow is only fully closed by branch protection marking the check
+            # required — see AGENTS.md; this raises the bar within the gate's own authority.)
+            local validate_ok validate_run_ok
+            validate_ok="$(jq -r '[ .[] | select(.name=="Validate" and ((.app.slug // "")=="github-actions") and .status=="completed" and .conclusion=="success") ] | length' <<<"$cr_json")"
+            validate_run_ok="$(gh api "repos/$REPO/actions/workflows/validate.yml/runs?head_sha=$head_sha&per_page=100" \
+              --jq '[.workflow_runs[] | select(.conclusion=="success")] | length' 2>/dev/null || echo 0)"
+            if [[ "$validate_ok" == "0" || "$validate_run_ok" == "0" ]]; then
+              skip "$pr" "required Validate not present+successful from the trusted workflow (github-actions check: $validate_ok, validate.yml run for head: $validate_run_ok)"; echo '::endgroup::'; return 0
+            fi
+
             # --- Review must be clean ---
             # No unresolved review threads (a Codex finding or a human comment blocks the merge).
             local unresolved
@@ -298,11 +319,29 @@ jobs:
 
               [[ "$codex_head_reviewed" == true ]] || { skip "$pr" "no completed Codex code review for current head $head_sha (no head-matching review object or summary row)"; echo '::endgroup::'; return 0; }
 
-              # NOTE: agentic-foundation does not wire SonarCloud by default (modules.sonar defaults
-              # off). The security gate here is Codex's security review — every finding posts as a
-              # review thread and is caught by the zero-unresolved-threads requirement above — together
-              # with the required `validate` check-run (all-check-runs-green, above). If you enable the
-              # sonar module, re-add a fail-closed check-run assertion for the SonarCloud app here.
+              : # (Codex code review is required only in the substantive lane, above.)
+            fi
+
+            # SonarCloud gate — applies to BOTH lanes (fast-path and substantive), so a fast-path PR
+            # cannot bypass a present-but-failing Sonar analysis. SonarCloud is the security-analysis
+            # gate (which is why the gate does not require Codex's security-review completion marker).
+            # TEMPORARY POLICY (repo owner direction, 2026-09-24): automatic analysis is not yet
+            # reporting on this repo, so do NOT block on Sonar's ABSENCE — but ENFORCE it whenever a
+            # `sonarqubecloud` check IS present: a present check that is not a clean success blocks the
+            # merge (`neutral`/`skipped` are not a passing Quality Gate). Self-restoring once analysis
+            # reports; re-tighten to require presence then (see .agentic/config.yml modules.sonar).
+            # Count Sonar runs that are NOT a clean success (any incomplete run, or a completed run
+            # whose conclusion is not `success` — `neutral`/`skipped`/`failure`/etc.). Requiring one
+            # success is not enough: a success alongside a separate neutral/skipped run must still
+            # block, so EVERY present Sonar check must be a clean success.
+            local sonar_present sonar_bad
+            sonar_present="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud") ] | length' <<<"$cr_json")"
+            sonar_bad="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud") | select(.status != "completed" or .conclusion != "success") ] | length' <<<"$cr_json")"
+            if [[ "$sonar_bad" != "0" ]]; then
+              skip "$pr" "SonarCloud (sonarqubecloud) has $sonar_bad present check-run(s) that are not a clean success on the head"; echo '::endgroup::'; return 0
+            fi
+            if [[ "$sonar_present" == "0" ]]; then
+              echo "::warning::SonarCloud check-run absent on head $head_sha; not blocking on Sonar (temporary policy — automatic analysis not yet reporting). Re-tighten once confirmed."
             fi
 
             # --- Re-validate the mutable gates immediately before merging ---
