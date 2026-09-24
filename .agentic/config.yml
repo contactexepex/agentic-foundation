@@ -74,7 +74,10 @@ routing:
 
 modules:
   auto_merge: true                    # fail-closed foundation auto-merge gate is active
-  # SonarCloud IS a required merge gate here. It is provided by the SonarCloud GitHub App
-  # (automatic analysis, org-wide) rather than a rendered workflow, so no sonar-analysis.yml or
-  # SONAR_TOKEN is needed; the auto-merge gate requires the `sonarqubecloud` check-run to be green.
+  # SonarCloud is the intended security-analysis gate, provided by the SonarCloud GitHub App
+  # (automatic analysis, org-wide) rather than a rendered workflow — so no sonar-analysis.yml or
+  # SONAR_TOKEN is needed. TEMPORARY (owner direction, 2026-09-24): automatic analysis is not yet
+  # reporting a check-run on this repo, so the auto-merge gate currently ENFORCES Sonar only when a
+  # `sonarqubecloud` check is present and tolerates its absence (self-restoring once it reports).
+  # Revisit once Sonar is confirmed on this repo, then re-require presence in the gate.
   sonar: true

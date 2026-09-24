@@ -307,22 +307,26 @@ jobs:
 
               [[ "$codex_head_reviewed" == true ]] || { skip "$pr" "no completed Codex code review for current head $head_sha (no head-matching review object or summary row)"; echo '::endgroup::'; return 0; }
 
-              # SonarCloud's analysis must be PRESENT and successful on the head. It is the
-              # security-analysis gate (which is why the gate deliberately does not require Codex's
-              # security-review completion marker, per the comment above): its absence must not pass
-              # silently, since the all-check-runs-green sweep validates only checks that EXIST, so a
-              # SonarCloud run that never enqueued would leave no failing entry.
+              # SonarCloud is the security-analysis gate (which is why the gate deliberately does not
+              # require Codex's security-review completion marker, per the comment above).
               #
-              # Authenticate by the SonarCloud APP IDENTITY, not a name substring: a check-run whose
-              # name merely contains "sonar" must not satisfy this. Require a check-run from the
-              # `sonarqubecloud` app that completed with conclusion exactly "success" (`neutral` is not
-              # a passing Quality Gate). SonarCloud reports via this check-run (no commit status), so no
-              # status fallback is used; if it ever reported nothing, the absence fails closed here.
-              local sonar_ok
+              # TEMPORARY POLICY (repo owner direction, 2026-09-24): SonarCloud automatic analysis is
+              # not yet reporting a check-run on this repository. Until that is confirmed, do NOT block
+              # on Sonar's ABSENCE — but still ENFORCE it when it IS present: a present `sonarqubecloud`
+              # check-run that is not a clean success blocks the merge. This is self-restoring — once
+              # automatic analysis starts reporting, enforcement resumes with no code change. Re-tighten
+              # to also require presence once Sonar is confirmed on this repo (see .agentic/config.yml
+              # modules.sonar). Authenticate by the SonarCloud APP IDENTITY (`sonarqubecloud`), never a
+              # name substring; `neutral` is not a passing Quality Gate.
+              local sonar_present sonar_ok
+              sonar_present="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud") ] | length' <<<"$cr_json")"
               sonar_ok="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud") | select(.status=="completed" and .conclusion=="success") ] | length' <<<"$cr_json")"
-              if [[ "$sonar_ok" == "0" ]]; then
-                skip "$pr" "no successful SonarCloud (sonarqubecloud app) analysis on the head (required security gate); check-run apps present: $(jq -r '[.[].app.slug] | unique | join(",")' <<<"$cr_json")"
+              if [[ "$sonar_present" != "0" && "$sonar_ok" == "0" ]]; then
+                skip "$pr" "SonarCloud (sonarqubecloud) analysis is present but not a clean success on the head"
                 echo '::endgroup::'; return 0
+              fi
+              if [[ "$sonar_present" == "0" ]]; then
+                echo "::warning::SonarCloud check-run absent on head $head_sha; not blocking on Sonar (temporary policy — automatic analysis not yet reporting on this repo). Re-tighten once confirmed."
               fi
             fi
 
