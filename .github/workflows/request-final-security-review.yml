@@ -126,18 +126,26 @@ jobs:
             || { echo "Author association '$author_assoc' is not trusted; skipping."; exit 0; }
 
           # Durable, per-head idempotency marker. Our own request comment carries it (invisible HTML
-          # comment), so once ANY request has been posted for this head, every later run — including the
+          # comment), so once a request has been posted for this head, every later run — including the
           # issue_comment:created event fired by our own comment, and rapid unrelated comments — detects
-          # it and does nothing. This is what actually guarantees "exactly one security review per head";
-          # the concurrency group only serializes/cancels runs and provides no durable idempotency.
+          # it and does nothing. This is what guarantees "exactly one security review per head"; the
+          # concurrency group only serializes/cancels runs and gives no durable idempotency.
+          #
+          # The marker is honoured ONLY on a comment from a TRUSTED author (same roles as the
+          # eligibility guard). The head SHA is public, so an untrusted commenter could otherwise paste
+          # the marker to make every run exit before requesting the review — denying the security review
+          # (and, via the merge gate, the merge) indefinitely. Our request is posted by the trusted PAT
+          # user, so the authentic marker always carries a trusted author_association.
           MARKER="<!-- agentic-foundation:final-security-review-requested:${head_sha} -->"
 
           # Read PR issue comments once (paginated) for both the idempotency marker and the Codex summary.
           COMMENTS_JSON="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --slurp \
             | jq 'add // []')" || { echo "Cannot read PR comments; skipping."; exit 0; }
 
-          if jq -e --arg m "$MARKER" 'any(.[]?; (.body // "") | contains($m))' <<<"$COMMENTS_JSON" >/dev/null; then
-            echo "Security review already requested for head ${head_sha} (marker present); nothing to do."; exit 0
+          if jq -e --arg m "$MARKER" --argjson roles "$TRUSTED_ROLES" \
+               'any(.[]?; (.author_association // "") as $a | (($roles | index($a)) != null) and ((.body // "") | contains($m)))' \
+               <<<"$COMMENTS_JSON" >/dev/null; then
+            echo "Security review already requested for head ${head_sha} (trusted marker present); nothing to do."; exit 0
           fi
 
           # The latest Codex "Review Summary" comment carries the per-review status rows.

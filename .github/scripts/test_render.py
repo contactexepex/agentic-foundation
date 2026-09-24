@@ -363,6 +363,22 @@ def test_pipeline_selection() -> None:
     expect_raises(lambda: render.validate_config(security_only),
                   "validate: codex security stage without a code-review stage fails loud (front door)")
 
+    # A codex review+security graph triggered only on pr_opened (no pr_updated) still renders the final
+    # security lane: the security review runs once after the code review converges, not per push. The
+    # on-push code re-request lane (request-review.yml) is correctly absent (nothing wants pr_updated).
+    pr_opened_only = {"version": 2, "profile": "custom",
+                      "platform": {"type": "github", "default_branch": "main"},
+                      "defaults": {"provider": "openai", "models": {}},
+                      "stages": [{"id": "review", "type": "review", "provider": "openai",
+                                  "backend": {"name": "codex"}, "triggers": ["pr_opened"]},
+                                 {"id": "security", "type": "security", "provider": "openai",
+                                  "backend": {"name": "codex"}, "triggers": ["pr_opened"]}]}
+    r_open = render.render_all(pr_opened_only, "github")
+    check("final-security-review.yml" in r_open,
+          "select: final security lane renders for a pr_opened-only security stage")
+    check("request-review.yml" not in r_open and "resolve-threads.yml" not in r_open,
+          "select: on-push lanes absent when no stage requests pr_updated")
+
     # The dogfood config has a codex security stage -> the security review is requested ONLY from the
     # final-security-review lane (never alongside the code review), so the two never run concurrently.
     check("@codex security review" in rendered["final-security-review.yml"],

@@ -602,28 +602,48 @@ def _has_implement_stage(stages: list[dict[str, Any]]) -> bool:
     return any(stage.get("type") == "implement" for stage in stages)
 
 
-def _has_codex_stage_of(stages: list[dict[str, Any]], stage_type: str) -> bool:
-    return any(
-        stage.get("type") == stage_type
-        and _stage_backend(stage) == BACKEND_CODEX
-        and _wants_push_review(stage)
-        for stage in stages
-    )
+def _runs_on_pr_review(stage: dict[str, Any]) -> bool:
+    """True if a review/security stage takes part in the PR review lifecycle (open and/or update).
+
+    Unlike `_wants_push_review` (which gates the per-push re-request lane on `pr_updated`), this is
+    also true for `pr_opened`. The final security review runs once as a post-code-review step, not per
+    push, so its lane must render whenever the security stage participates in PR review at all — a
+    `pr_opened`-only security stage still needs the final-security-review workflow.
+    """
+    trig = stage.get("triggers")
+    if trig is None:
+        return True
+    return "pr_opened" in trig or "pr_updated" in trig
+
+
+def _codex_stages(stages: list[dict[str, Any]], stage_type: str) -> list[dict[str, Any]]:
+    return [s for s in stages if s.get("type") == stage_type and _stage_backend(s) == BACKEND_CODEX]
 
 
 def _has_codex_code_review(stages: list[dict[str, Any]]) -> bool:
-    # request-review.yml renders when a codex CODE review stage runs on pushed heads.
-    return _has_codex_stage_of(stages, "review")
+    # request-review.yml (the on-push re-request lane) renders when a codex CODE review stage runs on
+    # each pushed head (`pr_updated`); a pr_opened-only code review is handled by the App on open.
+    return any(_wants_push_review(s) for s in _codex_stages(stages, "review"))
+
+
+def _has_codex_code_review_stage(stages: list[dict[str, Any]]) -> bool:
+    # True when the graph has ANY codex code-review stage in the PR lifecycle (open and/or update) —
+    # i.e. a code review exists for the final security review to converge behind, regardless of whether
+    # the per-push re-request lane renders. Used by the security-graph guard below.
+    return any(_runs_on_pr_review(s) for s in _codex_stages(stages, "review"))
 
 
 def _has_codex_security_review(stages: list[dict[str, Any]]) -> bool:
-    # final-security-review.yml renders when a codex SECURITY stage runs on pushed heads.
-    return _has_codex_stage_of(stages, "security")
+    # final-security-review.yml renders whenever a codex SECURITY stage takes part in PR review
+    # (pr_opened and/or pr_updated). The review itself runs once, after the code review converges — it
+    # is NOT a per-push lane — so it must render for a pr_opened-only security stage too.
+    return any(_runs_on_pr_review(s) for s in _codex_stages(stages, "security"))
 
 
 def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
-    # resolve-threads.yml renders whenever any codex review/security lane runs.
-    return _has_codex_code_review(stages) or _has_codex_security_review(stages)
+    # resolve-threads.yml renders when the on-push code-review lane runs: only a pushed head creates
+    # outdated review threads to clean up. (The security review is not a per-push lane.)
+    return _has_codex_code_review(stages)
 
 
 def _ensure_supported_review_graph(stages: list[dict[str, Any]]) -> None:
@@ -635,7 +655,7 @@ def _ensure_supported_review_graph(stages: list[dict[str, Any]]) -> None:
     workflow that no event can ever satisfy, silently disabling the configured stage. Fail loud at the
     front door instead, so an unsupported graph is a clear error rather than a dead lane.
     """
-    if _has_codex_security_review(stages) and not _has_codex_code_review(stages):
+    if _has_codex_security_review(stages) and not _has_codex_code_review_stage(stages):
         raise RenderError(
             "a Codex security-review stage requires a Codex code-review ('review') stage: the security "
             "review runs only after the code review has converged, so a security stage on its own would "
