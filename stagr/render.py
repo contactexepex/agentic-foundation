@@ -427,6 +427,35 @@ def _build_steps(cfg: dict[str, Any]) -> str:
     return "\n          ".join(lines)
 
 
+def _resolve_implementer_model(cfg: dict[str, Any], implement_stage: dict[str, Any] | None) -> str:
+    """Resolve the implement stage's model, or "" when there is no implement stage.
+
+    The implementer workflow runs Claude Code, so the stage must resolve to a model-consuming tool
+    (Anthropic / Claude Code, or the generic runner). A stage that resolves to Codex or another app
+    backend cannot implement here yet (roadmap): fail loud rather than emit an implementer with an
+    empty model. A resolution failure is not swallowed either.
+    """
+    if implement_stage is None:
+        return ""
+    tool = _stage_backend(implement_stage)
+    if tool not in BACKENDS_NEEDING_MODEL:
+        raise RenderError(
+            f"implement stage '{implement_stage.get('id')}' resolves to the '{tool}' tool, which "
+            "stagr does not render as an implementer yet; an implement stage runs Claude Code "
+            "(provider 'anthropic'). Use provider 'anthropic' for it, or disable the stage."
+        )
+    model = resolve_model(cfg, implement_stage, "standard")
+    # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a quote
+    # or expression metacharacter could break out and inject another operand (e.g. a secret) into the
+    # implementer's --model. Constrain it to model-id characters, fail loud.
+    if not _MODEL_SAFE.match(model):
+        raise RenderError(
+            f"resolved implementer model '{model}' contains characters unsafe to template into a "
+            "workflow expression (allowed: letters, digits, and '._:/-')"
+        )
+    return model
+
+
 def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     platform = cfg.get("platform", {}) or {}
     labels = platform.get("labels", {}) or {}
@@ -465,28 +494,7 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
 
     stages = {stage["id"]: stage for stage in expand_stages(cfg)}
     implement_stage = next((stage for stage in stages.values() if stage.get("type") == "implement"), None)
-    # The implementer workflow runs Claude Code, so an implement stage must resolve to a
-    # model-consuming tool (Anthropic / Claude Code, or the generic runner). A stage that resolves to
-    # Codex or another app backend cannot implement here yet (roadmap): fail loud rather than emit an
-    # implementer with an empty model. Do NOT swallow a resolution error either.
-    implementer_model = ""
-    if implement_stage:
-        tool = _stage_backend(implement_stage)
-        if tool not in BACKENDS_NEEDING_MODEL:
-            raise RenderError(
-                f"implement stage '{implement_stage.get('id')}' resolves to the '{tool}' tool, which "
-                "stagr does not render as an implementer yet; an implement stage runs Claude Code "
-                "(provider 'anthropic'). Use provider 'anthropic' for it, or disable the stage."
-            )
-        implementer_model = resolve_model(cfg, implement_stage, "standard")
-        # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a
-        # quote or expression metacharacter could break out and inject another operand (e.g. a
-        # secret) into the implementer's --model. Constrain it to model-id characters, fail loud.
-        if not _MODEL_SAFE.match(implementer_model):
-            raise RenderError(
-                f"resolved implementer model '{implementer_model}' contains characters unsafe to "
-                "template into a workflow expression (allowed: letters, digits, and '._:/-')"
-            )
+    implementer_model = _resolve_implementer_model(cfg, implement_stage)
 
     # Agent contract files are always excluded from the fast path (union with configured excludes,
     # de-duplicated, order preserved) so a nested AGENTS.md/CLAUDE.md can never be fast-path approved.
