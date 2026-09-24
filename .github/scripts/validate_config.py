@@ -39,8 +39,8 @@ def fail(msg: str) -> None:
 
 
 def load_yaml(path: Path):
-    with path.open() as fh:
-        return yaml.safe_load(fh)
+    with path.open() as handle:
+        return yaml.safe_load(handle)
 
 
 def check_stage_graph(cfg, label: str) -> None:
@@ -50,24 +50,26 @@ def check_stage_graph(cfg, label: str) -> None:
     stages = cfg.get("stages")
     if not isinstance(stages, list) or not stages:
         return
-    ids: list[str] = []
-    deps: dict[str, list[str]] = {}
-    for st in stages:
-        if not isinstance(st, dict):
+    stage_ids: list[str] = []
+    dependencies: dict[str, list[str]] = {}
+    for stage in stages:
+        if not isinstance(stage, dict):
             continue
-        sid = st.get("id")
-        if not isinstance(sid, str):
+        stage_id = stage.get("id")
+        if not isinstance(stage_id, str):
             continue
-        ids.append(sid)
-        d = st.get("depends_on")
+        stage_ids.append(stage_id)
+        raw_depends = stage.get("depends_on")
         # A schema-invalid but plausible value (e.g. `depends_on: 1`) is reported by the schema
         # validator; guard here so graph checking never crashes on a non-list before that report.
-        deps[sid] = [x for x in d if isinstance(x, str)] if isinstance(d, list) else []
+        dependencies[stage_id] = (
+            [dep for dep in raw_depends if isinstance(dep, str)] if isinstance(raw_depends, list) else []
+        )
 
-    dup = sorted({i for i in ids if ids.count(i) > 1})
-    if dup:
-        fail(f"{label}: duplicate stage id(s): {', '.join(dup)}")
-    idset = set(ids)
+    duplicates = sorted({stage_id for stage_id in stage_ids if stage_ids.count(stage_id) > 1})
+    if duplicates:
+        fail(f"{label}: duplicate stage id(s): {', '.join(duplicates)}")
+    known_ids = set(stage_ids)
 
     # `depends_on` may reference profile-provided stages that a non-`custom` config does not list
     # here (the profile is expanded by the renderer, not by this file). So only enforce that a
@@ -75,32 +77,33 @@ def check_stage_graph(cfg, label: str) -> None:
     # Self-dependency is always invalid; cycle detection below considers only listed edges, so it is
     # safe for any profile.
     complete_graph = cfg.get("profile", "standard") == "custom"
-    for sid, targets in deps.items():
-        for t in targets:
-            if t == sid:
-                fail(f"{label}: stage '{sid}' depends_on itself")
-            elif complete_graph and t not in idset:
-                fail(f"{label}: stage '{sid}' depends_on missing stage '{t}'")
+    for stage_id, targets in dependencies.items():
+        for target in targets:
+            if target == stage_id:
+                fail(f"{label}: stage '{stage_id}' depends_on itself")
+            elif complete_graph and target not in known_ids:
+                fail(f"{label}: stage '{stage_id}' depends_on missing stage '{target}'")
 
     # Cycle detection over the resolvable edges (DFS with colors).
-    WHITE, GRAY, BLACK = 0, 1, 2
-    color = {i: WHITE for i in idset}
+    UNVISITED, IN_PROGRESS, DONE = 0, 1, 2
+    color = {stage_id: UNVISITED for stage_id in known_ids}
 
-    def visit(node: str, stack: list[str]) -> None:
-        color[node] = GRAY
-        for nxt in deps.get(node, []):
-            if nxt not in idset or nxt == node:
+    def visit(node: str, path: list[str]) -> None:
+        color[node] = IN_PROGRESS
+        for neighbor in dependencies.get(node, []):
+            if neighbor not in known_ids or neighbor == node:
                 continue
-            if color[nxt] == GRAY:
-                cyc = " -> ".join(stack[stack.index(nxt):] + [nxt]) if nxt in stack else f"{node} -> {nxt}"
-                fail(f"{label}: dependency cycle: {cyc}")
-            elif color[nxt] == WHITE:
-                visit(nxt, stack + [nxt])
-        color[node] = BLACK
+            if color[neighbor] == IN_PROGRESS:
+                cycle = " -> ".join(path[path.index(neighbor):] + [neighbor]) if neighbor in path \
+                    else f"{node} -> {neighbor}"
+                fail(f"{label}: dependency cycle: {cycle}")
+            elif color[neighbor] == UNVISITED:
+                visit(neighbor, path + [neighbor])
+        color[node] = DONE
 
-    for i in idset:
-        if color[i] == WHITE:
-            visit(i, [i])
+    for stage_id in known_ids:
+        if color[stage_id] == UNVISITED:
+            visit(stage_id, [stage_id])
 
 
 def check_skill(skill_md: Path) -> None:
@@ -160,11 +163,11 @@ def main() -> int:
     validator = Draft202012Validator(schema)
 
     def validate(obj, label: str) -> None:
-        errs = sorted(validator.iter_errors(obj), key=lambda e: list(e.path))
-        if errs:
-            for e in errs:
-                loc = "/".join(str(p) for p in e.path) or "(root)"
-                fail(f"{label}: {loc}: {e.message}")
+        schema_errors = sorted(validator.iter_errors(obj), key=lambda error: list(error.path))
+        if schema_errors:
+            for error in schema_errors:
+                location = "/".join(str(part) for part in error.path) or "(root)"
+                fail(f"{label}: {location}: {error.message}")
         else:
             print(f"OK  {label} validates against schema")
 
@@ -197,17 +200,17 @@ def main() -> int:
     for preset in sorted((ROOT / "stagr" / "templates" / "agents").glob("*.yml")):
         rel = preset.relative_to(ROOT).as_posix()
         try:
-            a = load_yaml(preset)
+            preset_data = load_yaml(preset)
         except Exception as exc:  # noqa: BLE001
             fail(f"{rel}: cannot parse: {exc}")
             continue
-        if not isinstance(a, dict):
+        if not isinstance(preset_data, dict):
             fail(f"{rel}: must be a YAML mapping")
             continue
-        if "type" not in a:
+        if "type" not in preset_data:
             fail(f"{rel}: missing required 'type'")
             continue
-        skill = a.get("skill")
+        skill = preset_data.get("skill")
         if skill and not (ROOT / "stagr" / "templates" / "skills" / skill).is_dir():
             fail(f"{rel}: references missing skill '{skill}'")
             continue
@@ -219,8 +222,8 @@ def main() -> int:
 
     if errors:
         print(f"\n{len(errors)} validation error(s):", file=sys.stderr)
-        for e in errors:
-            print(f"  - {e}", file=sys.stderr)
+        for error in errors:
+            print(f"  - {error}", file=sys.stderr)
         return 1
     print("\nAll contract validations passed.")
     return 0

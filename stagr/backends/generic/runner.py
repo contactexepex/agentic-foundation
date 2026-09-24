@@ -150,8 +150,8 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[st
     if skill_id in _seen:
         chain = " -> ".join([*_seen, skill_id])
         raise ValueError(f"circular skill extends: {chain}")
-    reg = ((cfg or {}).get("skills", {}) or {}).get(skill_id, {}) or {}
-    source = reg.get("source", "builtin")
+    registry_entry = ((cfg or {}).get("skills", {}) or {}).get(skill_id, {}) or {}
+    source = registry_entry.get("source", "builtin")
 
     if source == "uri":
         # Remote fetch is deliberately unsupported offline; the renderer rejects this
@@ -162,15 +162,15 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[st
             "vendor it locally and use source: path"
         )
     if source == "path":
-        loc = reg.get("path")
-        if not loc:
+        configured_path = registry_entry.get("path")
+        if not configured_path:
             raise ValueError(f"skill '{skill_id}' has source: path but no path")
         root = _project_root()
-        content = _read_skill_file(root / loc, root, f"skill '{skill_id}' path")
+        content = _read_skill_file(root / configured_path, root, f"skill '{skill_id}' path")
     else:  # builtin — the id must name a skill directly under SKILLS_DIR, not an absolute/`..` path
         content = _read_skill_file(SKILLS_DIR / skill_id, SKILLS_DIR, f"builtin skill '{skill_id}'")
 
-    base_id = reg.get("extends")
+    base_id = registry_entry.get("extends")
     if base_id:
         base_content = load_skill(base_id, cfg, _seen=(*_seen, skill_id))
         content = base_content + "\n\n---\n(overlay: " + skill_id + ")\n---\n\n" + content
@@ -201,20 +201,20 @@ def build_invocation(
     if skill_id:
         methodology = load_skill(skill_id, cfg)
     else:
-        instr = stage.get("instructions", "") or ""
+        instructions = stage.get("instructions", "") or ""
         # `instructions` may be inline text OR a path to a prompt file. Only treat it as a
         # path when it resolves to an existing file INSIDE the project — a path escaping
         # the project root (absolute, `..`, or a symlink to e.g. /proc/self/environ) is rejected
         # so host files can never be embedded in the system prompt. Anything that is not such a
         # file is treated as inline text.
-        methodology = instr
-        if instr:
+        methodology = instructions
+        if instructions:
             root = _project_root()
-            candidate = (root / instr)
+            candidate = (root / instructions)
             try:
                 confined = _confine(candidate, root, "instructions path")
             except ValueError:
-                if candidate.exists() or candidate.is_absolute() or ".." in Path(instr).parts:
+                if candidate.exists() or candidate.is_absolute() or ".." in Path(instructions).parts:
                     # It looks like a path (exists or is path-shaped) but escapes the project — fail
                     # loud rather than silently sending the raw string as a prompt.
                     raise
@@ -252,8 +252,8 @@ def build_invocation(
     # api_version / deployment are non-secret endpoint metadata (Azure / self-hosted /
     # proxy). A thin adapter needs all of these to reach a non-default endpoint.
     providers = cfg.get("providers", {}) or {}
-    pcfg = providers.get(provider, {}) or {}
-    api_key_secret = pcfg.get("api_key_secret", DEFAULT_KEY_SECRET.get(provider, "MODEL_API_KEY"))
+    provider_cfg = providers.get(provider, {}) or {}
+    api_key_secret = provider_cfg.get("api_key_secret", DEFAULT_KEY_SECRET.get(provider, "MODEL_API_KEY"))
 
     return Invocation(
         stage_id=stage.get("id", ""),
@@ -265,10 +265,10 @@ def build_invocation(
         api_key_secret=api_key_secret,
         gate=_default_gate(stage_type, stage.get("gate")),
         redact_secrets=bool(redact_secrets),
-        base_url=pcfg.get("base_url", "") or "",
-        api_version=pcfg.get("api_version", "") or "",
-        deployment=pcfg.get("deployment", "") or "",
-        extra_headers_secret=pcfg.get("extra_headers_secret", "") or "",
+        base_url=provider_cfg.get("base_url", "") or "",
+        api_version=provider_cfg.get("api_version", "") or "",
+        deployment=provider_cfg.get("deployment", "") or "",
+        extra_headers_secret=provider_cfg.get("extra_headers_secret", "") or "",
         budget=budget,
         allowed_tools=allowed_tools,
         max_context_files=max_context_files,

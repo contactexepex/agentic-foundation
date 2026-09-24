@@ -96,8 +96,8 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
         report["stages"].append(entry)
 
     # The codex review lane authors comments/resolutions with a real-user PAT (NAME only).
-    if any(s.get("type") in render.REVIEW_LANE_TYPES and render._stage_backend(s) == render.BACKEND_CODEX
-           for s in stages):
+    if any(stage.get("type") in render.REVIEW_LANE_TYPES and render._stage_backend(stage) == render.BACKEND_CODEX
+           for stage in stages):
         secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or render.DEFAULT_TOKEN_SECRET)
 
     report["secret_names"] = sorted(secret_names)
@@ -135,13 +135,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"  profile:        {report['profile']}")
     print(f"  platform:       {report['platform']} (default branch: {report['default_branch']})")
     print(f"  trusted roles:  {', '.join(report['trusted_roles'])}")
-    mods = ", ".join(f"{k}={v}" for k, v in report["modules"].items()) or "(none)"
-    print(f"  modules:        {mods}")
+    module_summary = ", ".join(f"{name}={value}" for name, value in report["modules"].items()) or "(none)"
+    print(f"  modules:        {module_summary}")
     print("  stages:")
-    for s in report["stages"]:
+    for stage in report["stages"]:
         print(
-            f"    - {s['id']:<16} type={s['type']:<16} backend={s['backend']:<16} "
-            f"model={s['model']}"
+            f"    - {stage['id']:<16} type={stage['type']:<16} backend={stage['backend']:<16} "
+            f"model={stage['model']}"
         )
     print("  secrets required (configure these NAMES; values live in CI secrets, never here):")
     for name in report["secret_names"]:
@@ -150,8 +150,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     if report["problems"]:
         print("\ndoctor: problems found:", file=sys.stderr)
-        for p in report["problems"]:
-            print(f"  - {p}", file=sys.stderr)
+        for problem in report["problems"]:
+            print(f"  - {problem}", file=sys.stderr)
         return 1
     print("\ndoctor: healthy — config resolves and the pipeline renders.")
     return 0
@@ -341,46 +341,49 @@ def cmd_help(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="stagr", description="stagr — the agentic-foundation control plane CLI.")
-    sub = ap.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(prog="stagr", description="stagr — the agentic-foundation control plane CLI.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    def common(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--config", default=Path(".agentic/config.yml"), type=Path,
-                       help="path to the .agentic/config.yml contract")
-        p.add_argument("--platform", default=None, help="override platform.type (e.g. github)")
+    def add_common_arguments(command_parser: argparse.ArgumentParser) -> None:
+        command_parser.add_argument("--config", default=Path(".agentic/config.yml"), type=Path,
+                                    help="path to the .agentic/config.yml contract")
+        command_parser.add_argument("--platform", default=None, help="override platform.type (e.g. github)")
 
-    d = sub.add_parser("doctor", help="validate config + report health, secrets (by NAME), and lanes")
-    common(d)
-    d.add_argument("--json", action="store_true", help="emit the report as JSON")
-    d.set_defaults(func=cmd_doctor)
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="validate config + report health, secrets (by NAME), and lanes")
+    add_common_arguments(doctor_parser)
+    doctor_parser.add_argument("--json", action="store_true", help="emit the report as JSON")
+    doctor_parser.set_defaults(func=cmd_doctor)
 
-    p = sub.add_parser("plan", help="dry run: show what apply would write (no writes)")
-    common(p)
-    p.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
-    p.add_argument("--diff", action="store_true", help="show a unified diff for changed workflows")
-    p.set_defaults(func=cmd_plan)
+    plan_parser = subparsers.add_parser("plan", help="dry run: show what apply would write (no writes)")
+    add_common_arguments(plan_parser)
+    plan_parser.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
+    plan_parser.add_argument("--diff", action="store_true", help="show a unified diff for changed workflows")
+    plan_parser.set_defaults(func=cmd_plan)
 
-    a = sub.add_parser("apply", help="render the pipeline and write it (idempotent)")
-    common(a)
-    a.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
-    a.add_argument("--prune", action="store_true",
-                   help="also delete workflow files in the target that this config does not render")
-    a.set_defaults(func=cmd_apply)
+    apply_parser = subparsers.add_parser("apply", help="render the pipeline and write it (idempotent)")
+    add_common_arguments(apply_parser)
+    apply_parser.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
+    apply_parser.add_argument("--prune", action="store_true",
+                              help="also delete workflow files in the target that this config does not render")
+    apply_parser.set_defaults(func=cmd_apply)
 
-    i = sub.add_parser("init", help="scaffold a .agentic/config.yml (interactive, or --profile to generate)")
-    i.add_argument("--config", default=Path(".agentic/config.yml"), type=Path, help="output path")
-    i.add_argument("--profile", choices=list(scaffold.PROFILES),
-                   help="generate non-interactively from this profile (skips the wizard)")
-    i.add_argument("--print", dest="print_only", action="store_true", help="print to stdout; write nothing")
-    i.add_argument("--force", action="store_true", help="overwrite an existing config file")
-    i.add_argument("--yes", action="store_true",
-                   help="accept defaults without prompting (profile defaults to standard)")
-    i.set_defaults(func=cmd_init)
+    init_parser = subparsers.add_parser(
+        "init", help="scaffold a .agentic/config.yml (interactive, or --profile to generate)")
+    init_parser.add_argument("--config", default=Path(".agentic/config.yml"), type=Path, help="output path")
+    init_parser.add_argument("--profile", choices=list(scaffold.PROFILES),
+                             help="generate non-interactively from this profile (skips the wizard)")
+    init_parser.add_argument("--print", dest="print_only", action="store_true",
+                             help="print to stdout; write nothing")
+    init_parser.add_argument("--force", action="store_true", help="overwrite an existing config file")
+    init_parser.add_argument("--yes", action="store_true",
+                             help="accept defaults without prompting (profile defaults to standard)")
+    init_parser.set_defaults(func=cmd_init)
 
-    h = sub.add_parser("help", help="show help for all commands, or `stagr help <command>`")
-    h.add_argument("topic", nargs="?", help="a command name to describe in detail")
-    h.set_defaults(func=cmd_help)
-    return ap
+    help_parser = subparsers.add_parser("help", help="show help for all commands, or `stagr help <command>`")
+    help_parser.add_argument("topic", nargs="?", help="a command name to describe in detail")
+    help_parser.set_defaults(func=cmd_help)
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:

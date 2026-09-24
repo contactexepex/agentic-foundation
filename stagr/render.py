@@ -141,13 +141,14 @@ MANDATORY_FAST_PATH_EXCLUDE = ["AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLA
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """Deep-merge overlay onto base (overlay wins). Lists/scalars are replaced."""
-    out = dict(base)
-    for k, v in overlay.items():
-        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = _deep_merge(out[k], v)
+    merged = dict(base)
+    for key, overlay_value in overlay.items():
+        base_value = merged.get(key)
+        if isinstance(base_value, dict) and isinstance(overlay_value, dict):
+            merged[key] = _deep_merge(base_value, overlay_value)
         else:
-            out[k] = v
-    return out
+            merged[key] = overlay_value
+    return merged
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -208,12 +209,13 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def validate_config(cfg: dict[str, Any]) -> None:
     schema = json.loads(SCHEMA_PATH.read_text())
-    errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda e: list(e.path))
+    errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda err: list(err.path))
     if errors:
-        lines = "; ".join(
-            f"{'/'.join(str(p) for p in e.path) or '(root)'}: {e.message}" for e in errors
+        details = "; ".join(
+            f"{'/'.join(str(part) for part in error.path) or '(root)'}: {error.message}"
+            for error in errors
         )
-        raise RenderError(f"config does not conform to schema: {lines}")
+        raise RenderError(f"config does not conform to schema: {details}")
     _validate_semantics(cfg)
 
 
@@ -252,37 +254,37 @@ def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     profile = cfg.get("profile", "standard")
     if profile not in PROFILE_STAGES:
         raise RenderError(f"unknown profile: {profile}")
-    base = {s["id"]: dict(s) for s in PROFILE_STAGES[profile]}
-    order = [s["id"] for s in PROFILE_STAGES[profile]]
+    stages_by_id = {stage_def["id"]: dict(stage_def) for stage_def in PROFILE_STAGES[profile]}
+    order = [stage_def["id"] for stage_def in PROFILE_STAGES[profile]]
     explicit_ids: set[str] = set()
     for stage in cfg.get("stages", []) or []:
-        sid = stage.get("id")
-        if not sid:
+        stage_id = stage.get("id")
+        if not stage_id:
             raise RenderError("every stage needs an id")
         # Two explicit stages sharing an id would silently deep-merge into a hybrid stage and drop
         # a graph node; reject it. (Overriding a PROFILE-provided stage by id is still allowed.)
-        if sid in explicit_ids:
-            raise RenderError(f"duplicate explicit stage id '{sid}'")
-        explicit_ids.add(sid)
+        if stage_id in explicit_ids:
+            raise RenderError(f"duplicate explicit stage id '{stage_id}'")
+        explicit_ids.add(stage_id)
         resolved = dict(stage)
         # `from` supplies preset defaults; the stage's own fields override them.
         if "from" in resolved:
             preset = _load_agent_preset(resolved["from"])
-            merged = _deep_merge(preset, {k: v for k, v in resolved.items() if k != "from"})
-            resolved = merged
-            resolved["id"] = sid
-        if sid in base:
-            base[sid] = _deep_merge(base[sid], resolved)
+            resolved = _deep_merge(preset, {k: v for k, v in resolved.items() if k != "from"})
+            resolved["id"] = stage_id
+        if stage_id in stages_by_id:
+            stages_by_id[stage_id] = _deep_merge(stages_by_id[stage_id], resolved)
         else:
-            base[sid] = resolved
-            order.append(sid)
-    return [base[sid] for sid in order if base[sid].get("enabled", True)]
+            stages_by_id[stage_id] = resolved
+            order.append(stage_id)
+    return [stages_by_id[stage_id] for stage_id in order if stages_by_id[stage_id].get("enabled", True)]
 
 
 # -------------------------------------------------------------------- model resolve
 
 
-def _lookup(binding: dict[str, Any] | None, tier: str) -> str | None:
+def _model_for_tier(binding: dict[str, Any] | None, tier: str) -> str | None:
+    """Pick a model id from a `{tiers: {...}, default: ...}` binding for `tier`, else None."""
     if not binding:
         return None
     tiers = binding.get("tiers") or {}
@@ -303,8 +305,8 @@ def resolve_model(
         )
     value = (
         request_override
-        or _lookup(stage.get("model"), tier)
-        or _lookup((cfg.get("defaults", {}).get("models", {}) or {}).get(provider), tier)
+        or _model_for_tier(stage.get("model"), tier)
+        or _model_for_tier((cfg.get("defaults", {}).get("models", {}) or {}).get(provider), tier)
     )
     if not value:
         raise RenderError(
@@ -340,18 +342,18 @@ def _build_steps(cfg: dict[str, Any]) -> str:
     preset = build.get("preset", "custom")
     # Preset pre-fills commands; explicit non-empty build.commands override per key.
     commands = dict(PRESET_COMMANDS.get(preset, {}))
-    for k, v in (build.get("commands", {}) or {}).items():
-        if (v or "").strip():
-            commands[k] = v
+    for step_name, command in (build.get("commands", {}) or {}).items():
+        if (command or "").strip():
+            commands[step_name] = command
     order = ["install", "lint", "typecheck", "test"]
     lines: list[str] = ["set -euo pipefail"]
-    for name in order:
-        cmd = (commands.get(name) or "").strip()
-        if cmd:
-            lines.append(f'echo "::group::{name}"')
+    for step_name in order:
+        command = (commands.get(step_name) or "").strip()
+        if command:
+            lines.append(f'echo "::group::{step_name}"')
             # Split multiline commands so EVERY physical line is indented by the join below;
             # otherwise continuation lines land at column 0 and break the `run: |` YAML block.
-            lines.extend(cmd.splitlines())
+            lines.extend(command.splitlines())
             lines.append('echo "::endgroup::"')
     if len(lines) == 1:
         lines.append('echo "No build commands configured; nothing to run."')
@@ -384,8 +386,8 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
             "(letters, digits, underscore; not starting with a digit)"
         )
 
-    stages = {s["id"]: s for s in expand_stages(cfg)}
-    implement_stage = next((s for s in stages.values() if s.get("type") == "implement"), None)
+    stages = {stage["id"]: stage for stage in expand_stages(cfg)}
+    implement_stage = next((stage for stage in stages.values() if stage.get("type") == "implement"), None)
     # Resolve the implementer model ONLY when the backend consumes one; otherwise the
     # app backend supplies it. Do NOT swallow a resolution error — fail loud.
     implementer_model = ""
@@ -433,13 +435,13 @@ _TOKEN = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 
 
 def render_template(text: str, context: dict[str, str]) -> str:
-    def sub(m: re.Match[str]) -> str:
-        key = m.group(1)
-        if key not in context:
-            raise RenderError(f"template references unknown token '{{{{ {key} }}}}'")
-        return context[key]
+    def substitute_token(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if token not in context:
+            raise RenderError(f"template references unknown token '{{{{ {token} }}}}'")
+        return context[token]
 
-    return _TOKEN.sub(sub, text)
+    return _TOKEN.sub(substitute_token, text)
 
 
 # The always-emitted core: the repo's "green" check, the review router that classifies each
@@ -475,8 +477,10 @@ def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     """
     names = list(CORE_TEMPLATES)
     if any(
-        s.get("type") in REVIEW_LANE_TYPES and _stage_backend(s) == BACKEND_CODEX and _wants_push_review(s)
-        for s in stages
+        stage.get("type") in REVIEW_LANE_TYPES
+        and _stage_backend(stage) == BACKEND_CODEX
+        and _wants_push_review(stage)
+        for stage in stages
     ):
         names += REVIEW_TEMPLATES
     return names
@@ -503,12 +507,12 @@ def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Render the agentic-foundation pipeline.")
-    ap.add_argument("--config", default=".agentic/config.yml", type=Path)
-    ap.add_argument("--out", type=Path, help="output dir (e.g. .github/workflows)")
-    ap.add_argument("--print", action="store_true", help="print to stdout, write nothing")
-    ap.add_argument("--platform", default=None, help="override platform.type")
-    args = ap.parse_args(argv)
+    parser = argparse.ArgumentParser(description="Render the agentic-foundation pipeline.")
+    parser.add_argument("--config", default=".agentic/config.yml", type=Path)
+    parser.add_argument("--out", type=Path, help="output dir (e.g. .github/workflows)")
+    parser.add_argument("--print", action="store_true", help="print to stdout, write nothing")
+    parser.add_argument("--platform", default=None, help="override platform.type")
+    args = parser.parse_args(argv)
 
     try:
         cfg = load_config(args.config)

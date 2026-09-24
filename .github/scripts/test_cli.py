@@ -141,7 +141,7 @@ def test_init_write_and_overwrite_guard() -> None:
 def test_init_wizard_defaults_and_nontty() -> None:
     from stagr import scaffold
     answers = iter([""] * 12)  # Enter throughout accepts every default
-    ch = scaffold.run_wizard(inp=lambda _p: next(answers), out=lambda _m: None)
+    ch = scaffold.run_wizard(read_input=lambda _p: next(answers), write_line=lambda _m: None)
     check(ch["profile"] == "standard" and ch["token_secret"] == "REMEDIATION_TOKEN",
           "wizard: pressing Enter accepts the defaults")
 
@@ -292,7 +292,7 @@ def test_init_wizard_governance_unrecognized_keeps_profile_default() -> None:
     from stagr import scaffold
     # profile=full (blocking security), then an unrecognized governance answer must NOT downgrade it.
     answers = iter(["full", "", "", "", "", "", "ye"])  # profile,branch,model,token,preset,test,gov
-    ch = scaffold.run_wizard(inp=lambda _p: next(answers), out=lambda _m: None)
+    ch = scaffold.run_wizard(read_input=lambda _p: next(answers), write_line=lambda _m: None)
     check(ch["security_blocking"] is True,
           "wizard: an unrecognized governance answer keeps the full profile's blocking default")
 
@@ -308,7 +308,7 @@ def test_init_build_presets_match_schema_and_wizard_validates() -> None:
     # A mistyped preset in the wizard falls back to a schema-valid value, so the generated
     # config still passes doctor rather than emitting `preset: pyhton`.
     answers = iter(["", "", "", "", "pyhton", "", "n"])  # profile,branch,model,token,preset,test,gov
-    ch = scaffold.run_wizard(inp=lambda _p: next(answers), out=lambda _m: None)
+    ch = scaffold.run_wizard(read_input=lambda _p: next(answers), write_line=lambda _m: None)
     check(ch["build_preset"] == "custom",
           "wizard: an unknown build preset falls back to 'custom'")
     text = scaffold.generate(ch)

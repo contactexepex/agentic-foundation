@@ -271,12 +271,12 @@ def test_round4_fixes() -> None:
     from stagr.backends.generic import runner as gen
 
     # S1: cyclic skill extends fails loud instead of RecursionError (use real files as content).
-    cyc = {"skills": {
+    cyclic_config = {"skills": {
         "a": {"source": "path", "path": "stagr/templates/skills/code-review/SKILL.md", "extends": "b"},
         "b": {"source": "path", "path": "stagr/templates/skills/security-review/SKILL.md", "extends": "a"},
     }}
     try:
-        gen.load_skill("a", cyc)
+        gen.load_skill("a", cyclic_config)
         failures.append("load_skill must reject a skill extends cycle")
         print("FAIL load_skill must reject a skill extends cycle", file=sys.stderr)
     except ValueError:
