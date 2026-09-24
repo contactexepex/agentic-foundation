@@ -320,17 +320,24 @@ def test_init_rejects_pasted_credential_value() -> None:
 
 
 def test_init_next_steps_carry_custom_config_path() -> None:
-    import shlex
     with tempfile.TemporaryDirectory() as d:
-        # A path with a space exercises the shell-quoting of the next-steps commands.
-        dest = Path(d) / "config files" / "stagr.yml"
+        dest = Path(d) / "config files" / "stagr.yml"  # a space: no shell-specific quoting is emitted
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cli.main(["init", "--profile", "minimal", "--config", str(dest)])
         out = buf.getvalue()
         check(rc == 0 and dest.exists(), "init: writes to a custom --config path")
-        check(f"--config {shlex.quote(str(dest))}" in out,
-              "init: next-steps commands carry the custom --config path, shell-quoted")
+        check(str(dest) in out and "--config" in out,
+              "init: next-steps points at the custom config path (shell-neutral, path shown plainly)")
+
+
+def test_init_writes_utf8() -> None:
+    with tempfile.TemporaryDirectory() as d:
+        dest = Path(d) / ".agentic" / "config.yml"
+        rc = cli.main(["init", "--profile", "standard", "--config", str(dest)])
+        raw = dest.read_bytes()
+        check(rc == 0 and "—".encode("utf-8") in raw,
+              "init: generated file is written UTF-8 (em dash encodes regardless of locale)")
 
 
 def test_init_reports_write_failure_without_traceback() -> None:
@@ -487,6 +494,7 @@ def main() -> int:
     test_init_rejects_values_the_pipeline_would_reject()
     test_init_rejects_pasted_credential_value()
     test_init_next_steps_carry_custom_config_path()
+    test_init_writes_utf8()
     test_init_reports_write_failure_without_traceback()
     test_init_print_keeps_stdout_yaml_only()
     test_init_full_profile_keeps_security_blocking()

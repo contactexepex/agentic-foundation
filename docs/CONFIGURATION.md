@@ -363,14 +363,15 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 > For a reproducible install, pin the URL to a commit SHA or release tag instead of `main`. See
 > [CLI.md](CLI.md) for full options.
 
-> **Prerequisite — the review provider's GitHub App.** stagr renders workflows that *call* an agent
-> provider; it does not install one. A stage using the **`codex`** backend (the default reviewer)
-> requires the **Codex GitHub App** to be installed on the repo/org and configured to review pull
-> requests — that app is what performs the review on PR open and acts on the `@codex` comments the
-> rendered `request-review.yml` posts on each push. Without it, a PR can open with no review despite a
-> `pr_opened` trigger in the config. A stage using **`claude-code-action`** likewise needs the
-> **Claude GitHub App**. Install and enable the relevant app **before** relying on the pipeline, and
-> confirm on a test PR that the review actually runs.
+> **Prerequisite — the Codex GitHub App (only for the `codex` backend).** A stage using the
+> **`codex`** backend (the default reviewer) requires the **Codex GitHub App** to be installed on the
+> repo/org and configured to review pull requests — that app is what performs the review on PR open
+> and acts on the `@codex` comments the rendered `request-review.yml` posts on each push. Without it,
+> a PR can open with no review despite a `pr_opened` trigger in the config, so install/enable it
+> **before** relying on the pipeline and confirm on a test PR that the review runs. Other backends do
+> **not** need a GitHub App: the `claude-code-action` implementer runs the pinned action from
+> `workflow_dispatch` and authenticates directly with the `ANTHROPIC_API_KEY` secret (`doctor` lists
+> the exact secret NAMES your config needs).
 
 1. Add `.agentic/config.yml`. The quickest way is `stagr init` (guided wizard) or
    `stagr init --profile <minimal|standard|full|custom>` (non-interactive), which writes a commented,

@@ -23,7 +23,6 @@ import argparse
 import difflib
 import json
 import re
-import shlex
 import stat
 import sys
 from pathlib import Path
@@ -384,17 +383,23 @@ def cmd_init(args: argparse.Namespace) -> int:
     # directory at the destination) as a concise error and exit 1 — not an uncaught traceback.
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_text(text)
+        # Always UTF-8: the generated file contains em dashes and box-drawing characters that a
+        # non-UTF-8 locale encoding (e.g. Windows CP932) cannot represent — a plain write_text would
+        # raise UnicodeEncodeError and leave a truncated file.
+        dest.write_text(text, encoding="utf-8")
     except OSError as exc:
         print(f"init: could not write {dest}: {exc}", file=sys.stderr)
         return 1
     print(f"init: wrote {dest} (profile: {choices['profile']}).")
-    # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, tell the user to
-    # pass the same --config so doctor/plan/apply operate on the file they just created.
-    # shlex.quote so a path with spaces or shell metacharacters stays one argument when copied.
-    config_flag = "" if dest == Path(".agentic/config.yml") else f" --config {shlex.quote(str(dest))}"
-    print(f"next: `stagr doctor{config_flag}` to validate, `stagr plan{config_flag}` to preview, "
-          f"`stagr apply{config_flag}` to write workflows.")
+    # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, point the user at
+    # the file. Show the path plainly rather than a copy-paste command: shells quote differently
+    # (POSIX/PowerShell single quotes vs cmd.exe double quotes), so one quoted command can't be
+    # correct everywhere — leave shell-specific quoting to the user.
+    if dest == Path(".agentic/config.yml"):
+        print("next: `stagr doctor` to validate, `stagr plan` to preview, `stagr apply` to write workflows.")
+    else:
+        print(f"next: run `stagr doctor`, then `stagr plan`, then `stagr apply`, passing `--config` "
+              f"with this file's path to each: {dest}  (quote it for your shell if it has spaces).")
     return 0
 
 

@@ -153,7 +153,9 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
 
 def _read_yaml(path: Path) -> dict[str, Any]:
     try:
-        data = yaml.safe_load(path.read_text())
+        # UTF-8 explicitly: generated configs are written UTF-8 (em dashes, box-drawing), so reading
+        # them back must not depend on a non-UTF-8 locale encoding (e.g. Windows CP932).
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise RenderError(f"file not found: {path}") from exc
     except yaml.YAMLError as exc:
