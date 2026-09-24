@@ -322,10 +322,14 @@ def _resolve_init_choices(args: argparse.Namespace) -> dict[str, Any] | None:
     """
     if args.profile or args.yes:
         try:
-            return scaffold.default_choices(args.profile or "standard")
+            choices = scaffold.default_choices(args.profile or "standard")
         except ValueError as exc:
             print(f"init: {exc}", file=sys.stderr)
             return None
+        # Propose the repo's autodetected build toolchain instead of the blind default (the wizard
+        # does the same for its interactive default). Still written as an overridable value.
+        choices["build_preset"] = scaffold.detect_build_preset()
+        return choices
     if sys.stdin.isatty():
         # The wizard is UI: route every prompt and message to stderr so stdout stays reserved for
         # the generated config (`--print`) or the result messages.

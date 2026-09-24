@@ -76,6 +76,16 @@ Create a starter `.agentic/config.yml` so you never hand-write YAML from scratch
   **commented** config directly (no prompts) — every section explains its purpose, default, and use.
   This is also the non-interactive / CI path.
 
+Either way, `init` **autodetects your build toolchain** from marker files in the repo and proposes the
+matching `build.preset` as the default (the wizard pre-selects it; `--profile` generation uses it):
+`pyproject.toml`/`setup.py`/`requirements.txt` → `python`, `pom.xml` → `maven`, `build.gradle[.kts]` →
+`gradle`, `package.json` → `node`, `go.mod` → `go`, `Cargo.toml` → `rust`, `*.csproj`/`*.sln` →
+`dotnet`, and `custom` when nothing is recognized. Detection reads only these top-level filenames
+(offline, no file contents), and the value stays overridable. A preset determines the install/lint/test
+commands the rendered Validate workflow runs (see [CONFIGURATION.md §4 Presets](CONFIGURATION.md#4-presets));
+preview the exact commands with `stagr plan --diff`, and override any that don't fit by setting them
+under `build.commands` in the config.
+
 ```bash
 stagr init                      # guided wizard
 stagr init --profile standard   # generate a commented standard config

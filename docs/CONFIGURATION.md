@@ -191,7 +191,7 @@ See **Model resolution** below for the full precedence order.
 ### `build` (optional)
 | Field | Meaning |
 |---|---|
-| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `stagr/templates/presets/` (the presets directory is a planned M2 deliverable; until then, set `commands` directly). |
+| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `build.commands` with that toolchain's install/lint/test (see [§4 Presets](#4-presets) for the exact commands); `custom` pre-fills nothing. Any command you set under `commands` overrides the preset per key. `stagr init` **autodetects** this from your repo's build markers (`pyproject.toml`/`setup.py`/`requirements.txt` → `python`, `pom.xml` → `maven`, `build.gradle[.kts]` → `gradle`, `package.json` → `node`, `go.mod` → `go`, `Cargo.toml` → `rust`, `*.csproj`/`*.sln` → `dotnet`, else `custom`) and proposes it as the default. Because a preset activates real CI commands (injected at render time, not written into the config), preview them with `stagr plan --diff` and override any that don't fit by setting `commands`. |
 | `commands.{install,lint,test,typecheck}` | What "green" means for this repo. The workflows run exactly these — **any language**. Override any preset value. |
 
 Omit `build` entirely (or leave `commands` empty) for a repo with no build gate, e.g. docs-only.
@@ -341,7 +341,8 @@ secret-free.
 
 ## 4. Presets
 
-A preset only pre-fills `build.commands`. Example shapes (set your real commands):
+A preset pre-fills `build.commands` with the defaults below, which the rendered Validate workflow runs
+verbatim. Override any per key by setting it under `build.commands`; `custom` pre-fills nothing.
 
 | Preset | install | lint | test |
 |---|---|---|---|
