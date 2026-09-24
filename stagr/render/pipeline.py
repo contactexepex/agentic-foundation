@@ -52,7 +52,9 @@ def main(argv: list[str] | None = None) -> int:
         # Confine the CLI-supplied output dir to the project root, exactly as `--config` is confined:
         # `--out` is an untrusted path and stagr must only ever write inside the repository it operates
         # on (a `../../…`, absolute, or symlink-escaping value is a mistake or a path-traversal attempt).
-        out_dir = _confine_to_project_root(args.out, "output dir") if args.out else None
+        # Only when we will actually write: in `--print` mode nothing is written and `--out` is ignored,
+        # so validating it there would wrongly fail a non-writing preview.
+        out_dir = _confine_to_project_root(args.out, "output dir") if (args.out and not args.print) else None
     except RenderError as exc:
         print(f"render error: {exc}", file=sys.stderr)
         return 1
