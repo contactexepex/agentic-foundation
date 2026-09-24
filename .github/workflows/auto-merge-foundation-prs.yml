@@ -216,6 +216,15 @@ jobs:
                     | length' <<<"$cr_json")"
             [[ "$bad_checks" == "0" ]] || { skip "$pr" "$bad_checks check-run(s) pending/failed"; echo '::endgroup::'; return 0; }
 
+            # The all-check-runs-green sweep above validates only checks that EXIST — it is fail-OPEN
+            # for a required check that never registered. A PR that deletes or renames
+            # .github/workflows/validate.yml produces no `Validate` check-run, so nothing is failing and
+            # the merge would proceed, silently disabling the repository's own "green" gate. So require
+            # the mandatory `Validate` check-run to be PRESENT and successful by name (fail-closed).
+            local validate_ok
+            validate_ok="$(jq -r '[ .[] | select(.name=="Validate" and .status=="completed" and .conclusion=="success") ] | length' <<<"$cr_json")"
+            [[ "$validate_ok" != "0" ]] || { skip "$pr" "required 'Validate' check-run is missing or not successful on the head"; echo '::endgroup::'; return 0; }
+
             # --- Review must be clean ---
             # No unresolved review threads (a Codex finding or a human comment blocks the merge).
             local unresolved
@@ -298,11 +307,23 @@ jobs:
 
               [[ "$codex_head_reviewed" == true ]] || { skip "$pr" "no completed Codex code review for current head $head_sha (no head-matching review object or summary row)"; echo '::endgroup::'; return 0; }
 
-              # NOTE: agentic-foundation does not wire SonarCloud by default (modules.sonar defaults
-              # off). The security gate here is Codex's security review — every finding posts as a
-              # review thread and is caught by the zero-unresolved-threads requirement above — together
-              # with the required `validate` check-run (all-check-runs-green, above). If you enable the
-              # sonar module, re-add a fail-closed check-run assertion for the SonarCloud app here.
+              # SonarCloud's analysis must be PRESENT and successful on the head. It is the
+              # security-analysis gate (which is why the gate deliberately does not require Codex's
+              # security-review completion marker, per the comment above): its absence must not pass
+              # silently, since the all-check-runs-green sweep validates only checks that EXIST, so a
+              # SonarCloud run that never enqueued would leave no failing entry.
+              #
+              # Authenticate by the SonarCloud APP IDENTITY, not a name substring: a check-run whose
+              # name merely contains "sonar" must not satisfy this. Require a check-run from the
+              # `sonarqubecloud` app that completed with conclusion exactly "success" (`neutral` is not
+              # a passing Quality Gate). SonarCloud reports via this check-run (no commit status), so no
+              # status fallback is used; if it ever reported nothing, the absence fails closed here.
+              local sonar_ok
+              sonar_ok="$(jq -r '[ .[] | select((.app.slug // "") == "sonarqubecloud") | select(.status=="completed" and .conclusion=="success") ] | length' <<<"$cr_json")"
+              if [[ "$sonar_ok" == "0" ]]; then
+                skip "$pr" "no successful SonarCloud (sonarqubecloud app) analysis on the head (required security gate); check-run apps present: $(jq -r '[.[].app.slug] | unique | join(",")' <<<"$cr_json")"
+                echo '::endgroup::'; return 0
+              fi
             fi
 
             # --- Re-validate the mutable gates immediately before merging ---

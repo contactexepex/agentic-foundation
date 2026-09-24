@@ -61,13 +61,16 @@ build:
   commands:
     test: "python .github/scripts/validate_config.py"
 
-# Fast-path trivial docs/text changes; route everything substantive to Codex.
+# Fast-path only trivial top-level text changes; route everything substantive to Codex.
+# Mirrors .github/workflows/fast-ai-code-review.yml exactly: docs/** is DENIED (docs hold
+# operational/security contracts and must be independently reviewed), as are AGENTS.md / CLAUDE.md
+# at the root and any nested path.
 routing:
   fast_path:
-    globs: ["**/*.md", "docs/**"]
+    globs: ["**/*.md", "LICENSE", ".gitignore", ".gitattributes", ".editorconfig"]
     max_files: 20
     max_lines: 200
-    exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
+    exclude: ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md", "docs/**"]
 
 modules:
   auto_merge: true                    # fail-closed foundation auto-merge gate is active

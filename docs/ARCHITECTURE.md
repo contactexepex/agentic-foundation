@@ -101,12 +101,12 @@ Per stage, per change tier, the model resolves **most-specific-first**:
 1. **Per-request override** (dispatch input / command)
 2. **Stage model** — `stages[].model.tiers.<tier>` → `.default`
 3. **Org/account default** — `defaults.models.<provider>.tiers.<tier>` → `.default`
-4. **Toolkit fallback**
 
 A resolved value that matches a `models.aliases` name expands to that alias's model ID
 for the stage's provider. `tier` (trivial/standard/complex) comes from the deterministic
-classifier (change size + paths) only when tiering is on. If nothing resolves, the
-toolkit **fails loudly** and never guesses a version. This is how "same provider,
+classifier (change size + paths) only when tiering is on. There is **no hidden toolkit
+fallback**: if none of layers 1–3 yields a model, the toolkit **fails loudly** and never
+guesses a version. This is how "same provider,
 different models" or "multiple providers, any permutation" is expressed — independently
 per stage.
 

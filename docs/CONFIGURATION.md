@@ -172,7 +172,7 @@ See **Model resolution** below for the full precedence order.
 ### `build` (optional)
 | Field | Meaning |
 |---|---|
-| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `templates/presets/`. |
+| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `templates/presets/` (the presets directory is a planned M2 deliverable; until then, set `commands` directly). |
 | `commands.{install,lint,test,typecheck}` | What "green" means for this repo. The workflows run exactly these — **any language**. Override any preset value. |
 
 Omit `build` entirely (or leave `commands` empty) for a repo with no build gate, e.g. docs-only.
@@ -232,7 +232,9 @@ the toolkit walks this chain and uses the first model it finds:
 | 1 | **Per-request override** | A model supplied at dispatch time (a pipeline input or a dispatch-comment command). Wins over everything. |
 | 2 | **Stage model** | `stages[].model.tiers.<tier>`, then `stages[].model.default`. |
 | 3 | **Org/account default** | `defaults.models.<provider>.tiers.<tier>`, then `defaults.models.<provider>.default` (provider = the stage's provider, or `defaults.provider`). |
-| 4 | **Toolkit fallback** | The documented built-in for that provider. |
+
+If none of layers 1–3 yields a model, resolution **fails loudly** (see below) — there is no hidden
+built-in default, so the toolkit never silently picks a model version.
 
 Key points:
 

@@ -37,8 +37,9 @@ stage binds a **role/type** (plan, implement, security, test, integration-test, 
 Same provider with different models, multiple providers, or any frontier-model mix — all per stage.
 
 **Models are configurable, layered, and dynamic.** You need not specify a model at all: each stage
-resolves one through a precedence chain — **per-request override › stage model › org/account default ›
-toolkit fallback** — so *providing a model overrides the default*, and omitting it inherits.
+resolves one through a precedence chain — **per-request override › stage model › org/account
+default** (then it fails loudly if unresolved — no hidden fallback) — so *providing a model overrides
+the default*, and omitting it inherits.
 Optionally enable **tiering**: a trivial change runs on a low-cost model, a large/complex one
 escalates — selection is **deterministic** (change-size + path signal), no extra model call. See
 [Model resolution](docs/CONFIGURATION.md#3a-model-resolution).
@@ -111,18 +112,21 @@ Full field reference, provider→secret mapping, and troubleshooting:
 ## Layout
 
 ```
-templates/workflows/<platform>/  per-platform pipeline templates (github first)
 templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
 templates/agents/<id>.yml        pre-wired agent presets that reference a skill
-templates/contract/              AGENTS.md / CLAUDE.md skeletons (domain-free)
 templates/config/                the .agentic/config.yml template
-templates/presets/               per-ecosystem command presets
-install/                         config.schema.json, modules.yml, installer
-skill/                           the Claude Code front-door skill
+install/                         config.schema.json, modules.yml
 docs/                            ARCHITECTURE.md, CONFIGURATION.md, LANDSCAPE.md
 .github/workflows/               this repo's live automation (reference impl for the renderer)
 .github/scripts/                 validate_config.py + docs
 .agentic/config.yml              this repo's own agentic contract (dogfood)
+
+# Planned (see ARCHITECTURE.md roadmap):
+templates/workflows/<platform>/  per-platform pipeline templates (M2; github first)
+templates/contract/              AGENTS.md / CLAUDE.md skeletons (M2)
+templates/presets/               per-ecosystem command presets (M2)
+install/ (installer/CLI)         doctor / plan / apply (M3)
+skill/                           the Claude Code front-door skill (M4)
 ```
 
 ## Dogfooding

@@ -154,13 +154,15 @@ tiering:
       min_lines: 400
 
 # --- Review routing ----------------------------------------------------------
-# Trivial textual changes are fast-path approved WITHOUT a model review.
+# Trivial textual changes are fast-path approved WITHOUT a model review. Note `docs/**` is EXCLUDED
+# from the fast path: docs often hold operational/security contracts and should be reviewed. Keep
+# AGENTS.md / CLAUDE.md (root and nested) excluded too.
 routing:
   fast_path:
-    globs: ["**/*.md", "docs/**"]
+    globs: ["**/*.md", "LICENSE", ".gitignore", ".gitattributes", ".editorconfig"]
     max_files: 20
     max_lines: 200
-    exclude: ["AGENTS.md", "CLAUDE.md", ".agentic/**"]
+    exclude: ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md", "docs/**", ".agentic/**"]
 
 # --- Cost & token budgets ----------------------------------------------------
 # Optional ceilings, global or per-stage. on_exceed decides the action.

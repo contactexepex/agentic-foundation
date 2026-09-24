@@ -2,6 +2,11 @@
 # renders `core` (the stage graph + router + hygiene) and adds each opt-in module
 # only when enabled in .agentic/config.yml (modules.*).
 #
+# ROADMAP NOTE: the renderer template files referenced below (templates/workflows/<platform>/*,
+# templates/contract/*.tmpl) do NOT exist yet — they are the M2 deliverable. This file is the map
+# the future renderer/installer will follow; today the live reference implementation lives in this
+# repo's own .github/workflows/. Only templates/config/agentic.config.yml.tmpl currently exists.
+#
 # Templates are grouped by platform under templates/workflows/<platform>/ so the
 # same neutral contract renders to whichever `platform.type` is set. The GitHub
 # renderer ships first; other platforms follow (see docs/ARCHITECTURE.md).

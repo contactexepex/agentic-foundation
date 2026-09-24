@@ -12,9 +12,6 @@ backend:
   name: generic                    # or pr-agent | claude-code-action | codex
 gate: blocking
 triggers: [pr_opened, pr_updated]
-# Model is intentionally unset: resolves via the stage's provider + defaults/tiering.
-model:
-  tiers:
-    trivial:  balanced
-    standard: balanced
-    complex:  strong
+# Model is intentionally unset so this preset works out of the box: it resolves via the stage's
+# provider + `defaults.models` (and tiering). To pin models, set `model:` on the stage that uses
+# this preset, or define `models.aliases` and reference them there.
