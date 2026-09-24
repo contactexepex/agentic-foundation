@@ -243,6 +243,26 @@ def cmd_apply(args: argparse.Namespace) -> int:
 # ------------------------------------------------------------------------------- init
 
 
+def _symlink_in_chain(dest: Path) -> Path | None:
+    """First symlink in `dest`'s chain up to the nearest existing real directory, else None.
+
+    Walks from the leaf upward, checking each component before it is created. The walk stops at
+    the first component that already exists as a real (non-symlink) directory — the boundary
+    `init` writes within — so pre-existing system symlinks further up (e.g. macOS `/tmp`) are not
+    flagged, while a symlinked leaf or a symlinked ancestor inside the checkout is caught.
+    """
+    cur = dest
+    while True:
+        if cur.is_symlink():
+            return cur
+        if cur.exists():  # a real, non-symlink file/dir: safe boundary reached
+            return None
+        parent = cur.parent
+        if parent == cur:  # reached the filesystem anchor without hitting anything
+            return None
+        cur = parent
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Scaffold a commented .agentic/config.yml — interactively, or from a profile."""
     if args.profile or args.yes:
@@ -268,11 +288,16 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 0
 
     dest = args.config
-    # Refuse a symlink destination: writing through it would follow the link (escaping the repo,
-    # and a broken symlink would even slip past the exists() guard). Require a regular file.
-    if dest.is_symlink():
-        print(f"init: {dest} is a symlink; refusing to write through it. Remove it or pass a "
-              f"different --config path.", file=sys.stderr)
+    # Refuse to write through a symlink anywhere in the destination's chain — the leaf OR an
+    # ancestor (e.g. a crafted `.agentic` symlink in an untrusted checkout would redirect the
+    # write outside the repo, and a broken symlink would even slip past the exists() guard).
+    # `mkdir`/`write_text` both follow parent symlinks, so guard the whole chain up to the
+    # nearest existing real directory (the boundary init writes within).
+    linked = _symlink_in_chain(dest)
+    if linked is not None:
+        which = "" if linked == dest else f" (via ancestor {linked})"
+        print(f"init: {dest} is reached through a symlink{which}; refusing to write through it. "
+              f"Remove it or pass a different --config path.", file=sys.stderr)
         return 1
     if dest.exists() and not args.force:
         print(f"init: {dest} already exists — use --force to overwrite, or --print to preview.",

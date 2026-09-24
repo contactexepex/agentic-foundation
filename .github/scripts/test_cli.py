@@ -196,6 +196,40 @@ def test_init_refuses_symlink_destination() -> None:
         check(rc == 1 and not target.exists(),
               "init: refuses to write through a symlink destination (even with --force)")
 
+    # A symlinked ANCESTOR (e.g. `.agentic` -> outside the checkout) must also be refused: the
+    # leaf itself is not a symlink, but writing would follow the parent and escape.
+    with tempfile.TemporaryDirectory() as d:
+        outside = Path(d) / "outside"
+        outside.mkdir()
+        linked_dir = Path(d) / ".agentic"
+        os.symlink(outside, linked_dir)  # .agentic is a symlink to a dir outside
+        dest = linked_dir / "config.yml"
+        rc = cli.main(["init", "--profile", "minimal", "--config", str(dest), "--force"])
+        check(rc == 1 and not (outside / "config.yml").exists(),
+              "init: refuses to write through a symlinked ancestor directory")
+
+
+def test_init_full_profile_keeps_security_blocking() -> None:
+    from stagr import scaffold
+    text = scaffold.generate(scaffold.default_choices("full"))
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "c.yml"
+        p.write_text(text)
+        cfg = render.load_config(p)
+        render.validate_config(cfg)
+    sec = next(s for s in cfg["stages"] if s.get("type") == "security")
+    check(sec.get("gate") == render.GATE_BLOCKING,
+          "init --profile full: security stage stays blocking (matches canonical profile)")
+    # `standard` derives advisory security from the same source of truth.
+    std = scaffold.generate(scaffold.default_choices("standard"))
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "c.yml"
+        p.write_text(std)
+        cfg2 = render.load_config(p)
+    sec2 = next(s for s in cfg2["stages"] if s.get("type") == "security")
+    check(sec2.get("gate") == render.GATE_ADVISORY,
+          "init --profile standard: security stage is advisory (matches canonical profile)")
+
 
 def test_default_token_secret_is_neutral() -> None:
     with tempfile.TemporaryDirectory() as d:
@@ -222,6 +256,7 @@ def main() -> int:
     test_help_command()
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
+    test_init_full_profile_keeps_security_blocking()
     test_default_token_secret_is_neutral()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)

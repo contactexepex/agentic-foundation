@@ -15,7 +15,12 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from .render import DEFAULT_TOKEN_SECRET, GATE_ADVISORY, GATE_BLOCKING  # shared contract vocabulary
+from .render import (  # shared contract vocabulary
+    DEFAULT_TOKEN_SECRET,
+    GATE_ADVISORY,
+    GATE_BLOCKING,
+    PROFILE_STAGES,
+)
 
 # Public doc links, so a generated config dropped into ANOTHER repo points at docs that exist there
 # (a relative `docs/…` reference would resolve inside the consumer repo, where they do not exist).
@@ -47,6 +52,20 @@ _PROFILE_STAGES: dict[str, list[str]] = {
 _ROADMAP_STAGES = ("plan", "test", "integration-test", "docs")
 
 
+def _profile_security_blocking(profile: str) -> bool:
+    """Whether the canonical profile (render.PROFILE_STAGES) makes the security stage blocking.
+
+    Derived from the shared profile definition — the single source of truth — so a generated
+    `--profile full` config keeps that profile's blocking security gate instead of silently
+    downgrading it to advisory. `standard` is advisory there, `minimal`/`custom` have no security
+    stage, so this returns False for them.
+    """
+    for stage in PROFILE_STAGES.get(profile, []):
+        if stage.get("type") == "security":
+            return stage.get("gate") == GATE_BLOCKING
+    return False
+
+
 def default_choices(profile: str) -> dict[str, Any]:
     """The choices a non-interactive `--profile` generation uses (the wizard overrides these)."""
     if profile not in PROFILES:
@@ -59,7 +78,7 @@ def default_choices(profile: str) -> dict[str, Any]:
         "token_secret": DEFAULT_TOKEN_SECRET,
         "build_preset": "custom",
         "build_test": "",
-        "security_blocking": False,
+        "security_blocking": _profile_security_blocking(profile),
     }
 
 
@@ -236,10 +255,11 @@ def run_wizard(inp: Callable[[str], str] = input, out: Callable[[str], None] = p
                         "python | node | maven | gradle | go | rust | dotnet | custom")
     build_test = _ask(inp, out, "Test command (blank to fill later)", "")
 
-    security_blocking = False
+    security_blocking = _profile_security_blocking(profile)
     if profile in ("standard", "full"):
         out("\n── Governance ──")
-        ans = _ask(inp, out, "Make the security review blocking?", "n", "y | n")
+        prof_default = "y" if security_blocking else "n"
+        ans = _ask(inp, out, "Make the security review blocking?", prof_default, "y | n")
         security_blocking = ans.strip().lower() in ("y", "yes", "true")
 
     return {
