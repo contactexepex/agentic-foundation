@@ -48,6 +48,7 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
+  actions: read   # to query the Actions API for the trusted Validate workflow run (gate auth)
 
 # One evaluation per PR at a time (per-PR events), and a single shared slot for the whole-repo
 # sweeps (schedule / check_suite / workflow_dispatch). Never cancel an in-flight run — a cancelled
