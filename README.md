@@ -59,9 +59,11 @@ override only what you need, or register/override your own by id. See
 [skills & agents](docs/ARCHITECTURE.md#3a-skills-and-agents--content-vs-wiring).
 
 **Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
-(`minimal`/`standard`/`full`, which expands to a default stage graph), a `platform`, and a model
-binding (`defaults.models.<provider>`, or a per-stage model) — model resolution is fail-loud, so
-there is no hidden default. That is still just a few lines; define `stages` only for finer control.
+(`minimal`/`standard`/`full`, which expands to a default stage graph), and a `platform`. A stage
+whose backend consumes a model (the built-in `generic`/`claude-code-action`) also needs a model
+binding (`defaults.models.<provider>`, or a per-stage model); app backends (e.g. `codex`) supply
+their own. Model resolution is fail-loud — no hidden default. Still a few lines; define `stages`
+only for finer control.
 
 **Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,
 username, or password), never stores them, and keeps them out of `.agentic/config.yml` — see

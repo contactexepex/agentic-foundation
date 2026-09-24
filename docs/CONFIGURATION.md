@@ -54,11 +54,12 @@ Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is 
 `install/config.schema.json`.
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
-(default `standard`, which expands to a stage graph), a `platform` (defaults to GitHub), and a model
-binding (`defaults.models.<provider>`, or a per-stage model) — model resolution is fail-loud (see
-below), so a schema-valid config with no model still fails to render rather than picking a hidden
-default. That is still a few lines; add `stages` and other blocks only to take finer control. See
-[ARCHITECTURE.md](ARCHITECTURE.md) for the design.
+(default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). A stage
+whose backend consumes a model (the built-in `generic`/`claude-code-action`) also needs a model
+binding (`defaults.models.<provider>`, or a per-stage model); app backends (e.g. `codex`) supply
+their own model, so an all-app-backed graph needs no `defaults.models`. Model resolution is
+fail-loud (see below) — no hidden default. That is still a few lines; add `stages` and other blocks
+only to take finer control. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```yaml
 # Minimal config — profile expands to a stage graph; models resolve from defaults/org.

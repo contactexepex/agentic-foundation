@@ -5,10 +5,11 @@
 # makes the toolkit portable: it never hardcodes a language, provider, model,
 # or SCM platform.
 #
-# EASY BY DEFAULT: pick a `profile`, a `platform`, and a model default under
-# `defaults` — the profile expands to a default stage graph. ADD `stages:` only
-# when you want granular control. Model resolution is fail-loud (no hidden
-# fallback), so a model binding is always required; every other block is optional.
+# EASY BY DEFAULT: pick a `profile` and a `platform`; the profile expands to a
+# default stage graph. ADD `stages:` only for granular control. Model resolution
+# is fail-loud (no hidden fallback): a stage on a model-consuming backend
+# (`generic`/`claude-code-action`) needs a resolvable model under `defaults` or
+# `stages[].model`; app backends (e.g. `codex`) supply their own. Else all optional.
 # Full reference: docs/CONFIGURATION.md   Design: docs/ARCHITECTURE.md
 # =============================================================================
 version: 2
@@ -20,7 +21,8 @@ version: 2
 #   - team/backend.yml
 
 # ===========================================================================
-# SIMPLE — a profile + a platform here, plus a model default under `defaults`.
+# SIMPLE — a profile + a platform. (Add a model default under `defaults` for any
+# stage whose backend consumes one; app backends like `codex` supply their own.)
 # ===========================================================================
 
 # Onboarding shortcut. Expands to a default stage graph you can override below.
@@ -47,10 +49,11 @@ build:
     typecheck: ""
 
 # ===========================================================================
-# MODEL DEFAULTS (required) + ADVANCED (optional).
-# `defaults` below is REQUIRED: resolution is fail-loud, so every stage needs a
-# model from `defaults.models.<provider>` (or its own `stages[].model`). Every
-# OTHER block below is optional — delete any one to accept its default.
+# MODEL DEFAULTS (required for model-consuming backends) + ADVANCED (optional).
+# Resolution is fail-loud: a stage on a `generic`/`claude-code-action` backend needs a
+# model from `defaults.models.<provider>` (or its own `stages[].model`). App backends
+# (codex, …) supply their own model, so an all-app-backed graph needs no `defaults.models`.
+# Every OTHER block below is optional — delete any one to accept its default.
 # ===========================================================================
 
 # --- Model resolution --------------------------------------------------------
