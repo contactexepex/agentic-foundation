@@ -268,6 +268,12 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 0
 
     dest = args.config
+    # Refuse a symlink destination: writing through it would follow the link (escaping the repo,
+    # and a broken symlink would even slip past the exists() guard). Require a regular file.
+    if dest.is_symlink():
+        print(f"init: {dest} is a symlink; refusing to write through it. Remove it or pass a "
+              f"different --config path.", file=sys.stderr)
+        return 1
     if dest.exists() and not args.force:
         print(f"init: {dest} already exists — use --force to overwrite, or --print to preview.",
               file=sys.stderr)

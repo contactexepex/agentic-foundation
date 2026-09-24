@@ -172,6 +172,31 @@ def test_help_command() -> None:
         check(rc == 0 and "--profile" in buf.getvalue(), f"help: `{' '.join(argv)}` details the command")
 
 
+def test_init_escapes_test_command() -> None:
+    from stagr import scaffold
+    ch = scaffold.default_choices("minimal")
+    ch["build_test"] = 'python -c "print(1)"'  # embedded quotes must not break the YAML
+    text = scaffold.generate(ch)
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "c.yml"
+        p.write_text(text)
+        cfg = render.load_config(p)
+        render.validate_config(cfg)
+    check(cfg["build"]["commands"]["test"] == 'python -c "print(1)"',
+          "init: a test command with quotes is emitted as a valid YAML scalar")
+
+
+def test_init_refuses_symlink_destination() -> None:
+    import os
+    with tempfile.TemporaryDirectory() as d:
+        target = Path(d) / "outside.yml"
+        link = Path(d) / "config.yml"
+        os.symlink(target, link)  # broken symlink (target does not exist)
+        rc = cli.main(["init", "--profile", "minimal", "--config", str(link), "--force"])
+        check(rc == 1 and not target.exists(),
+              "init: refuses to write through a symlink destination (even with --force)")
+
+
 def test_default_token_secret_is_neutral() -> None:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "config.yml"
@@ -195,6 +220,8 @@ def main() -> int:
     test_init_write_and_overwrite_guard()
     test_init_wizard_defaults_and_nontty()
     test_help_command()
+    test_init_escapes_test_command()
+    test_init_refuses_symlink_destination()
     test_default_token_secret_is_neutral()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
