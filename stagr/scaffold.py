@@ -37,6 +37,53 @@ def _schema_build_presets() -> tuple[str, ...]:
 BUILD_PRESETS = _schema_build_presets()
 _BUILD_PRESET_OPTIONS = " | ".join(BUILD_PRESETS)
 
+# The toolchain-agnostic preset: the fallback when no build marker is recognized. Also the schema's
+# own default, so a detected `custom` means "you fill in the commands yourself".
+CUSTOM_PRESET = "custom"
+
+# Top-level repo markers that select a build preset, in precedence order (first match wins, so a repo
+# carrying several markers resolves deterministically). A preset is chosen ONLY when the repo carries
+# the marker its build commands actually need — an npm lockfile for `npm ci`, a Gradle wrapper for
+# `./gradlew`, a requirements file for `pip install -r requirements.txt` — so a detected preset always
+# renders a Validate workflow that can run. A repo missing that marker (e.g. a package.json with no
+# lockfile, or a pyproject-only project) falls back to `CUSTOM_PRESET`, so `init` proposes a safe empty
+# default rather than a preset whose commands would fail before lint or tests. (`maven`/`go`/`rust`/
+# `dotnet` need only their manifest — those toolchains are provided by the runner.)
+_PRESET_SIGNALS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("python", ("requirements.txt",)),
+    ("maven", ("pom.xml",)),
+    ("gradle", ("gradlew",)),
+    ("node", ("package-lock.json", "npm-shrinkwrap.json")),
+    ("go", ("go.mod",)),
+    ("rust", ("Cargo.toml",)),
+    ("dotnet", ("*.csproj", "*.sln")),
+)
+
+
+def _signal_present(project_root: Path, name_patterns: tuple[str, ...]) -> bool:
+    """True if a top-level FILE in `project_root` matches any of these name patterns (literal or glob)."""
+    return any(match.is_file() for pattern in name_patterns for match in project_root.glob(pattern))
+
+
+def detect_build_preset(project_root: Path | None = None) -> str:
+    """Infer a `build.preset` from the marker files in `project_root` (default: the CWD).
+
+    Deterministic and offline — it only looks for the top-level marker files in `_PRESET_SIGNALS`,
+    reads none of their contents, and never touches the network. Returns the first matching preset,
+    or `CUSTOM_PRESET` when nothing recognizable is present. It never raises: a filesystem error
+    falls back to `CUSTOM_PRESET`, so `init` proposes a safe default on any repo instead of crashing.
+    """
+    try:
+        root = project_root if project_root is not None else Path.cwd()
+        for preset, name_patterns in _PRESET_SIGNALS:
+            if _signal_present(root, name_patterns):
+                return preset
+    except OSError:
+        # Path.cwd() itself can raise (deleted/unmounted CWD), as can a glob on an unreadable dir.
+        return CUSTOM_PRESET
+    return CUSTOM_PRESET
+
+
 # Public doc links, so a generated config dropped into ANOTHER repo points at docs that exist there
 # (a relative `docs/…` reference would resolve inside the consumer repo, where they do not exist).
 _DOCS_BASE = "https://github.com/contactexepex/agentic-foundation/blob/main/docs"
@@ -90,7 +137,12 @@ def _profile_security_blocking(profile: str) -> bool:
 
 
 def default_choices(profile: str) -> dict[str, Any]:
-    """The choices a non-interactive `--profile` generation uses (the wizard overrides these)."""
+    """The static default choices for a profile (pure — no filesystem or network access).
+
+    `build_preset` defaults to `CUSTOM_PRESET`; `init` autodetects the repo's toolchain and overlays
+    it on top (see `detect_build_preset` / `cli._resolve_init_choices`), and the wizard overrides all
+    of these interactively.
+    """
     if profile not in PROFILES:
         raise ValueError(f"unknown profile '{profile}'; choose one of: {', '.join(PROFILES)}")
     return {
@@ -99,7 +151,7 @@ def default_choices(profile: str) -> dict[str, Any]:
         "default_branch": DEFAULT_BRANCH,
         "model": DEFAULT_MODEL,
         "token_secret": DEFAULT_TOKEN_SECRET,
-        "build_preset": "custom",
+        "build_preset": CUSTOM_PRESET,
         "build_test": "",
         "security_blocking": _profile_security_blocking(profile),
     }
@@ -215,7 +267,13 @@ def generate(choices: dict[str, Any]) -> str:
     resolved = {**default_choices(profile), **choices}
 
     test_cmd = resolved["build_test"]
-    test_hint = "" if test_cmd else '            # e.g. "pytest" / "npm test" — fill in your test command'
+    if test_cmd:
+        test_hint = ""
+    elif resolved["build_preset"] != CUSTOM_PRESET:
+        # An empty override inherits the preset's test command at render time (render._build_steps).
+        test_hint = f"            # blank inherits the {resolved['build_preset']} preset's test; set to override"
+    else:
+        test_hint = '            # e.g. "pytest" / "npm test" — no preset default; set your test command'
     stages_block = _stages_block(resolved)
     # Emit every free-form string as a JSON scalar (a valid YAML double-quoted scalar), so a value
     # that YAML would otherwise reinterpret — a branch named `on`/`no` (bool), a name with a colon
@@ -303,13 +361,19 @@ def run_wizard(read_input: Callable[[str], str] = input,
                         DEFAULT_TOKEN_SECRET)
 
     write_line('\n── Build ("green" checks) ──')
-    build_preset = _ask(read_input, write_line, "Build preset", "custom", _BUILD_PRESET_OPTIONS)
+    # Propose the toolchain autodetected from the repo (markers in the CWD); the user can override it.
+    detected_preset = detect_build_preset()
+    build_preset = _ask(read_input, write_line, "Build preset", detected_preset, _BUILD_PRESET_OPTIONS)
     if build_preset not in BUILD_PRESETS:
         # The schema permits only the listed presets; a typo would generate a config that
         # immediately fails `stagr doctor`. Fall back to the toolchain-agnostic 'custom'.
-        write_line(f"  (unknown preset '{build_preset}', using 'custom')")
-        build_preset = "custom"
-    build_test = _ask(read_input, write_line, "Test command (blank to fill later)", "")
+        write_line(f"  (unknown preset '{build_preset}', using '{CUSTOM_PRESET}')")
+        build_preset = CUSTOM_PRESET
+    # A blank test command inherits the preset's test command at render time (render._build_steps
+    # ignores an empty override), so say that rather than "fill later" when a preset is selected.
+    test_prompt = ("Test command (blank uses the preset's default)" if build_preset != CUSTOM_PRESET
+                   else "Test command (blank to set later)")
+    build_test = _ask(read_input, write_line, test_prompt, "")
 
     security_blocking = _profile_security_blocking(profile)
     if profile in ("standard", "full"):
