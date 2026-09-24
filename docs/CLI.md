@@ -16,18 +16,20 @@ values are ever read, printed, or logged** — only the secret *names* the contr
 
 ## Install
 
+> **Not on PyPI yet.** Until the first release, install straight from the repository — pip/pipx build
+> it from source (no manual clone needed):
+>
+> ```bash
+> pipx install "git+https://github.com/contactexepex/agentic-foundation@main"
+> ```
+>
+> or, from a local checkout of this repository: `pipx install .` (or `pip install .`).
+
+Once published, the standard install will be:
+
 ```bash
-# Recommended: isolated global command on Linux / macOS / Windows
-pipx install stagr
-
-# Or into the current environment / CI
-pip install stagr
-```
-
-From a local checkout of this repository (until the package is published):
-
-```bash
-pipx install .        # or: pip install .
+pipx install stagr        # isolated global command on Linux / macOS / Windows
+pip install stagr         # or into the current environment / CI
 ```
 
 Verify it:
@@ -81,6 +83,13 @@ stagr plan --out some/dir  # compare against a different target
 Render the pipeline and write it to `.github/workflows/` (override with `--out`). Idempotent — only
 files whose content changed are written. By default it never deletes: a workflow present in the
 target that this config does not render is kept and reported. Pass `--prune` to remove such orphans.
+
+> **What renders today:** the core lane — the `Validate` check, the review router, the Claude
+> implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
+> lane. Other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
+> reviewers) are declared and validated but **not yet rendered** to workflows — multi-stage rendering
+> is roadmap ([CHARTER.md](CHARTER.md) §7). Run `plan` first: it lists the exact files `apply` will
+> write, so a declared stage that does not yet render is visible before you commit.
 
 ```bash
 stagr apply                # write/update the rendered pipeline

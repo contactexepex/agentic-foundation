@@ -100,9 +100,11 @@ assume a language.
 
 ## Quickstart
 
-1. **Install the CLI** (needs only Python 3.10+; see [docs/CLI.md](docs/CLI.md) for options):
+1. **Install the CLI** (needs only Python 3.10+; see [docs/CLI.md](docs/CLI.md) for options). `stagr`
+   is not on PyPI yet, so install it straight from the repository:
    ```bash
-   pipx install stagr          # from a checkout of this repo: pipx install .
+   pipx install "git+https://github.com/contactexepex/agentic-foundation@main"
+   # once published this becomes: pipx install stagr
    ```
 2. In your target repo, add `.agentic/config.yml` — set a `profile` and a `platform`. A minimal
    example is in [docs/CONFIGURATION.md](docs/CONFIGURATION.md); the full annotated template is
@@ -110,14 +112,21 @@ assume a language.
 3. Validate and preview:
    ```bash
    stagr doctor                # validate the contract + list the secret NAMES to configure
-   stagr plan                  # show what would be written to .github/workflows/
+   stagr plan                  # show exactly which files would be written to .github/workflows/
    ```
 4. Create those secrets in your CI/SCM secret store (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
-   for service-account vs PAT guidance), then install the pipeline:
+   for service-account vs PAT guidance), then render the pipeline:
    ```bash
    stagr apply                 # write .github/workflows/ from your contract
    ```
-5. Commit and merge. The pipeline is live.
+5. Commit and merge the rendered workflows.
+
+> **What renders today:** the core lane — the `Validate` check, the review router, the Claude
+> implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
+> lane. Other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
+> reviewers) are declared and validated but **not yet rendered** to workflows — that multi-stage
+> rendering is on the roadmap ([docs/CHARTER.md](docs/CHARTER.md) §7). `stagr plan` always shows the
+> exact set of files that will be written, so review it before committing.
 
 Full field reference, provider→secret mapping, and troubleshooting:
 **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.

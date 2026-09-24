@@ -336,15 +336,25 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 ## 5. Setup steps
 
-> Install the CLI first: `pipx install stagr` (needs Python 3.10+). See [CLI.md](CLI.md).
+> Install the CLI first (needs Python 3.10+). `stagr` is not on PyPI yet, so install from the
+> repository: `pipx install "git+https://github.com/contactexepex/agentic-foundation@main"`. See
+> [CLI.md](CLI.md).
 
 1. Add `.agentic/config.yml`. Start with a `profile`, a `platform`, and a model binding for any
    model-consuming stage; add `stages` only for finer control. (A drafting skill that proposes this
    for you is roadmap — M4.)
 2. Run `stagr doctor` — it validates the config and lists the exact secret NAMES to create.
 3. Create those secrets in your CI/SCM secret store (section 2), then run `stagr plan` to preview and
-   `stagr apply` to render the enabled stages for your `platform` into `.github/workflows/`.
-4. Commit and merge. The pipeline is live.
+   `stagr apply` to render the pipeline for your `platform` into `.github/workflows/`.
+4. Commit and merge the rendered workflows.
+
+> **What renders today:** `apply` emits the core lane — the `Validate` check, the review router, the
+> Claude implementer, and (when a Codex review/security stage is configured) the Codex review +
+> thread-cleanup lane. Other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and
+> non-Codex reviewers) are declared and validated but **not yet rendered** to workflows; that
+> multi-stage rendering is on the roadmap (see [CHARTER.md](CHARTER.md) §7). Always read `stagr plan`
+> output — it lists the exact files that will be written — so a declared stage that does not yet
+> render is visible before you commit.
 
 ---
 
