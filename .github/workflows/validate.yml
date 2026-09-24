@@ -15,7 +15,16 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: validate-${{ github.event.pull_request.number || github.ref }}
+  # Real validation runs (push, synchronize, base-change edited, …) share the per-PR group, so a
+  # newer run supersedes an older one via cancel-in-progress. A metadata-only `edited` event
+  # (title/body — which the job below skips) is instead given a unique per-run group, so it can
+  # never cancel an in-flight real Validate run and leave the head with no successful result — a
+  # cancellation that would otherwise stall the fail-closed auto-merge gate until the next
+  # validation-triggering event.
+  group: >-
+    validate-${{ github.event.pull_request.number || github.ref }}${{
+      (github.event_name == 'pull_request' && github.event.action == 'edited' && github.event.changes.base == null)
+      && format('-meta-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 permissions:
