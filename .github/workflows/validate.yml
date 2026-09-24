@@ -62,7 +62,8 @@ jobs:
       - name: Build the package and smoke-test the installed CLI
         run: |
           set -euo pipefail
-          python -m pip install --only-binary=:all: build
+          # Pin the build frontend to a resolved version (reproducible CI; no floating installs).
+          python -m pip install --only-binary=:all: "build==1.6.1"
           python -m build
           # Install the built wheel into an isolated venv and confirm the `stagr` command works
           # AND finds its bundled data (schema + templates) from site-packages — run it from a
