@@ -245,26 +245,22 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def _symlink_in_chain(dest: Path) -> Path | None:
-    """First symlink in `dest`'s chain up to the nearest existing real directory, else None.
+    """First symlink in `dest`'s chain, checking EVERY component, or None if there is none.
 
-    Walks the destination (absolutized, symlinks NOT pre-resolved) from the leaf upward and
-    rejects any component that is a symlink: the leaf itself (`is_symlink` uses lstat, so even a
-    broken link is caught) OR an ancestor such as a crafted `.agentic` -> outside in an untrusted
-    checkout, which `mkdir`/`write_text` would follow to escape the repo. The walk stops only at
-    the first component that already exists as a real (non-symlink) *directory* — the safe
-    boundary init writes within. Using is_dir() (not exists()) as the boundary is deliberate: a
-    real-file leaf reached THROUGH a symlinked parent exists but is not a boundary, so the
-    symlinked parent is still inspected; and pre-existing system symlinks above that directory
-    (e.g. macOS `/tmp`) are never reached.
+    Walks the absolutized destination (symlinks NOT pre-resolved) from the leaf to the filesystem
+    root, testing each component with `is_symlink()` — which lstat's that single component without
+    following it. Any symlink is rejected: the leaf itself (so even a broken link is caught) OR an
+    ancestor such as a crafted `.agentic` -> outside in an untrusted checkout, which
+    `mkdir`/`write_text` would follow to escape the repo. Every component is inspected — there is
+    no early exists()/is_dir() boundary, because those follow symlinks in earlier components and so
+    could skip past a symlinked ancestor (e.g. `.agentic/nested` where `.agentic` is the link).
     """
     cur = Path(os.path.abspath(dest))
     while True:
         if cur.is_symlink():
             return cur
-        if cur.is_dir():  # a real (non-symlink) directory: safe boundary reached
-            return None
         parent = cur.parent
-        if parent == cur:  # reached the filesystem anchor without hitting anything
+        if parent == cur:  # reached the filesystem anchor
             return None
         cur = parent
 

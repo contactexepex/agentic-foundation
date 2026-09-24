@@ -222,6 +222,19 @@ def test_init_refuses_symlink_destination() -> None:
         check(rc == 1 and sentinel.read_text() == "do-not-clobber\n",
               "init: refuses to overwrite an existing outside file via a symlinked ancestor (--force)")
 
+    # Symlinked ancestor with an existing subdirectory below it: `.agentic` -> outside, outside/nested/
+    # exists, dest = .agentic/nested/config.yml. An is_dir() boundary would stop at nested (following
+    # the symlink) and never inspect `.agentic`; every component must be checked.
+    with tempfile.TemporaryDirectory() as d:
+        outside = Path(d) / "outside"
+        (outside / "nested").mkdir(parents=True)
+        linked_dir = Path(d) / ".agentic"
+        os.symlink(outside, linked_dir)
+        dest = linked_dir / "nested" / "config.yml"
+        rc = cli.main(["init", "--profile", "minimal", "--config", str(dest), "--force"])
+        check(rc == 1 and not (outside / "nested" / "config.yml").exists(),
+              "init: refuses a symlinked ancestor even when a real subdir exists below it")
+
 
 def test_init_full_profile_keeps_security_blocking() -> None:
     from stagr import scaffold
@@ -243,6 +256,45 @@ def test_init_full_profile_keeps_security_blocking() -> None:
     sec2 = next(s for s in cfg2["stages"] if s.get("type") == "security")
     check(sec2.get("gate") == render.GATE_ADVISORY,
           "init --profile standard: security stage is advisory (matches canonical profile)")
+
+
+def test_init_review_gate_derived_from_profile() -> None:
+    from stagr import scaffold
+    expected = {"minimal": render.GATE_ADVISORY, "standard": render.GATE_BLOCKING,
+                "full": render.GATE_BLOCKING}
+    for prof, want in expected.items():
+        text = scaffold.generate(scaffold.default_choices(prof))
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "c.yml"
+            p.write_text(text)
+            cfg = render.load_config(p)
+            render.validate_config(cfg)
+        review = next(s for s in cfg["stages"] if s.get("type") == "review")
+        check(review.get("gate") == want,
+              f"init --profile {prof}: review gate is {want} (matches canonical profile)")
+
+
+def test_init_quotes_yaml_keyword_scalars() -> None:
+    from stagr import scaffold
+    ch = scaffold.default_choices("minimal")
+    ch["default_branch"] = "on"  # a valid branch name YAML would otherwise read as boolean True
+    text = scaffold.generate(ch)
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "c.yml"
+        p.write_text(text)
+        cfg = render.load_config(p)
+        render.validate_config(cfg)
+    check(cfg["platform"]["default_branch"] == "on",
+          "init: a YAML-keyword default branch ('on') is emitted as a quoted string, not a bool")
+
+
+def test_init_wizard_governance_unrecognized_keeps_profile_default() -> None:
+    from stagr import scaffold
+    # profile=full (blocking security), then an unrecognized governance answer must NOT downgrade it.
+    answers = iter(["full", "", "", "", "", "", "ye"])  # profile,branch,model,token,preset,test,gov
+    ch = scaffold.run_wizard(inp=lambda _p: next(answers), out=lambda _m: None)
+    check(ch["security_blocking"] is True,
+          "wizard: an unrecognized governance answer keeps the full profile's blocking default")
 
 
 def test_init_build_presets_match_schema_and_wizard_validates() -> None:
@@ -295,6 +347,9 @@ def main() -> int:
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
     test_init_full_profile_keeps_security_blocking()
+    test_init_review_gate_derived_from_profile()
+    test_init_quotes_yaml_keyword_scalars()
+    test_init_wizard_governance_unrecognized_keeps_profile_default()
     test_init_build_presets_match_schema_and_wizard_validates()
     test_default_token_secret_is_neutral()
     if failures:

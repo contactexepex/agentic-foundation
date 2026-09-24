@@ -50,14 +50,23 @@ defaults the workflows read; keep them unless you also update the rendered workf
 
 ## 3. `.agentic/config.yml` — field reference
 
-Create `.agentic/config.yml` from the annotated template. The template ships inside the installed
-package, so download it rather than copying from the install:
+The easiest way to create `.agentic/config.yml` is **`stagr init`**, which writes a commented starter
+config for you — no hand-editing from a reference required:
+
+- `stagr init` — a short guided wizard (scope, platform, model/secrets, build checks, governance),
+  each prompt showing its options and default; press Enter to accept.
+- `stagr init --profile <minimal|standard|full|custom>` — generate the file non-interactively (for
+  CI or when you already know what you want). Add `--print` to preview, `--force` to overwrite.
+
+Every generated file validates and renders. See [CLI.md](CLI.md) for the full `init` reference and the
+**init → doctor → plan → apply** flow.
+
+Prefer to write it by hand? The annotated template ships inside the installed package; download it
+rather than copying from the install:
 [`agentic.config.yml.tmpl`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/templates/config/agentic.config.yml.tmpl)
-(e.g. `curl -o .agentic/config.yml <that URL>`), or start from the minimal example in section 5. It is
-validated against
+(e.g. `curl -o .agentic/config.yml <that URL>`), or start from the minimal example in section 5. Either
+way the file is validated against
 [`stagr/config.schema.json`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/config.schema.json).
-(A `stagr init` command that writes a starter config for you is on the roadmap — see
-[CHARTER.md](CHARTER.md) §7.)
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
 (default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). A stage
@@ -354,9 +363,11 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 > For a reproducible install, pin the URL to a commit SHA or release tag instead of `main`. See
 > [CLI.md](CLI.md) for full options.
 
-1. Add `.agentic/config.yml`. Start with a `profile`, a `platform`, and a model binding for any
-   model-consuming stage; add `stages` only for finer control. (A drafting skill that proposes this
-   for you is roadmap — M4.)
+1. Add `.agentic/config.yml`. The quickest way is `stagr init` (guided wizard) or
+   `stagr init --profile <minimal|standard|full|custom>` (non-interactive), which writes a commented,
+   valid starter for you; or write it by hand starting from a `profile`, a `platform`, and a model
+   binding for any model-consuming stage, adding `stages` only for finer control. (An AI drafting
+   *skill* that proposes a tailored config is a separate, roadmap item — M4.)
 2. Run `stagr doctor` — it validates the config and lists the exact secret NAMES to create.
 3. Create those secrets in your CI/SCM secret store (section 2), then run `stagr plan` to preview and
    `stagr apply` to render the pipeline for your `platform` into `.github/workflows/`.
