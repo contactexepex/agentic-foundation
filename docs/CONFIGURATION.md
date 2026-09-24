@@ -28,7 +28,7 @@ defaults the workflows read; keep them unless you also update the rendered workf
 |---|---|---|---|---|
 | Claude model access | `ANTHROPIC_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: claude` | Never a personal key. Rotate independently. |
 | OpenAI/Codex model access | `OPENAI_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: openai` | Never a personal key. |
-| Codex comment-trigger / PR publication | `CODEX_REMEDIATION_TOKEN` | **Fine-grained PAT (real user)** | reviewer or dispatch uses Codex's `@codex` comment flow | Least scope: **Contents: R/W** + **Pull requests: R/W**. **No** admin/merge. Must be a real, attributable user — bot/App tokens do not reliably trigger `@codex`. |
+| Codex comment-trigger / PR publication | `REMEDIATION_TOKEN` | **Fine-grained PAT (real user)** | reviewer or dispatch uses Codex's `@codex` comment flow | Least scope: **Contents: R/W** + **Pull requests: R/W**. **No** admin/merge. Must be a real, attributable user — bot/App tokens do not reliably trigger `@codex`. |
 | SonarQube/SonarCloud token | `SONAR_TOKEN` | **Service account** | `modules.sonar: true` | Read/analysis scope for the project. |
 | Sonar host (SonarQube only) | `SONAR_HOST_URL` | Variable | `modules.sonar: true` on self-hosted | Omit for SonarCloud. |
 | GitHub API (statuses, PR reads) | `GITHUB_TOKEN` | Provided by Actions | always | No action needed; least-privilege per-workflow permissions are set in each workflow. |
@@ -37,7 +37,7 @@ defaults the workflows read; keep them unless you also update the rendered workf
 - **Model API keys** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are machine credentials for paid model
   usage — use dedicated **service-account** keys so cost and access are isolated from any person and
   can be rotated without touching a human account.
-- **`CODEX_REMEDIATION_TOKEN`** must be a **real-user PAT** because Codex acts on `@codex` commands
+- **`REMEDIATION_TOKEN`** must be a **real-user PAT** because Codex acts on `@codex` commands
   only from an attributable user, and PR publication needs an attributable repository member. Grant
   it the minimum (Contents + Pull requests, R/W) — it needs no permission to merge or administer.
 
@@ -376,7 +376,7 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 | Symptom | Likely cause |
 |---|---|
-| Reviewer never runs on Codex | `CODEX_REMEDIATION_TOKEN` missing or not a real-user PAT. |
+| Reviewer never runs on Codex | `REMEDIATION_TOKEN` missing or not a real-user PAT. |
 | Endpoints/agents fail auth | Model API key secret missing or wrong name. |
 | Fast path never triggers | Change exceeds `routing.fast_path` size, or path is in `exclude`. |
 | Wrong model tier chosen | Review `tiering.thresholds`; deterministic tiering keys off files/lines/paths only. |

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""stagr — the agentic-foundation control plane CLI (M3).
+"""stagr — the agentic-foundation control plane CLI.
 
-Three subcommands over the M2 renderer core (`render.py`), so newcomers can adopt the
-toolkit with one command and experts can inspect exactly what it will do first:
+Subcommands over the renderer core (`render.py`), so newcomers can adopt the toolkit with one
+command and experts can inspect exactly what it will do first:
 
+    stagr init     # scaffold a commented .agentic/config.yml (guided wizard, or --profile to generate)
     stagr doctor   # validate config + resolve the graph; report health, secrets (by NAME), lanes
     stagr plan     # dry run: show what apply WOULD write to .github/workflows (no writes)
     stagr apply    # render the pipeline and write it (idempotent; never deletes unless --prune)
+    stagr help     # list commands, or `stagr help <command>` / `stagr <command> help` for detail
 
 Design invariants (shared with the renderer):
   * No network. No secret VALUES are ever read, printed, or logged — only the secret NAMES
@@ -24,7 +26,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import render
+from . import render, scaffold
 from .backends.generic.runner import DEFAULT_KEY_SECRET
 
 
@@ -94,7 +96,7 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
 
     # The codex review lane authors comments/resolutions with a real-user PAT (NAME only).
     if any(s.get("type") in {"review", "security"} and render._stage_backend(s) == "codex" for s in stages):
-        secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or "CODEX_REMEDIATION_TOKEN")
+        secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or render.DEFAULT_TOKEN_SECRET)
 
     report["secret_names"] = sorted(secret_names)
     try:
@@ -238,6 +240,70 @@ def cmd_apply(args: argparse.Namespace) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------- init
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold a commented .agentic/config.yml — interactively, or from a profile."""
+    if args.profile or args.yes:
+        try:
+            choices = scaffold.default_choices(args.profile or "standard")
+        except ValueError as exc:
+            print(f"init: {exc}", file=sys.stderr)
+            return 1
+    elif sys.stdin.isatty():
+        choices = scaffold.run_wizard()
+    else:
+        print(
+            "init: not a terminal, and no --profile given.\n"
+            "  Run `stagr init` in a terminal for guided setup, or\n"
+            "  `stagr init --profile <minimal|standard|full|custom>` to generate a file directly.",
+            file=sys.stderr,
+        )
+        return 1
+
+    text = scaffold.generate(choices)
+    if args.print_only:
+        print(text, end="")
+        return 0
+
+    dest = args.config
+    if dest.exists() and not args.force:
+        print(f"init: {dest} already exists — use --force to overwrite, or --print to preview.",
+              file=sys.stderr)
+        return 1
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(text)
+    print(f"init: wrote {dest} (profile: {choices['profile']}).")
+    print("next: `stagr doctor` to validate, `stagr plan` to preview, `stagr apply` to write workflows.")
+    return 0
+
+
+# ------------------------------------------------------------------------------- help
+
+
+def _subparser_choices(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    for action in parser._actions:  # noqa: SLF001 — argparse exposes subparsers only here
+        if isinstance(action, argparse._SubParsersAction):
+            return action.choices
+    return {}
+
+
+def cmd_help(args: argparse.Namespace) -> int:
+    """`stagr help` lists commands; `stagr help <command>` details one."""
+    parser = build_parser()
+    topic = getattr(args, "topic", None)
+    if not topic:
+        parser.print_help()
+        return 0
+    choices = _subparser_choices(parser)
+    if topic in choices:
+        choices[topic].print_help()
+        return 0
+    print(f"help: unknown command '{topic}'. Available: {', '.join(sorted(choices))}", file=sys.stderr)
+    return 1
+
+
 # ----------------------------------------------------------------------------- main
 
 
@@ -267,10 +333,28 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--prune", action="store_true",
                    help="also delete workflow files in the target that this config does not render")
     a.set_defaults(func=cmd_apply)
+
+    i = sub.add_parser("init", help="scaffold a .agentic/config.yml (interactive, or --profile to generate)")
+    i.add_argument("--config", default=Path(".agentic/config.yml"), type=Path, help="output path")
+    i.add_argument("--profile", choices=list(scaffold.PROFILES),
+                   help="generate non-interactively from this profile (skips the wizard)")
+    i.add_argument("--print", dest="print_only", action="store_true", help="print to stdout; write nothing")
+    i.add_argument("--force", action="store_true", help="overwrite an existing config file")
+    i.add_argument("--yes", action="store_true",
+                   help="accept defaults without prompting (profile defaults to standard)")
+    i.set_defaults(func=cmd_init)
+
+    h = sub.add_parser("help", help="show help for all commands, or `stagr help <command>`")
+    h.add_argument("topic", nargs="?", help="a command name to describe in detail")
+    h.set_defaults(func=cmd_help)
     return ap
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # Accept `stagr <command> help` as an alias for `stagr help <command>`.
+    if len(argv) == 2 and argv[1] == "help" and argv[0] != "help":
+        argv = ["help", argv[0]]
     args = build_parser().parse_args(argv)
     return args.func(args)
 

@@ -109,11 +109,12 @@ assume a language.
    ```
    For a reproducible, auditable install, pin the URL to a commit SHA (or a release tag) instead of
    `main` — see [docs/CLI.md](docs/CLI.md).
-2. In your target repo, add `.agentic/config.yml` — set a `profile` and a `platform`. A minimal
-   example is in [docs/CONFIGURATION.md](docs/CONFIGURATION.md); the full annotated template is
-   downloadable at
-   [`stagr/templates/config/agentic.config.yml.tmpl`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/templates/config/agentic.config.yml.tmpl)
-   (it ships inside the installed package, so grab it from that URL rather than the isolated install).
+2. In your target repo, create `.agentic/config.yml` with **`stagr init`** — no hand-written YAML:
+   ```bash
+   stagr init                    # guided wizard (Enter accepts each default), or
+   stagr init --profile standard # generate a commented config directly
+   ```
+   Profiles: `minimal` / `standard` / `full` / `custom`. See [docs/CLI.md](docs/CLI.md).
 3. Validate and preview:
    ```bash
    stagr doctor                # validate the contract + list the secret NAMES to configure
@@ -141,7 +142,7 @@ Full field reference, provider→secret mapping, and troubleshooting:
 
 ```
 stagr/                                 the installable CLI package: cli.py, render.py,
-                                       config.schema.json, backends/ (doctor / plan / apply)
+                                       config.schema.json, backends/ (init / doctor / plan / apply)
 stagr/templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
 stagr/templates/agents/<id>.yml        pre-wired agent presets that reference a skill
 stagr/templates/config/                the .agentic/config.yml template

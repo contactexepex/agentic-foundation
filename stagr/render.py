@@ -38,6 +38,10 @@ SCHEMA_PATH = PKG_ROOT / "config.schema.json"
 TEMPLATE_ROOT = PKG_ROOT / "templates" / "workflows"
 AGENTS_DIR = PKG_ROOT / "templates" / "agents"
 
+# Default NAME of the real-user PAT the review lane pushes/posts with when `platform.auth.token_secret`
+# is not set. Provider-neutral (the toolkit is provider-agnostic); the value lives in CI secrets.
+DEFAULT_TOKEN_SECRET = "REMEDIATION_TOKEN"
+
 GITHUB_ROLE_MAP = {
     "owner": "OWNER",
     "member": "MEMBER",
@@ -360,7 +364,7 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     # NAME of the real-user PAT the codex review lane posts/resolves with (never a value). Validate
     # it as a GitHub secret name so it cannot break out of the `secrets.<NAME>` expression it is
     # inserted into (e.g. a hyphen, punctuation, or newline).
-    codex_review_secret = ((platform.get("auth", {}) or {}).get("token_secret")) or "CODEX_REMEDIATION_TOKEN"
+    codex_review_secret = ((platform.get("auth", {}) or {}).get("token_secret")) or DEFAULT_TOKEN_SECRET
     if not _SECRET_NAME.match(str(codex_review_secret)):
         raise RenderError(
             f"platform.auth.token_secret '{codex_review_secret}' is not a valid GitHub secret name "
