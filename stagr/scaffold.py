@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from .render import DEFAULT_TOKEN_SECRET  # single source of truth for the default PAT secret name
+from .render import DEFAULT_TOKEN_SECRET, GATE_ADVISORY, GATE_BLOCKING  # shared contract vocabulary
 
 # The onboarding profiles `init` understands, smallest to largest. These size the generated file;
 # the flow is always the recommended Claude-implementer + Codex-reviewer pair, which is what renders
@@ -98,7 +98,7 @@ _CUSTOM_SKELETON = """\
 
 
 def _security_snippet(blocking: bool) -> str:
-    gate = "blocking" if blocking else "advisory"
+    gate = GATE_BLOCKING if blocking else GATE_ADVISORY
     note = "blocks the PR" if blocking else "advisory: reports, does not block"
     return (
         f"  # Security reviewer — Codex security review ({note}).\n"

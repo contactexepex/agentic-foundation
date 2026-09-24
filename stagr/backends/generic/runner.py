@@ -180,7 +180,7 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[st
 def _default_gate(stage_type: str, explicit: str | None) -> str:
     if explicit:
         return explicit
-    return "blocking" if stage_type in {"review", "security", "test", "integration-test"} else "advisory"
+    return "blocking" if stage_type in REVIEW_TYPES else "advisory"
 
 
 def build_invocation(

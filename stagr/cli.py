@@ -95,7 +95,8 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
         report["stages"].append(entry)
 
     # The codex review lane authors comments/resolutions with a real-user PAT (NAME only).
-    if any(s.get("type") in {"review", "security"} and render._stage_backend(s) == "codex" for s in stages):
+    if any(s.get("type") in render.REVIEW_LANE_TYPES and render._stage_backend(s) == render.BACKEND_CODEX
+           for s in stages):
         secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or render.DEFAULT_TOKEN_SECRET)
 
     report["secret_names"] = sorted(secret_names)
@@ -158,10 +159,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 # ----------------------------------------------------------------------- plan / apply
 
 
-def _render_or_fail(config_path: Path, platform_override: str | None) -> tuple[dict[str, str], Path]:
+def _render_or_fail(config_path: Path, platform_override: str | None) -> dict[str, str]:
     cfg, platform = _load_validated(config_path)
-    platform = platform_override or platform
-    return render.render_all(cfg, platform), Path()
+    return render.render_all(cfg, platform_override or platform)
 
 
 def _classify(out_dir: Path, rendered: dict[str, str]) -> list[tuple[str, str]]:
@@ -180,7 +180,7 @@ def _classify(out_dir: Path, rendered: dict[str, str]) -> list[tuple[str, str]]:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     try:
-        rendered, _ = _render_or_fail(args.config, args.platform)
+        rendered = _render_or_fail(args.config, args.platform)
     except render.RenderError as exc:
         print(f"plan: {exc}", file=sys.stderr)
         return 1
@@ -213,7 +213,7 @@ def _orphans(out_dir: Path, rendered: dict[str, str]) -> list[str]:
 
 def cmd_apply(args: argparse.Namespace) -> int:
     try:
-        rendered, _ = _render_or_fail(args.config, args.platform)
+        rendered = _render_or_fail(args.config, args.platform)
     except render.RenderError as exc:
         print(f"apply: {exc}", file=sys.stderr)
         return 1

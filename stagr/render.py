@@ -49,9 +49,22 @@ GITHUB_ROLE_MAP = {
     "contributor": "CONTRIBUTOR",
 }
 
+# Backend names, referenced in routing/model logic across modules — kept as named constants so the
+# strings are not repeated as literals in comparisons.
+BACKEND_GENERIC = "generic"          # the built-in, provider-agnostic runner (the default)
+BACKEND_CLAUDE_ACTION = "claude-code-action"
+BACKEND_CODEX = "codex"
+
 # Backends that consume a resolved model from the contract. App backends (codex,
 # openhands, swe-agent, pr-agent) choose their own model, so resolution is skipped.
-BACKENDS_NEEDING_MODEL = {"generic", "claude-code-action"}
+BACKENDS_NEEDING_MODEL = {BACKEND_GENERIC, BACKEND_CLAUDE_ACTION}
+
+# Gate strengths a stage can carry.
+GATE_ADVISORY = "advisory"
+GATE_BLOCKING = "blocking"
+
+# Stage types whose Codex stage drives the on-push review lane (request-review + resolve-threads).
+REVIEW_LANE_TYPES = {"review", "security"}
 
 # Preset -> default build commands (pre-fill; explicit build.commands override per key).
 # Mirrors docs/CONFIGURATION.md "Presets".
@@ -68,22 +81,22 @@ PRESET_COMMANDS: dict[str, dict[str, str]] = {
 
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
-        {"id": "implement", "type": "implement", "gate": "advisory"},
-        {"id": "review", "type": "review", "gate": "advisory"},
+        {"id": "implement", "type": "implement", "gate": GATE_ADVISORY},
+        {"id": "review", "type": "review", "gate": GATE_ADVISORY},
     ],
     "standard": [
         {"id": "implement", "type": "implement"},
-        {"id": "review", "type": "review", "gate": "blocking"},
-        {"id": "security", "type": "security", "gate": "advisory"},
+        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
+        {"id": "security", "type": "security", "gate": GATE_ADVISORY},
     ],
     "full": [
-        {"id": "plan", "type": "plan", "gate": "advisory"},
+        {"id": "plan", "type": "plan", "gate": GATE_ADVISORY},
         {"id": "implement", "type": "implement"},
-        {"id": "security", "type": "security", "gate": "blocking"},
-        {"id": "test", "type": "test", "gate": "blocking"},
-        {"id": "integration-test", "type": "integration-test", "gate": "blocking"},
-        {"id": "review", "type": "review", "gate": "blocking"},
-        {"id": "docs", "type": "docs", "gate": "advisory"},
+        {"id": "security", "type": "security", "gate": GATE_BLOCKING},
+        {"id": "test", "type": "test", "gate": GATE_BLOCKING},
+        {"id": "integration-test", "type": "integration-test", "gate": GATE_BLOCKING},
+        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
+        {"id": "docs", "type": "docs", "gate": GATE_ADVISORY},
     ],
     "custom": [],
 }
@@ -311,7 +324,7 @@ def resolve_model(
 
 
 def _stage_backend(stage: dict[str, Any]) -> str:
-    return ((stage.get("backend") or {}).get("name")) or "generic"
+    return ((stage.get("backend") or {}).get("name")) or BACKEND_GENERIC
 
 
 # ----------------------------------------------------------------------- rendering
@@ -462,7 +475,7 @@ def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     """
     names = list(CORE_TEMPLATES)
     if any(
-        s.get("type") in {"review", "security"} and _stage_backend(s) == "codex" and _wants_push_review(s)
+        s.get("type") in REVIEW_LANE_TYPES and _stage_backend(s) == BACKEND_CODEX and _wants_push_review(s)
         for s in stages
     ):
         names += REVIEW_TEMPLATES
