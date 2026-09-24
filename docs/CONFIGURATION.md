@@ -163,7 +163,7 @@ same `id` overrides). Each stage is one agent; mix providers, models, and backen
 | `provider` | Provider id for this stage. Omit to inherit `defaults.provider`. |
 | `model` (+ `.default`, `.tiers.*`) | Optional model binding; inherits per the resolution chain. A value may be a literal ID or a `models.aliases` name. |
 | `skill` | Skill id (from `skills` registry or a built-in) supplying this stage's methodology. Takes precedence over inline `instructions`. |
-| `backend` | The executor (see below). Defaults to the generic runner. |
+| `backend` | The executor (see below). Set `codex` (OpenAI) or `claude-code-action` (Anthropic) to render today; omitting it selects the roadmap `generic` runner, which renders no lane yet. |
 | `triggers` | Any of `issue_labeled`, `pr_opened`, `pr_updated`, `comment_command`, `push`, `schedule`, `manual`. |
 | `gate` | `advisory` (comment only) or `blocking` (emits a required status check). Omit to use the type's default. |
 | `tiering` | Per-stage override of global `tiering.enabled`. |
@@ -174,9 +174,11 @@ same `id` overrides). Each stage is one agent; mix providers, models, and backen
 #### `stages[].backend`
 | Field | Meaning |
 |---|---|
-| `name` | `generic` (built-in prompt-runner) \| `claude-code-action` \| `openhands` \| `pr-agent` \| `codex` \| `swe-agent` \| `custom`. |
+| `name` | The executor. **Rendered today:** `claude-code-action` (Anthropic) for implement stages, `codex` (OpenAI, via the Codex GitHub App) for review/security stages. **Roadmap** (accepted by the schema so configs stay forward-compatible, but not rendered yet): `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom`. |
 | `uses` | Action ref or container image (for `custom`, or to pin/override an adapter). |
 | `with` | Backend-specific inputs, passed through unchanged. |
+
+> **Supported today:** the toolkit renders **OpenAI** (`codex`) and **Anthropic** (`claude-code-action`) lanes. Other backends and providers are listed for forward-compatibility and to make adding one later a small change (a new lane in the renderer's registry), but they are **roadmap** — a stage using one renders no workflow yet, so pick `codex` or `claude-code-action` for a stage that must run today. Model IDs are free-form, so any current or custom model for those providers already works via `defaults.models.<provider>` or `models.aliases`.
 
 See **Model resolution** below for the full precedence order.
 

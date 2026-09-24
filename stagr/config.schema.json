@@ -251,7 +251,7 @@
       }
     },
     "backend": {
-      "description": "The executor for a stage. `generic` is the built-in prompt-runner; the named adapters wrap mature OSS agents. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
+      "description": "The executor for a stage. Rendered today: `claude-code-action` (Anthropic) for implement stages and `codex` (OpenAI, via the Codex GitHub App) for review/security stages. Roadmap — accepted by the schema so configs stay forward-compatible, but not rendered yet: `generic` (a provider-agnostic runner via a user-supplied adapter), `openhands`, `pr-agent`, `swe-agent`, and `custom`. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
       "type": "object",
       "additionalProperties": false,
       "required": ["name"],
