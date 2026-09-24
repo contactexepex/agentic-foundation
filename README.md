@@ -97,13 +97,18 @@ assume a language.
 
 ## Quickstart
 
+> **Status:** the one-command installer/CLI (`doctor`/`plan`/`apply`) and the front-door skill are
+> **not shipped yet** (M3/M4 — see the roadmap). Until then, follow the manual flow below; the
+> automated flow in step 3 describes the intended M3 experience.
+
 1. In your target repo, add `.agentic/config.yml` (copy `templates/config/agentic.config.yml.tmpl`
-   — set a `profile` and `platform`; or let the Claude skill draft it).
+   and edit it — set a `profile` and `platform`).
 2. Create the secrets your stages/providers and platform require — see
    [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for names and service-account vs PAT guidance.
-3. Run the installer (or invoke the skill). It validates the config against
-   `install/config.schema.json`, renders the enabled stages for your `platform`, and opens a bootstrap
-   PR/MR.
+3. **Today (manual):** validate with `python .github/scripts/validate_config.py`, and copy/adapt the
+   workflows from this repo's `.github/workflows/` into your repo.
+   **Planned (M3):** run `agentic apply` — it validates the config, renders the enabled stages for
+   your `platform`, and opens a bootstrap PR/MR.
 4. Merge it. The pipeline is live.
 
 Full field reference, provider→secret mapping, and troubleshooting:

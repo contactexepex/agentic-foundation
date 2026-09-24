@@ -76,7 +76,7 @@ Three distinct concepts, cleanly layered so the domain knowledge is reusable and
 | Concept | Is | Lives in | Referenced by |
 |---|---|---|---|
 | **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `templates/skills/<id>/SKILL.md` (+ your own via the `skills` registry) | `stages[].skill` |
-| **Agent preset** | A *pre-wired stage* — type + default skill + backend + gate + triggers + model tiers. | `templates/agents/<id>.yml` | `stages[].from` |
+| **Agent preset** | A *pre-wired stage* — type + default skill + backend + gate + triggers, and an **optional** model binding (presets may omit it and resolve models via `defaults`). | `templates/agents/<id>.yml` | `stages[].from` |
 | **Stage** | An agent *placed in the pipeline graph* (with `depends_on`, overrides). | `.agentic/config.yml` `stages[]` | the pipeline |
 
 Why the split:

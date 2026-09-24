@@ -59,8 +59,10 @@ def check_stage_graph(cfg, label: str) -> None:
         if not isinstance(sid, str):
             continue
         ids.append(sid)
-        d = st.get("depends_on") or []
-        deps[sid] = [x for x in d if isinstance(x, str)]
+        d = st.get("depends_on")
+        # A schema-invalid but plausible value (e.g. `depends_on: 1`) is reported by the schema
+        # validator; guard here so graph checking never crashes on a non-list before that report.
+        deps[sid] = [x for x in d if isinstance(x, str)] if isinstance(d, list) else []
 
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:

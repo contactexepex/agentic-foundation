@@ -42,7 +42,10 @@ env:
   # - everything under docs/ — this repository's docs hold operational/security contracts
   #   (authorization, token scopes, branch protection, safety boundaries), not cosmetic text, so
   #   they must be independently reviewed rather than fast-path approved.
-  DENY_GLOBS: 'AGENTS.md */AGENTS.md CLAUDE.md */CLAUDE.md docs/*'
+  # - everything under .agentic/ — the contract + skills/agent instructions and review policy live
+  #   here; a substantive Markdown change (e.g. .agentic/skills/*/SKILL.md) must be reviewed, not
+  #   fast-path approved (the `*.md` trivial glob spans `/`).
+  DENY_GLOBS: 'AGENTS.md */AGENTS.md CLAUDE.md */CLAUDE.md docs/* .agentic/*'
   TRIVIAL_MAX_FILES: '20'
   TRIVIAL_MAX_LINES: '200'
 

@@ -127,8 +127,9 @@ via `stages[].skill`.
 | `skills.<id>.extends` | Base skill id to layer on top of (base first, this overrides) — e.g. a house style over `code-review`. |
 
 **Skills vs. agents vs. stages:** a *skill* is the content; an *agent preset* (`templates/agents/<id>.yml`)
-is a pre-wired stage (type + skill + backend + gate + triggers + model tiers) you drop in via
-`stages[].from`; a *stage* is that agent placed in the pipeline graph.
+is a pre-wired stage (type + skill + backend + gate + triggers, with an **optional** model binding —
+presets may omit it so the model resolves via `defaults`) you drop in via `stages[].from`; a *stage*
+is that agent placed in the pipeline graph.
 
 ### `stages` (optional — the agent graph)
 Omit to use the profile's stages. Anything you list is **merged onto** the profile (a stage with the

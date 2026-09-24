@@ -70,7 +70,7 @@ routing:
     globs: ["**/*.md", "LICENSE", ".gitignore", ".gitattributes", ".editorconfig"]
     max_files: 20
     max_lines: 200
-    exclude: ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md", "docs/**"]
+    exclude: ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md", "docs/**", ".agentic/**"]
 
 modules:
   auto_merge: true                    # fail-closed foundation auto-merge gate is active
