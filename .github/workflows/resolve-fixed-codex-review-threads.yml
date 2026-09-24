@@ -46,7 +46,7 @@ jobs:
         env:
           # The workflow-scoped GITHUB_TOKEN cannot resolve review threads, so use the
           # narrowly-scoped remediation PAT (Contents R/W + Pull requests R/W).
-          GH_TOKEN: ${{ secrets.CODEX_REMEDIATION_TOKEN }}
+          GH_TOKEN: ${{ secrets.REMEDIATION_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -55,7 +55,7 @@ jobs:
           # Thread auto-resolution is a convenience, not a merge gate, and now runs on every PR.
           # If the token is absent, skip cleanly rather than red-X every PR's checks.
           if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "::warning::CODEX_REMEDIATION_TOKEN is not configured; outdated Codex review threads will not be auto-resolved."
+            echo "::warning::REMEDIATION_TOKEN is not configured; outdated Codex review threads will not be auto-resolved."
             exit 0
           fi
 

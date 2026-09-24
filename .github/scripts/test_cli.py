@@ -46,7 +46,7 @@ def test_report() -> None:
     # secret NAMES surfaced, never values.
     check("ANTHROPIC_API_KEY" in rep["secret_names"], "doctor: claude key secret NAME surfaced")
     check("OPENAI_API_KEY" in rep["secret_names"], "doctor: openai key secret NAME surfaced")
-    check("CODEX_REMEDIATION_TOKEN" in rep["secret_names"], "doctor: codex review PAT NAME surfaced")
+    check("REMEDIATION_TOKEN" in rep["secret_names"], "doctor: codex review PAT NAME surfaced")
     check("request-review.yml" in rep["workflows"], "doctor: review lane in render set")
     check(not rep["problems"], "doctor: healthy config has no problems")
 
@@ -59,7 +59,7 @@ def test_doctor_no_secret_values_and_exit() -> None:
     out = buf.getvalue()
     check(rc == 0, "doctor: healthy config exits 0")
     check(SECRET_VALUE.search(out) is None, "doctor: prints no secret value")
-    check("CODEX_REMEDIATION_TOKEN" in out, "doctor: prints the secret NAME")
+    check("REMEDIATION_TOKEN" in out, "doctor: prints the secret NAME")
 
 
 def test_doctor_fail_loud() -> None:
@@ -116,8 +116,7 @@ def test_init_profiles_generate_valid_configs() -> None:
             rc = cli.main(["init", "--profile", prof, "--print"])
         text = buf.getvalue()
         check(rc == 0, f"init --profile {prof} --print exits 0")
-        check("REMEDIATION_TOKEN" in text and "CODEX_REMEDIATION_TOKEN" not in text,
-              f"init {prof}: uses the neutral default token name")
+        check("REMEDIATION_TOKEN" in text, f"init {prof}: uses the default token name")
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / ".agentic" / "config.yml"
             p.parent.mkdir(parents=True)

@@ -251,7 +251,7 @@ def test_pipeline_selection() -> None:
                  "request-review.yml", "resolve-threads.yml"):
         check(name in rendered, f"select: {name} emitted for codex-review config")
     # The codex PAT is referenced by NAME (from platform.auth.token_secret), never a value.
-    check("secrets.CODEX_REMEDIATION_TOKEN" in rendered["request-review.yml"],
+    check("secrets.REMEDIATION_TOKEN" in rendered["request-review.yml"],
           "select: codex_review_secret NAME substituted into request-review")
     check(not re.search(r"ghp_[A-Za-z0-9]{8,}", rendered["resolve-threads.yml"]),
           "select: resolve-threads inlines no secret value")
@@ -345,7 +345,7 @@ def test_round4_fixes() -> None:
     # A2: narrowed trusted_roles render into the review lane (not a hardcoded allowlist).
     narrow = {"version": 2, "profile": "custom",
               "platform": {"type": "github", "default_branch": "main", "trusted_roles": ["owner"],
-                           "auth": {"token_secret": "CODEX_REMEDIATION_TOKEN"}},
+                           "auth": {"token_secret": "REMEDIATION_TOKEN"}},
               "defaults": {"provider": "openai", "models": {"openai": {"default": "o"}}},
               "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
     rn = render.render_all(narrow, "github")
