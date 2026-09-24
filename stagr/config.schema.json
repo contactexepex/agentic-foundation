@@ -251,7 +251,7 @@
       }
     },
     "backend": {
-      "description": "The executor for a stage. Rendered today: `claude-code-action` (Anthropic) for implement stages and `codex` (OpenAI, via the Codex GitHub App) for review/security stages. Roadmap — accepted by the schema so configs stay forward-compatible, but not rendered yet: `generic` (a provider-agnostic runner via a user-supplied adapter), `openhands`, `pr-agent`, `swe-agent`, and `custom`. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
+      "description": "The executor for a stage; its effect depends on the stage type. An implement stage always renders the Claude implementer (`claude-code-action`, Anthropic) regardless of this field. A review/security stage renders its lane only with `codex` (OpenAI, via the Codex GitHub App); any other name renders no review/security lane yet. The remaining names are accepted so configs stay forward-compatible but are roadmap: `generic` (a provider-agnostic runner via a user-supplied adapter), `openhands`, `pr-agent`, `swe-agent`, and `custom`. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
       "type": "object",
       "additionalProperties": false,
       "required": ["name"],
