@@ -23,6 +23,7 @@ import argparse
 import difflib
 import json
 import re
+import shlex
 import stat
 import sys
 from pathlib import Path
@@ -390,7 +391,8 @@ def cmd_init(args: argparse.Namespace) -> int:
     print(f"init: wrote {dest} (profile: {choices['profile']}).")
     # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, tell the user to
     # pass the same --config so doctor/plan/apply operate on the file they just created.
-    config_flag = "" if dest == Path(".agentic/config.yml") else f" --config {dest}"
+    # shlex.quote so a path with spaces or shell metacharacters stays one argument when copied.
+    config_flag = "" if dest == Path(".agentic/config.yml") else f" --config {shlex.quote(str(dest))}"
     print(f"next: `stagr doctor{config_flag}` to validate, `stagr plan{config_flag}` to preview, "
           f"`stagr apply{config_flag}` to write workflows.")
     return 0

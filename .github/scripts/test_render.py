@@ -371,6 +371,11 @@ def test_round4_fixes() -> None:
     expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "main",
                   "auth": {"token_secret": "bad-name"}}}), "render: invalid token_secret name fails loud")
 
+    # A3b: GITHUB_TOKEN (the workflow's own principal, not a real-user PAT) is rejected as token_secret.
+    expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "main",
+                  "auth": {"token_secret": "GITHUB_TOKEN"}}}),
+                  "render: GITHUB_TOKEN token_secret fails loud (reserved, not a real-user PAT)")
+
     # A2: narrowed trusted_roles render into the review lane (not a hardcoded allowlist).
     narrow = {"version": 2, "profile": "custom",
               "platform": {"type": "github", "default_branch": "main", "trusted_roles": ["owner"],

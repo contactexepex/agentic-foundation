@@ -320,15 +320,17 @@ def test_init_rejects_pasted_credential_value() -> None:
 
 
 def test_init_next_steps_carry_custom_config_path() -> None:
+    import shlex
     with tempfile.TemporaryDirectory() as d:
-        dest = Path(d) / "custom" / "stagr.yml"
+        # A path with a space exercises the shell-quoting of the next-steps commands.
+        dest = Path(d) / "config files" / "stagr.yml"
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cli.main(["init", "--profile", "minimal", "--config", str(dest)])
         out = buf.getvalue()
         check(rc == 0 and dest.exists(), "init: writes to a custom --config path")
-        check(f"--config {dest}" in out,
-              "init: next-steps commands carry the custom --config path")
+        check(f"--config {shlex.quote(str(dest))}" in out,
+              "init: next-steps commands carry the custom --config path, shell-quoted")
 
 
 def test_init_reports_write_failure_without_traceback() -> None:

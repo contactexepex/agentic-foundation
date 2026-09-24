@@ -385,6 +385,16 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
             f"platform.auth.token_secret '{codex_review_secret}' is not a valid GitHub secret name "
             "(letters, digits, underscore; not starting with a digit)"
         )
+    # The review lane must post as a REAL-USER PAT; GITHUB_TOKEN is the workflow's own principal
+    # (read-scoped in these workflows), so a review request posted with it is skipped or fails. Any
+    # GITHUB_-prefixed name is also a reserved secret name GitHub forbids. Reject it so `doctor`
+    # cannot call a pipeline healthy while conflating the workflow token with the required PAT.
+    if str(codex_review_secret).upper().startswith("GITHUB_"):
+        raise RenderError(
+            f"platform.auth.token_secret '{codex_review_secret}' uses the reserved GITHUB_ prefix; "
+            "the review lane needs a real-user PAT, not the workflow's own GITHUB_TOKEN (GitHub also "
+            "forbids user secrets named GITHUB_*). Use a different secret name."
+        )
 
     stages = {stage["id"]: stage for stage in expand_stages(cfg)}
     implement_stage = next((stage for stage in stages.values() if stage.get("type") == "implement"), None)
