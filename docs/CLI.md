@@ -1,7 +1,7 @@
 # `stagr` CLI
 
 `stagr` turns a `.agentic/config.yml` contract into a working pipeline on your repo's CI/SCM. It is a
-thin, deterministic layer over the renderer core (`stagr/render.py`): no network, and **no secret
+thin, deterministic layer over the renderer core (`stagr/render/`): no network, and **no secret
 values are ever read, printed, or logged** — only the secret *names* the contract references.
 
 ## What you need
