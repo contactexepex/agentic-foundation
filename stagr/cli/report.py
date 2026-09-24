@@ -23,6 +23,55 @@ def _key_secret_name(cfg: dict[str, Any], provider: str) -> str:
     )
 
 
+def _resolve_stage_model(cfg: dict[str, Any], stage: dict[str, Any], backend: str,
+                         problems: list[str]) -> str | None:
+    """The model string for a stage's report entry.
+
+    App backends (e.g. codex) supply their own model, so report that; model-consuming backends
+    resolve from the contract, recording a problem (and returning None) if nothing resolves.
+    """
+    if backend not in render.BACKENDS_NEEDING_MODEL:
+        return f"(app-supplied by backend '{backend}')"
+    try:
+        return render.resolve_model(cfg, stage, "standard")
+    except render.RenderError as exc:
+        problems.append(f"stage '{stage.get('id')}': {exc}")
+        return None
+
+
+def _stage_secret_names(cfg: dict[str, Any], provider: str | None, backend: str) -> list[str]:
+    """The provider API-key NAME (+ optional extra-headers NAME) a stage needs; empty if none.
+
+    Only for backends that consume a model key. App backends drive their own model via their GitHub
+    App and never read the provider key, so reporting it would tell the operator to create an unused
+    credential. Never a secret value — only NAMES.
+    """
+    if not (provider and backend in render.BACKENDS_NEEDING_MODEL):
+        return []
+    names = [_key_secret_name(cfg, provider)]
+    extra = ((cfg.get("providers", {}) or {}).get(provider, {}) or {}).get("extra_headers_secret")
+    if extra:
+        names.append(extra)
+    return names
+
+
+def _stage_report_entry(cfg: dict[str, Any], stage: dict[str, Any],
+                        problems: list[str]) -> tuple[dict[str, Any], list[str]]:
+    """Build one stage's report entry; return it plus the secret NAMES that stage needs."""
+    backend = render._stage_backend(stage)
+    provider = _stage_provider(cfg, stage)
+    entry: dict[str, Any] = {
+        "id": stage.get("id"),
+        "type": stage.get("type", "custom"),
+        "backend": backend,
+        "provider": provider,
+        "gate": stage.get("gate"),
+        "skill": stage.get("skill"),
+        "model": _resolve_stage_model(cfg, stage, backend, problems),
+    }
+    return entry, _stage_secret_names(cfg, provider, backend)
+
+
 def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
     """Resolve the config into a structured, secret-free health report.
 
@@ -32,6 +81,7 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
     """
     stages = render.expand_stages(cfg)
     plat = cfg.get("platform", {}) or {}
+    problems: list[str] = []
     report: dict[str, Any] = {
         "profile": cfg.get("profile", "standard"),
         "platform": platform,
@@ -41,39 +91,14 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
         "stages": [],
         "secret_names": [],
         "workflows": [],
-        "problems": [],
+        "problems": problems,
     }
 
     secret_names: set[str] = set()
     for stage in stages:
-        backend = render._stage_backend(stage)
-        provider = _stage_provider(cfg, stage)
-        entry: dict[str, Any] = {
-            "id": stage.get("id"),
-            "type": stage.get("type", "custom"),
-            "backend": backend,
-            "provider": provider,
-            "gate": stage.get("gate"),
-            "skill": stage.get("skill"),
-        }
-        # Resolve the model only for backends that consume one; app backends supply their own.
-        if backend in render.BACKENDS_NEEDING_MODEL:
-            try:
-                entry["model"] = render.resolve_model(cfg, stage, "standard")
-            except render.RenderError as exc:
-                entry["model"] = None
-                report["problems"].append(f"stage '{stage.get('id')}': {exc}")
-        else:
-            entry["model"] = f"(app-supplied by backend '{backend}')"
-        # Record the provider API-key NAME (never a value) ONLY for backends that consume a model
-        # key. App backends (e.g. codex) drive their own model via their GitHub App and never read
-        # the provider key, so reporting it would tell the operator to create an unused credential.
-        if provider and backend in render.BACKENDS_NEEDING_MODEL:
-            secret_names.add(_key_secret_name(cfg, provider))
-            extra = ((cfg.get("providers", {}) or {}).get(provider, {}) or {}).get("extra_headers_secret")
-            if extra:
-                secret_names.add(extra)
+        entry, stage_secrets = _stage_report_entry(cfg, stage, problems)
         report["stages"].append(entry)
+        secret_names.update(stage_secrets)
 
     # The Codex request/cleanup workflows author comments/resolutions with a real-user PAT (NAME
     # only). It is needed whenever ANY of them render — the code on-push lane, the final security lane,
@@ -87,7 +112,7 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
     try:
         report["workflows"] = sorted(render.render_all(cfg, platform).keys())
     except render.RenderError as exc:
-        report["problems"].append(f"render: {exc}")
+        problems.append(f"render: {exc}")
     return report
 
 
