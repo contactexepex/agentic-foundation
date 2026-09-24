@@ -109,11 +109,12 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
                 secret_names.add(extra)
         report["stages"].append(entry)
 
-    # The review lane authors comments/resolutions with a real-user PAT (NAME only). It is needed
-    # only when the push-review workflows actually render — mirror _has_codex_push_review exactly so
-    # doctor never asks for a secret no rendered workflow references (e.g. a codex review stage that
-    # omits pr_updated).
-    if render._has_codex_push_review(stages):
+    # The Codex request/cleanup workflows author comments/resolutions with a real-user PAT (NAME
+    # only). It is needed whenever ANY of them render — the code on-push lane, the final security lane,
+    # or thread cleanup — so mirror _needs_codex_pat exactly. (Using the narrower push-review predicate
+    # would omit the PAT for a pr_opened-only security graph that still renders final-security-review.yml
+    # and reads the secret, giving a falsely healthy doctor report.)
+    if render._needs_codex_pat(stages):
         secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or render.DEFAULT_TOKEN_SECRET)
 
     report["secret_names"] = sorted(secret_names)

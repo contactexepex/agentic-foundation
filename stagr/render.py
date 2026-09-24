@@ -298,6 +298,10 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
             f"-> defaults.models.{PROVIDER_ANTHROPIC}) to '{PROVIDER_ANTHROPIC}'."
         )
 
+    # A Codex security lane that no event can ever satisfy (security stage without a code-review
+    # stage) is rejected here at the front door, not left to render a dead workflow.
+    _ensure_supported_review_graph(expand_stages(cfg))
+
 
 # ------------------------------------------------------------------------- stages
 
@@ -531,8 +535,6 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     fast_path_enabled = routing.get("enabled", True)
     fast_path_globs = list(routing.get("globs", ["**/*.md"])) if fast_path_enabled else []
 
-    code_review_request, security_review_request = _review_request_lines(list(stages.values()))
-
     return {
         "default_branch": default_branch,
         "human_merge_label": labels.get("human_merge", "human-merge"),
@@ -548,8 +550,6 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
         "build_steps": _build_steps(cfg),
         "review_status_context": "Publish fast review result",
         "codex_review_secret": codex_review_secret,
-        "code_review_request": code_review_request,
-        "security_review_request": security_review_request,
     }
 
 
@@ -571,9 +571,15 @@ def render_template(text: str, context: dict[str, str]) -> str:
 # (otherwise implementor.yml would carry an empty model and reference a key the graph never needs).
 CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl"]
 IMPLEMENTOR_TEMPLATE = "implementor.yml.tmpl"
-# The codex review lane: request a re-review of each pushed head, and auto-resolve outdated
-# Codex threads. Emitted only when a codex-backed review/security stage is configured.
-REVIEW_TEMPLATES = ["request-review.yml.tmpl", "resolve-threads.yml.tmpl"]
+# The codex code-review lane: re-request a code review of each pushed head, so review iterates as the
+# PR is updated. Emitted when a codex-backed review stage runs on pushed heads.
+CODE_REVIEW_TEMPLATE = "request-review.yml.tmpl"
+# The codex security-review lane: request ONE security review as the final pre-merge step, once the
+# code review has converged — never concurrent with the code review (Codex errors on a concurrent
+# pair). Emitted when a codex-backed security stage runs on pushed heads.
+SECURITY_REVIEW_TEMPLATE = "final-security-review.yml.tmpl"
+# Auto-resolve outdated Codex threads. Emitted whenever any codex review/security lane runs.
+RESOLVE_THREADS_TEMPLATE = "resolve-threads.yml.tmpl"
 
 
 def _wants_push_review(stage: dict[str, Any]) -> bool:
@@ -590,44 +596,109 @@ def _wants_push_review(stage: dict[str, Any]) -> bool:
     return "pr_updated" in trig
 
 
-def _review_request_lines(stages: list[dict[str, Any]]) -> tuple[str, str]:
-    """The per-lane on-push re-review commands for request-review.yml: (code, security).
-
-    Each is the `post_codex '@codex …'` command when a codex-backed stage of that kind runs on
-    pushes, else a comment explaining the omission — so, e.g., the `minimal` profile (code review
-    only) never fires a paid security review it did not configure. request-review.yml is emitted
-    only when at least one such stage exists (select_templates), so at least one line is always
-    active.
-    """
-    def requests(stage_type: str) -> bool:
-        return any(
-            stage.get("type") == stage_type
-            and _stage_backend(stage) == BACKEND_CODEX
-            and _wants_push_review(stage)
-            for stage in stages
-        )
-
-    code = ("post_codex '@codex review'" if requests("review")
-            else "# no code-review stage configured; not requesting a Codex code review")
-    security = ("post_codex '@codex security review'" if requests("security")
-                else "# no security stage configured; not requesting a Codex security review")
-    return code, security
-
-
 def _has_implement_stage(stages: list[dict[str, Any]]) -> bool:
     # The implementer workflow is emitted only when the graph actually has an implement stage;
     # without one it would render with an empty model and a provider key the pipeline never uses.
     return any(stage.get("type") == "implement" for stage in stages)
 
 
+def _runs_on_pr_review(stage: dict[str, Any]) -> bool:
+    """True if a review/security stage takes part in the PR review lifecycle (open and/or update).
+
+    Unlike `_wants_push_review` (which gates the per-push re-request lane on `pr_updated`), this is
+    also true for `pr_opened`. The final security review runs once as a post-code-review step, not per
+    push, so its lane must render whenever the security stage participates in PR review at all — a
+    `pr_opened`-only security stage still needs the final-security-review workflow.
+    """
+    trig = stage.get("triggers")
+    if trig is None:
+        return True
+    return "pr_opened" in trig or "pr_updated" in trig
+
+
+def _codex_stages(stages: list[dict[str, Any]], stage_type: str) -> list[dict[str, Any]]:
+    return [s for s in stages if s.get("type") == stage_type and _stage_backend(s) == BACKEND_CODEX]
+
+
+_PR_REVIEW_EVENTS = frozenset({"pr_opened", "pr_updated"})
+
+
+def _pr_review_triggers(stage: dict[str, Any]) -> set[str]:
+    """The PR-review events (pr_opened / pr_updated) a stage takes part in. No explicit `triggers`
+    defaults to both (see `_runs_on_pr_review`)."""
+    trig = stage.get("triggers")
+    if trig is None:
+        return set(_PR_REVIEW_EVENTS)
+    return _PR_REVIEW_EVENTS & set(trig)
+
+
+def _has_codex_code_review(stages: list[dict[str, Any]]) -> bool:
+    # request-review.yml (the on-push re-request lane) renders when a codex CODE review stage runs on
+    # each pushed head (`pr_updated`); a pr_opened-only code review is handled by the App on open.
+    return any(_wants_push_review(s) for s in _codex_stages(stages, "review"))
+
+
+def _has_codex_security_review(stages: list[dict[str, Any]]) -> bool:
+    # final-security-review.yml renders whenever a codex SECURITY stage takes part in PR review
+    # (pr_opened and/or pr_updated). The review itself runs once, after the code review converges — it
+    # is NOT a per-push lane — so it must render for a pr_opened-only security stage too.
+    return any(_runs_on_pr_review(s) for s in _codex_stages(stages, "security"))
+
+
 def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
-    # The codex review lane renders only when a codex review/security stage runs on pushed heads.
-    return any(
-        stage.get("type") in REVIEW_LANE_TYPES
-        and _stage_backend(stage) == BACKEND_CODEX
-        and _wants_push_review(stage)
-        for stage in stages
-    )
+    # resolve-threads.yml renders when the on-push code-review lane runs: only a pushed head creates
+    # outdated review threads to clean up. (The security review is not a per-push lane.)
+    return _has_codex_code_review(stages)
+
+
+def _needs_codex_pat(stages: list[dict[str, Any]]) -> bool:
+    # The real-user PAT authors every rendered Codex request/cleanup workflow — request-review.yml
+    # (code on-push), final-security-review.yml (the security lane), and resolve-threads.yml — so it is
+    # required whenever ANY of them render, including a pr_opened-only security graph that renders the
+    # security lane but no on-push lane.
+    return _has_codex_code_review(stages) or _has_codex_security_review(stages)
+
+
+def _ensure_supported_review_graph(stages: list[dict[str, Any]]) -> None:
+    """Reject a Codex security lane that could never fire or would be orchestrated incoherently.
+
+    The final security review runs ONLY after the Codex code review converges on the same head
+    (final-security-review.yml waits for the code review's "Completed" row before requesting it). So:
+
+    * A Codex `security` stage with no Codex `review` stage would render a security workflow that no
+      event can ever satisfy — reject it.
+    * A Codex `security` stage that runs on a PR event the code-review stage does NOT run on is
+      incoherent: on that event there is no code review to converge behind (e.g. code review only on
+      `pr_opened` but security on `pr_updated` — pushed heads get no code re-review, so security can
+      never unlock). Require the security stage's PR triggers to be covered by the code-review stage's.
+
+    Fail loud at the front door so an unsupported graph is a clear error, not a dead or mis-wired lane.
+    """
+    security_stages = [s for s in _codex_stages(stages, "security") if _runs_on_pr_review(s)]
+    if not security_stages:
+        return
+    code_stages = [s for s in _codex_stages(stages, "review") if _runs_on_pr_review(s)]
+    if not code_stages:
+        raise RenderError(
+            "a Codex security-review stage requires a Codex code-review ('review') stage: the security "
+            "review runs only after the code review has converged, so a security stage on its own would "
+            "render a workflow that never fires. Add a codex-backed 'review' stage, or remove the "
+            "'security' stage."
+        )
+    code_triggers: set[str] = set().union(*(_pr_review_triggers(s) for s in code_stages))
+    for sec in security_stages:
+        sec_triggers = _pr_review_triggers(sec)
+        if sec_triggers != code_triggers:
+            raise RenderError(
+                "a Codex security-review stage must run on exactly the same PR triggers as its Codex "
+                "code-review ('review') stage. The final security review renders as a single, "
+                "event-agnostic workflow that fires whenever the code review converges on the head, so "
+                "it cannot honour a narrower or wider trigger set — a subset would still run security on "
+                "events the stage did not request, a superset would have no code review to converge "
+                f"behind. Security triggers {sorted(sec_triggers)} != code-review triggers "
+                f"{sorted(code_triggers)}; set them equal (or omit triggers on both to default to "
+                "pr_opened+pr_updated)."
+            )
 
 
 @dataclass(frozen=True)
@@ -649,12 +720,15 @@ class Lane:
 LANES: tuple[Lane, ...] = (
     Lane("core", lambda stages: True, tuple(CORE_TEMPLATES)),
     Lane("implementor", _has_implement_stage, (IMPLEMENTOR_TEMPLATE,)),
-    Lane("codex-review", _has_codex_push_review, tuple(REVIEW_TEMPLATES)),
+    Lane("codex-code-review", _has_codex_code_review, (CODE_REVIEW_TEMPLATE,)),
+    Lane("codex-security-review", _has_codex_security_review, (SECURITY_REVIEW_TEMPLATE,)),
+    Lane("codex-threads", _has_codex_push_review, (RESOLVE_THREADS_TEMPLATE,)),
 )
 
 
 def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     """Choose which workflow templates to emit, driven by the `LANES` registry (emit order)."""
+    _ensure_supported_review_graph(stages)
     names: list[str] = []
     for lane in LANES:
         if lane.applies(stages):

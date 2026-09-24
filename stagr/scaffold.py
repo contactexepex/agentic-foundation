@@ -227,10 +227,14 @@ def _security_snippet(blocking: bool) -> str:
         "    provider: openai            # OpenAI/Codex is the rendered reviewer (tool derived from provider)\n"
         "    skill: security-review      # built-in; override via the `skills:` registry\n"
         f"    gate: {gate}\n"
-        # As with the code review: Codex reviews security on PR open via its app; stagr re-requests
-        # on each push.
-        "    triggers: [pr_opened, pr_updated]   # pr_opened: Codex app reviews on open; "
-        "pr_updated: stagr re-requests per push"
+        # UNLIKE the code review, the security review runs ONCE as the final pre-merge step
+        # (final-security-review.yml), after the code review converges — never on open and never per
+        # push — so it never races the code review (Codex's backend errors on a concurrent pair). These
+        # triggers only select the security lane; configure the Codex App to auto-run the CODE review
+        # only on open (a ChatGPT-side setting the toolkit cannot render), or its native security review
+        # will race the code review on every open.
+        "    triggers: [pr_opened, pr_updated]   # selects the security lane; the review itself runs "
+        "once, after the code review (final-security-review.yml)"
     )
 
 

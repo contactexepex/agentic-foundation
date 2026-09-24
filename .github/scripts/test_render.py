@@ -306,7 +306,7 @@ def test_pipeline_selection() -> None:
     cfg = render.load_config(REPO_ROOT / ".agentic" / "config.yml")
     rendered = render.render_all(cfg, "github")
     for name in ("validate.yml", "review-router.yml", "implementor.yml",
-                 "request-review.yml", "resolve-threads.yml"):
+                 "request-review.yml", "final-security-review.yml", "resolve-threads.yml"):
         check(name in rendered, f"select: {name} emitted for codex-review config")
     # The codex PAT is referenced by NAME (from platform.auth.token_secret), never a value.
     check("secrets.REMEDIATION_TOKEN" in rendered["request-review.yml"],
@@ -336,25 +336,91 @@ def test_pipeline_selection() -> None:
     check("validate.yml" in r3 and "request-review.yml" in r3,
           "select: core + review lane still emitted for a review-only graph")
 
-    # Per-lane review requests: a code-review-only graph asks for @codex review but NOT security.
+    # Split lanes: a code-review-only graph renders the on-push code lane (request-review.yml) and
+    # NEVER the security lane; the code lane posts only `@codex review`.
     code_only = {"version": 2, "profile": "custom",
                  "platform": {"type": "github", "default_branch": "main"},
                  "defaults": {"provider": "openai", "models": {}},
                  "stages": [{"id": "review", "type": "review", "provider": "openai",
                              "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
-    # Assert on the actual command line (the template's header comment mentions both phrases).
-    req_code_only = render.render_all(code_only, "github")["request-review.yml"]
-    check("post_codex '@codex review'" in req_code_only
-          and "post_codex '@codex security review'" not in req_code_only,
-          "request-review: code-review-only graph does not request a security review")
-    # The dogfood config has both review and security stages -> both requests are present.
-    req_both = rendered["request-review.yml"]
-    check("post_codex '@codex review'" in req_both
-          and "post_codex '@codex security review'" in req_both,
-          "request-review: a graph with a security stage requests both reviews")
+    r_code = render.render_all(code_only, "github")
+    check("post_codex '@codex review'" in r_code["request-review.yml"]
+          and "@codex security review" not in r_code["request-review.yml"],
+          "request-review: posts only the code review, never security")
+    check("final-security-review.yml" not in r_code,
+          "select: no security lane without a codex security stage")
+
+    # A codex security stage WITHOUT a codex code-review stage is rejected: the security review runs
+    # only after the code review converges, so a security-only graph would render a workflow that can
+    # never fire. Fail loud at both the render path and the validation front door.
+    security_only = {"version": 2, "profile": "custom",
+                     "platform": {"type": "github", "default_branch": "main"},
+                     "defaults": {"provider": "openai", "models": {}},
+                     "stages": [{"id": "security", "type": "security", "provider": "openai",
+                                 "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
+    expect_raises(lambda: render.render_all(security_only, "github"),
+                  "select: codex security stage without a code-review stage fails loud (render)")
+    expect_raises(lambda: render.validate_config(security_only),
+                  "validate: codex security stage without a code-review stage fails loud (front door)")
+
+    # A codex review+security graph triggered only on pr_opened (no pr_updated) still renders the final
+    # security lane: the security review runs once after the code review converges, not per push. The
+    # on-push code re-request lane (request-review.yml) is correctly absent (nothing wants pr_updated).
+    pr_opened_only = {"version": 2, "profile": "custom",
+                      "platform": {"type": "github", "default_branch": "main"},
+                      "defaults": {"provider": "openai", "models": {}},
+                      "stages": [{"id": "review", "type": "review", "provider": "openai",
+                                  "backend": {"name": "codex"}, "triggers": ["pr_opened"]},
+                                 {"id": "security", "type": "security", "provider": "openai",
+                                  "backend": {"name": "codex"}, "triggers": ["pr_opened"]}]}
+    r_open = render.render_all(pr_opened_only, "github")
+    check("final-security-review.yml" in r_open,
+          "select: final security lane renders for a pr_opened-only security stage")
+    check("request-review.yml" not in r_open and "resolve-threads.yml" not in r_open,
+          "select: on-push lanes absent when no stage requests pr_updated")
+
+    # doctor must report the PAT whenever a request/cleanup workflow renders — including a pr_opened-only
+    # security graph that renders final-security-review.yml (which reads the PAT) but no on-push lane.
+    check(render._needs_codex_pat(render.expand_stages(pr_opened_only)),
+          "select: PAT is required for a pr_opened-only security graph (doctor must report it)")
+
+    # Code/security PR triggers must be EQUAL: the final security review renders as one event-agnostic
+    # workflow (fires whenever the code review converges), so it cannot honour a narrower or wider set.
+    # (a) superset — security runs on an event with no converged code review behind it:
+    sec_superset = {"version": 2, "profile": "custom",
+                    "platform": {"type": "github", "default_branch": "main"},
+                    "defaults": {"provider": "openai", "models": {}},
+                    "stages": [{"id": "review", "type": "review", "provider": "openai",
+                                "backend": {"name": "codex"}, "triggers": ["pr_opened"]},
+                               {"id": "security", "type": "security", "provider": "openai",
+                                "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
+    expect_raises(lambda: render.render_all(sec_superset, "github"),
+                  "select: security trigger not covered by code review fails loud (render)")
+    expect_raises(lambda: render.validate_config(sec_superset),
+                  "validate: security trigger not covered by code review fails loud (front door)")
+    # (b) subset — security narrower than code review would still fire on the code review's other events:
+    sec_subset = {"version": 2, "profile": "custom",
+                  "platform": {"type": "github", "default_branch": "main"},
+                  "defaults": {"provider": "openai", "models": {}},
+                  "stages": [{"id": "review", "type": "review", "provider": "openai",
+                              "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]},
+                             {"id": "security", "type": "security", "provider": "openai",
+                              "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
+    expect_raises(lambda: render.render_all(sec_subset, "github"),
+                  "select: security triggers narrower than code review fail loud (render)")
+    expect_raises(lambda: render.validate_config(sec_subset),
+                  "validate: security triggers narrower than code review fail loud (front door)")
+
+    # The dogfood config has a codex security stage -> the security review is requested ONLY from the
+    # final-security-review lane (never alongside the code review), so the two never run concurrently.
+    check("@codex security review" in rendered["final-security-review.yml"],
+          "final-security-review: requests the security review")
+    check("@codex security review" not in rendered["request-review.yml"],
+          "request-review: never requests the security review (moved to the final lane)")
 
     # The lane registry is the single selection seam (names, in emit order).
-    check([lane.name for lane in render.LANES] == ["core", "implementor", "codex-review"],
+    check([lane.name for lane in render.LANES]
+          == ["core", "implementor", "codex-code-review", "codex-security-review", "codex-threads"],
           "select: LANES registry drives template selection, in emit order")
 
 

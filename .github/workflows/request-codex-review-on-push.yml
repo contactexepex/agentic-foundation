@@ -1,13 +1,15 @@
 name: Request Codex review on push
 
-# Keeps Codex's review bound to the CURRENT head of a substantive PR.
+# Keeps Codex's CODE review bound to the CURRENT head of a substantive PR, so review iterates as the
+# PR is updated.
 #
-# Codex re-reviews a PR on open / ready-for-review / an "@codex review" (code) or
-# "@codex security review" (security) comment — but NOT on a plain push. The foundation auto-merge
-# gate (`auto-merge-foundation-prs.yml`) requires BOTH a Codex code review of the current head and a
-# Codex security-review marker bound to the current head. So after every push to an open, non-draft,
-# substantive PR, this workflow asks Codex to re-review that new head; otherwise the head would carry
-# only a stale review and the gate would (correctly, but permanently) refuse to merge it.
+# Codex re-reviews a PR on open / ready-for-review / an "@codex review" comment — but NOT on a plain
+# push. The foundation auto-merge gate (`auto-merge-foundation-prs.yml`) requires a Codex code review
+# of the current head, so after every push to an open, non-draft, substantive PR this workflow asks
+# Codex to re-review that new head; otherwise the head would carry only a stale review and the gate
+# would (correctly, but permanently) refuse to merge it. It requests the CODE review ONLY — the
+# SECURITY review runs once, as the final step before merge, from request-final-security-review.yml,
+# so the two never run concurrently (Codex's cloud backend errors on a concurrent pair).
 #
 # It runs as pull_request_target so the trusted workflow definition comes from the base branch, and
 # it performs only GitHub API work (reads the PR + the router status, posts one comment) — no PR
@@ -40,7 +42,8 @@ jobs:
       github.event.pull_request.base.ref == github.event.repository.default_branch &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Budget covers the router wait (≤120s) plus the security-review serialization wait (≤180s).
+    timeout-minutes: 10
     steps:
       - name: Post @codex review for the current head
         shell: bash
@@ -124,10 +127,38 @@ jobs:
             exit 0
           fi
 
-          # Ask Codex to re-review the new head — BOTH code and security — so the gate can evaluate
-          # this exact commit. Codex acts on only one "@codex" command per comment (a single comment
-          # carrying both commands triggers only the code review), so post them as two separate
-          # comments.
+          # Serialize against the final security review — FAIL-CLOSED. If a push lands while the final
+          # security review is Running, requesting the code review now would run the two concurrently and
+          # hit Codex's backend collision — the very failure this pipeline exists to avoid. Wait (bounded)
+          # for any in-flight security review on this PR to stop; if it is STILL running at the deadline,
+          # or its state cannot be read, SKIP this run rather than post — deliberately starting a known
+          # concurrent pair is never safe. A later push re-requests the head-bound code review once
+          # security has stopped.
+          sec_deadline=$(( SECONDS + 180 ))
+          while :; do
+            if ! sec_comments="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --slurp 2>/dev/null)"; then
+              echo "Cannot read PR comments to check security-review state; skipping to avoid a concurrent pair. A later push will re-request the code review."
+              exit 0
+            fi
+            if ! sec_summary="$(jq -r '[ add[]? | select(.user.login=="chatgpt-codex-connector[bot]") | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$sec_comments" 2>/dev/null)"; then
+              echo "Cannot parse PR comments to check security-review state; skipping to avoid a concurrent pair."
+              exit 0
+            fi
+            sec_row="$(grep -i 'Security Review' <<<"$sec_summary" | head -1 || true)"
+            # No security row, or it is not Running -> safe to request the code review.
+            grep -qi 'Running' <<<"$sec_row" || break
+            if (( SECONDS >= sec_deadline )); then
+              echo "A Codex security review is still running on PR #${PR_NUMBER} after the wait budget; skipping to avoid a concurrent pair. A later push re-requests the code review once security stops."
+              exit 0
+            fi
+            echo "A Codex security review is still running on PR #${PR_NUMBER}; waiting before requesting the code review to avoid a concurrent pair."
+            sleep 10
+          done
+
+          # Ask Codex to re-review the new head — CODE review only — so the gate can evaluate this
+          # exact commit. The SECURITY review is NOT requested here: it runs once, as the final step
+          # before merge, from request-final-security-review.yml. Keeping the two apart is deliberate —
+          # Codex's cloud backend errors when a code and a security review run concurrently on one PR.
           post_codex() {
             local command="$1"
             {
@@ -142,5 +173,4 @@ jobs:
             GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           }
           post_codex '@codex review'
-          post_codex '@codex security review'
-          echo "Requested Codex code + security re-review for ${EVENT_HEAD_SHA} on PR #${PR_NUMBER}."
+          echo "Requested Codex code re-review for ${EVENT_HEAD_SHA} on PR #${PR_NUMBER}."

@@ -104,8 +104,11 @@ Ordered by fit to the identity; each is control-plane, not runtime:
 
 1. **Zero-config onboarding** — detect language/build/platform → propose a default `.agentic/config.yml`
    (`doctor --init` + front-door skill), so the toolkit "just works" when dropped into a repo.
-2. **Multi-stage "definition of ready"** — first-class integration-test / security-review / custom
-   gate stages in the graph and the merge gate, beyond CI + Sonar.
+2. **Multi-stage "definition of ready"** — the **security review is now a gated pre-merge stage**: the
+   merge gate requires a head-bound Codex security review, run as the final step after the code review
+   converges (never concurrently — see `request-final-security-review.yml`). Still roadmap: first-class
+   integration-test / custom gate stages in the graph and the merge gate, beyond CI + Sonar + the
+   code/security review.
 3. **More platform renderers** — GitLab, Bitbucket, Azure DevOps (contract → native pipeline mapping
    only; the agents and runners stay the platform's).
 4. **Budget & guardrail enforcement** — honor the limits already declared on the invocation.
