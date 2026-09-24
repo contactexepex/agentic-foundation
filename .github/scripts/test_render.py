@@ -144,11 +144,55 @@ def test_new_behaviors() -> None:
         print("FAIL app-backed implementer must not require a model", file=sys.stderr)
 
 
+def test_round2_fixes() -> None:
+    import tempfile
+
+    # duplicate explicit stage id -> fail loud
+    expect_raises(
+        lambda: render.expand_stages({"profile": "custom", "stages": [{"id": "a", "type": "review"}, {"id": "a", "type": "security"}]}),
+        "expand_stages: duplicate explicit id fails loud",
+    )
+
+    # diamond extends (two bases share an ancestor) must NOT raise circular
+    with tempfile.TemporaryDirectory() as d:
+        dp = Path(d)
+        (dp / "org.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
+        (dp / "teamA.yml").write_text("version: 2\nextends: org.yml\n")
+        (dp / "teamB.yml").write_text("version: 2\nextends: org.yml\n")
+        (dp / "repo.yml").write_text("version: 2\nprofile: custom\nextends: [teamA.yml, teamB.yml]\n")
+        merged = render.load_config(dp / "repo.yml")
+        check(merged["defaults"]["provider"] == "claude", "extends: diamond (shared ancestor) resolves, no false cycle")
+
+    # preset pre-fills commands; multiline command indents every line -> valid YAML
+    steps = render._build_steps({"build": {"preset": "python"}})
+    check("pytest" in steps, "build_steps: preset python pre-fills commands")
+    ml = render._build_steps({"build": {"commands": {"test": "echo one\necho two"}}})
+    check("\n          echo two" in ml, "build_steps: multiline command lines are all indented")
+
+    # default_branch with YAML flow syntax renders as valid YAML (quoted)
+    import yaml as _yaml
+    rendered = render.render_all(
+        {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "release,2026"},
+         "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+         "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]},
+        "github",
+    )
+    doc = _yaml.safe_load(rendered["validate.yml"])
+    on_block = doc.get("on", doc.get(True))  # YAML parses the `on:` key as boolean True
+    check(on_block["push"]["branches"] == ["release,2026"], "render: odd default_branch stays one quoted branch filter")
+
+    # instructions as a file path is loaded
+    inv = build_invocation({"defaults": {"provider": "claude"}},
+                           {"id": "x", "type": "custom", "provider": "claude", "instructions": "templates/skills/code-review/SKILL.md"}, "m")
+    check("Code Review" in inv.system_prompt, "backend: instructions file path is loaded as content")
+
+
 def main() -> int:
     test_resolution()
     test_profile_expansion()
     test_backend()
     test_new_behaviors()
+    test_round2_fixes()
     test_render_structural()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)

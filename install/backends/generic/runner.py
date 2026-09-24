@@ -131,7 +131,14 @@ def build_invocation(
     if skill_id:
         methodology = load_skill(skill_id, cfg)
     else:
-        methodology = stage.get("instructions", "")
+        instr = stage.get("instructions", "") or ""
+        # `instructions` may be inline text OR a path to a prompt file; load the file's content
+        # when it resolves to an existing file, otherwise treat it as inline.
+        instr_path = (REPO_ROOT / instr) if instr else None
+        if instr and instr_path is not None and instr_path.is_file():
+            methodology = instr_path.read_text()
+        else:
+            methodology = instr
 
     guardrails = guardrails or cfg.get("guardrails", {}) or {}
     untrusted = guardrails.get("untrusted_inputs", DEFAULT_UNTRUSTED)

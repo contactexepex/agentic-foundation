@@ -41,7 +41,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
-          ref: {{ default_branch }}
+          ref: "{{ default_branch }}"
           fetch-depth: 0
 
       - name: Run Claude Code (implementor)
@@ -49,7 +49,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: ${{ github.event.inputs.task }}
-          base_branch: {{ default_branch }}
+          base_branch: "{{ default_branch }}"
           branch_prefix: claude/
           claude_args: |
             --model ${{ env.IMPLEMENTER_MODEL }}

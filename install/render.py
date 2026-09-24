@@ -47,6 +47,19 @@ GITHUB_ROLE_MAP = {
 # openhands, swe-agent, pr-agent) choose their own model, so resolution is skipped.
 BACKENDS_NEEDING_MODEL = {"generic", "claude-code-action"}
 
+# Preset -> default build commands (pre-fill; explicit build.commands override per key).
+# Mirrors docs/CONFIGURATION.md "Presets".
+PRESET_COMMANDS: dict[str, dict[str, str]] = {
+    "python": {"install": "pip install -r requirements.txt", "lint": "ruff check .", "test": "python -m pytest"},
+    "maven": {"install": "mvn -q -N install", "lint": "mvn -q spotless:check", "test": "mvn -q verify"},
+    "gradle": {"install": "./gradlew dependencies", "lint": "./gradlew check -x test", "test": "./gradlew test"},
+    "node": {"install": "npm ci", "lint": "npm run lint", "test": "npm test"},
+    "go": {"install": "go mod download", "lint": "golangci-lint run", "test": "go test ./..."},
+    "rust": {"install": "cargo fetch", "lint": "cargo clippy -- -D warnings", "test": "cargo test"},
+    "dotnet": {"install": "dotnet restore", "lint": "dotnet format --verify-no-changes", "test": "dotnet test"},
+    "custom": {},
+}
+
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
         {"id": "implement", "type": "implement", "gate": "advisory"},
@@ -117,8 +130,11 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
         key = str(p)
         if key in _seen:
             raise RenderError(f"circular extends via {ref}")
+        # `_seen` tracks only the CURRENT recursion path (ancestors), so two bases that share a
+        # common ancestor (a diamond) do not falsely trip cycle detection; remove after resolving.
         _seen.add(key)
         base = resolve_extends(_read_yaml(p), p.parent, _seen)
+        _seen.discard(key)
         merged = _deep_merge(merged, base)
     child = {k: v for k, v in cfg.items() if k != "extends"}
     return _deep_merge(merged, child)
@@ -156,10 +172,16 @@ def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
         raise RenderError(f"unknown profile: {profile}")
     base = {s["id"]: dict(s) for s in PROFILE_STAGES[profile]}
     order = [s["id"] for s in PROFILE_STAGES[profile]]
+    explicit_ids: set[str] = set()
     for stage in cfg.get("stages", []) or []:
         sid = stage.get("id")
         if not sid:
             raise RenderError("every stage needs an id")
+        # Two explicit stages sharing an id would silently deep-merge into a hybrid stage and drop
+        # a graph node; reject it. (Overriding a PROFILE-provided stage by id is still allowed.)
+        if sid in explicit_ids:
+            raise RenderError(f"duplicate explicit stage id '{sid}'")
+        explicit_ids.add(sid)
         resolved = dict(stage)
         # `from` supplies preset defaults; the stage's own fields override them.
         if "from" in resolved:
@@ -232,14 +254,22 @@ def _build_steps(cfg: dict[str, Any]) -> str:
     Runs whichever of install/lint/typecheck/test are set, in that order — the
     repo's own definition of "green", not the toolkit's schema validator.
     """
-    commands = (cfg.get("build", {}) or {}).get("commands", {}) or {}
+    build = cfg.get("build", {}) or {}
+    preset = build.get("preset", "custom")
+    # Preset pre-fills commands; explicit non-empty build.commands override per key.
+    commands = dict(PRESET_COMMANDS.get(preset, {}))
+    for k, v in (build.get("commands", {}) or {}).items():
+        if (v or "").strip():
+            commands[k] = v
     order = ["install", "lint", "typecheck", "test"]
     lines: list[str] = ["set -euo pipefail"]
     for name in order:
         cmd = (commands.get(name) or "").strip()
         if cmd:
             lines.append(f'echo "::group::{name}"')
-            lines.append(cmd)
+            # Split multiline commands so EVERY physical line is indented by the join below;
+            # otherwise continuation lines land at column 0 and break the `run: |` YAML block.
+            lines.extend(cmd.splitlines())
             lines.append('echo "::endgroup::"')
     if len(lines) == 1:
         lines.append('echo "No build commands configured; nothing to run."')
