@@ -1,0 +1,118 @@
+name: Fast AI Code Review
+
+# Rendered by install/render.py. Do not edit by hand; edit the template and re-render.
+# Deterministic review router — no model call, no secrets. Trivial textual changes are
+# fast-path approved; every substantive change is routed to the reviewer. Runs as
+# pull_request_target so the trusted definition comes from the base branch; reads only
+# the changed-file list as data (no PR content is checked out or executed) and publishes
+# a commit status. It posts no PR comment, so pull-requests: read is sufficient.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+concurrency:
+  group: fast-ai-review-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'review' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+env:
+  REVIEW_STATUS_CONTEXT: {{ review_status_context }}
+  # Glob lists are JSON (parsed with jq), so patterns containing spaces or quotes
+  # survive intact instead of being word-split or breaking the YAML scalar.
+  TRIVIAL_GLOBS_JSON: >-
+    {{ fast_path_globs_json }}
+  DENY_GLOBS_JSON: >-
+    {{ fast_path_exclude_json }}
+  TRIVIAL_MAX_FILES: '{{ fast_path_max_files }}'
+  TRIVIAL_MAX_LINES: '{{ fast_path_max_lines }}'
+
+jobs:
+  route:
+    name: Route review (fast-path or Codex)
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('{{ trusted_roles_json }}'), github.event.pull_request.author_association) &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Classify change and publish routing status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish_status() {
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+              -f state="$1" -f context="$REVIEW_STATUS_CONTEXT" -f description="$2" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null
+          }
+          publish_status pending 'Classifying change to route the review'
+
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            --jq '.[] | [.filename, (.additions + .deletions), (.patch != null), .status, (.previous_filename // "")] | @tsv' > "$RUNNER_TEMP/files.tsv"
+
+          # Parse JSON glob lists into arrays (preserves spaces/quotes within a pattern).
+          mapfile -t GLOBS < <(jq -r '.[]' <<<"$TRIVIAL_GLOBS_JSON")
+          mapfile -t DENY < <(jq -r '.[]' <<<"$DENY_GLOBS_JSON")
+
+          FILE_COUNT=0
+          TOTAL_LINES=0
+          TRIVIAL=true
+
+          matches_trivial_path() {
+            local path="$1" glob deny hit=false
+            for glob in "${GLOBS[@]}"; do
+              # shellcheck disable=SC2254
+              case "$path" in $glob) hit=true; break;; esac
+            done
+            [[ "$hit" == true ]] || return 1
+            for deny in "${DENY[@]}"; do
+              # shellcheck disable=SC2254
+              case "$path" in $deny) return 1;; esac
+            done
+            return 0
+          }
+
+          while IFS=$'\t' read -r name churn has_patch status prev; do
+            [[ -n "$name" ]] || continue
+            FILE_COUNT=$((FILE_COUNT + 1))
+            TOTAL_LINES=$((TOTAL_LINES + churn))
+            file_trivial=true
+            matches_trivial_path "$name" || file_trivial=false
+            [[ "$has_patch" == true ]] || file_trivial=false
+            case "$status" in
+              renamed|copied)
+                [[ -z "$prev" ]] || matches_trivial_path "$prev" || file_trivial=false ;;
+            esac
+            [[ "$file_trivial" == true ]] || TRIVIAL=false
+          done < "$RUNNER_TEMP/files.tsv"
+
+          (( FILE_COUNT >= 1 )) || TRIVIAL=false
+          (( FILE_COUNT <= TRIVIAL_MAX_FILES )) || TRIVIAL=false
+          (( TOTAL_LINES <= TRIVIAL_MAX_LINES )) || TRIVIAL=false
+
+          if [[ "$TRIVIAL" == true ]]; then
+            publish_status success "Trivial docs/text change (${FILE_COUNT} files, ${TOTAL_LINES} lines) — fast-path approved; full review not required."
+          else
+            publish_status success "Substantive change (${FILE_COUNT} files, ${TOTAL_LINES} lines) — routed to the reviewer for independent review."
+          fi
+
+      - name: Mark routing failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state=failure -f context="$REVIEW_STATUS_CONTEXT" \
+            -f description='Review routing failed; inspect the run logs' \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >/dev/null || true

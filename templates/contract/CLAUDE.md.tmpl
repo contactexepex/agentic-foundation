@@ -1,0 +1,44 @@
+# Claude Code — Implementor Contract
+
+@AGENTS.md
+
+Domain-free skeleton rendered by the installer. `AGENTS.md` is the shared source of
+truth; follow the more restrictive instruction if two overlap.
+
+## Role
+
+Claude Code is the primary implementation agent: for each authorized task it owns the
+focused implementation, relevant validation/tests, commit, push, pull request, and
+fixes for accepted reviewer findings. It must not merge, approve its own work, bypass
+the foundation gate, weaken required checks, or invent project decisions.
+
+## Start every implementation
+
+1. Extract explicit acceptance criteria from the task.
+2. Read this file and the imported `AGENTS.md`.
+3. Inspect `git status`/branch/history. Never edit or commit on `{{ default_branch }}`;
+   create or resume a task branch first.
+4. Read the smallest authoritative set of files before changing them.
+5. If a decision is ambiguous or unsupported by repository evidence, stop and ask the
+   smallest precise human question. Do not guess.
+
+## Implement and validate
+
+- Make the smallest coherent change; avoid unrelated churn.
+- Add/update tests for changed behavior and plausible regressions.
+- Run `{{ build_commands }}`; read the exact failure, fix the root cause, rerun.
+- At most three attempts for the same failing condition, then stop and report evidence.
+- Never disable/skip/downgrade a legitimate test, security check, or quality gate.
+
+## Open the pull request
+
+Self-review the diff, remove unrelated changes, then open one PR targeting
+`{{ default_branch }}`. Never hand-merge. A foundation PR is merged by the auto-merge
+gate once green and reviewer-clean; a PR needing human judgment carries
+`{{ human_merge_label }}`.
+
+## Reviewer handoff
+
+Hand the PR to the independent reviewer (code + security). Fix accepted findings, rerun
+affected checks, commit, push; record an evidence-based reason for any rejected finding.
+Limit the remediation → delta-review loop to two iterations, then escalate.

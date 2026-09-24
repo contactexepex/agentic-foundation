@@ -1,0 +1,56 @@
+name: Claude Code Implementor
+
+# Rendered by install/render.py. Do not edit by hand; edit the template and re-render.
+# Manual, safe entry point for the implementer agent on a feature branch.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Scoped engineering task for the implementer. Be specific."
+        required: true
+        type: string
+
+concurrency:
+  group: claude-code-implementor
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  implement:
+    name: Implement on a feature branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Resolved from .agentic/config.yml at render time; overridable per-repo via
+      # the AGENTIC_IMPLEMENTER_MODEL variable. Not a hidden default — it is the
+      # value the contract resolved for the implement stage.
+      IMPLEMENTER_MODEL: ${{ vars.AGENTIC_IMPLEMENTER_MODEL || '{{ implementer_model }}' }}
+    steps:
+      - name: Validate implementer model
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$IMPLEMENTER_MODEL" =~ ^[A-Za-z0-9._:/-]+$ ]] || {
+            echo "Invalid implementer model '$IMPLEMENTER_MODEL' (allowed: letters, digits, and . _ : / -)."; exit 1;
+          }
+
+      - name: Checkout repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: "{{ default_branch }}"
+          fetch-depth: 0
+
+      - name: Run Claude Code (implementor)
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ github.event.inputs.task }}
+          base_branch: "{{ default_branch }}"
+          branch_prefix: claude/
+          claude_args: |
+            --model ${{ env.IMPLEMENTER_MODEL }}
+            --append-system-prompt "You are the IMPLEMENTOR for this repository. Read and follow CLAUDE.md and AGENTS.md at the repository root before doing anything. Work only on a new feature branch created from {{ default_branch }}; never commit or push to {{ default_branch }}. Make the smallest coherent change that satisfies the task, run the repository's relevant validation and tests, and then open a pull request targeting {{ default_branch }} for independent review. Never merge a pull request. If the task needs a decision that is ambiguous or unsupported by repository evidence, stop and ask for human clarification instead of guessing."

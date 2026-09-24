@@ -1,0 +1,121 @@
+name: Resolve Fixed Codex Review Threads
+
+# Rendered by install/render.py from templates/workflows/github/. Do not edit by hand;
+# edit the template and re-render. Emitted alongside the codex review lane. Auto-resolves
+# Codex review threads that a later commit has already made outdated, so a human does not
+# have to close each fixed conversation by hand.
+#
+# Runs on pull_request_target so it fires for EVERY pull request and the trusted workflow
+# definition comes from the base branch. It performs only GitHub API calls (a review-thread
+# query and resolve mutations); no PR content is checked out or executed, so the remediation
+# token cannot be reached by PR code. Thread resolution does not gate merges — CI and Codex's
+# own re-review still decide mergeability — so resolving an outdated conversation does not
+# weaken any validation gate.
+#
+# `edited` is included so a PR retargeted onto the default branch (which arrives as an edited
+# event) becomes eligible immediately; the job guard below ignores edited events that are not
+# a base change.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+
+# One active resolver run per PR; a newer push supersedes an in-flight run. Non-base `edited`
+# events (title/body edits) get a separate, disposable group so they cannot cancel an
+# actionable open/synchronize/base-retarget run.
+concurrency:
+  group: resolve-codex-threads-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'resolve' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  resolve:
+    name: Resolve outdated Codex bot review threads
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
+      contains(fromJSON('{{ trusted_roles_json }}'), github.event.pull_request.author_association) &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve fixed Codex bot threads
+        shell: bash
+        env:
+          # The workflow-scoped GITHUB_TOKEN cannot resolve review threads, so use the
+          # narrowly-scoped remediation PAT (Contents R/W + Pull requests R/W).
+          GH_TOKEN: ${{ secrets.{{ codex_review_secret }} }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Thread auto-resolution is a convenience, not a merge gate. If the token is absent,
+          # skip cleanly rather than red-X every PR's checks.
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "Codex review PAT is not configured; skipping thread auto-resolution."
+            exit 0
+          fi
+
+          # Never act on a stale event: if a newer commit has been pushed since this event fired,
+          # skip and let that commit's own run handle resolution.
+          CURRENT_HEAD_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [[ "$CURRENT_HEAD_SHA" != "$EVENT_HEAD_SHA" ]]; then
+            echo "Event is stale; PR head has moved. Nothing to resolve."
+            exit 0
+          fi
+
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+
+          QUERY='query($owner:String!, $repo:String!, $number:Int!, $cursor:String) {
+            repository(owner:$owner, name:$repo) {
+              pullRequest(number:$number) {
+                reviewThreads(first:100, after:$cursor) {
+                  nodes {
+                    id
+                    isResolved
+                    isOutdated
+                    comments(first:100) {
+                      nodes { author { login } }
+                    }
+                  }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }
+            }
+          }'
+
+          cursor=null
+          while :; do
+            if [[ "$cursor" == "null" ]]; then
+              response="$(gh api graphql -f query="$QUERY" -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER")"
+            else
+              response="$(gh api graphql -f query="$QUERY" -f owner="$OWNER" -f repo="$REPO" -F number="$PR_NUMBER" -f cursor="$cursor")"
+            fi
+
+            # Resolve only outdated, unresolved threads whose comments are exclusively from
+            # the Codex GitHub App. Human-authored or mixed threads are deliberately untouched.
+            mapfile -t thread_ids < <(
+              jq -r '
+                .data.repository.pullRequest.reviewThreads.nodes[]
+                | select(.isResolved == false and .isOutdated == true)
+                | select((.comments.nodes | length) > 0)
+                | select(all(.comments.nodes[]; .author.login == "chatgpt-codex-connector"))
+                | .id
+              ' <<< "$response"
+            )
+
+            for thread_id in "${thread_ids[@]}"; do
+              gh api graphql \
+                -f query='mutation($threadId:ID!) { resolveReviewThread(input:{threadId:$threadId}) { thread { id isResolved } } }' \
+                -f threadId="$thread_id" >/dev/null
+              echo "Resolved outdated Codex review thread: $thread_id"
+            done
+
+            has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<< "$response")"
+            [[ "$has_next" == "true" ]] || break
+            cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<< "$response")"
+          done

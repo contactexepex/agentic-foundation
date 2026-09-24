@@ -1,0 +1,33 @@
+name: Validate
+
+# Rendered by install/render.py from templates/workflows/github/. Do not edit by hand;
+# edit the template and re-render. This is the repository's "green" check: it runs the
+# repo's own build.commands (install/lint/typecheck/test) — the language-agnostic
+# definition of "green" from .agentic/config.yml — NOT the toolkit's own validator.
+# A repo that needs a language runtime installs it via build.commands.install.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: ["{{ default_branch }}"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    # The job name IS the check-run name the auto-merge gate requires by name.
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - name: Run build commands (repo-defined "green")
+        shell: bash
+        run: |
+          {{ build_steps }}
