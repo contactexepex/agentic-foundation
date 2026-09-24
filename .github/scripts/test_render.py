@@ -297,6 +297,21 @@ def test_round4_fixes() -> None:
     expect_raises(lambda: render.resolve_extends({"extends": {"base.yml": "ignored"}}, REPO_ROOT),
                   "extends: mapping shape fails loud")
 
+    # S-a: a builtin skill id that escapes SKILLS_DIR (absolute / ..) is rejected.
+    from backends.generic import runner as _gen
+    try:
+        _gen.load_skill("/proc/self/environ", {})
+        failures.append("load_skill must confine builtin skill ids to SKILLS_DIR")
+        print("FAIL load_skill must confine builtin skill ids", file=sys.stderr)
+    except (ValueError, FileNotFoundError):
+        print("OK  backend: builtin skill id escaping SKILLS_DIR is rejected")
+
+    # S-b: an implementer model with an expression metacharacter fails loud at render.
+    inj = {"version": 2, "profile": "custom", "platform": {"type": "github", "default_branch": "main"},
+           "defaults": {"provider": "claude", "models": {"claude": {"default": "m') || secrets.X }}"}}},
+           "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
+    expect_raises(lambda: render.build_context(inj), "render: unsafe implementer model fails loud")
+
     # S3: agent contracts are always excluded from the fast path.
     ex = json.loads(ctx["fast_path_exclude_json"])
     check({"AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLAUDE.md"} <= set(ex), "render: AGENTS/CLAUDE always fast-path-excluded")

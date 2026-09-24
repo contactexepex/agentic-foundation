@@ -96,19 +96,23 @@ def _action_for(stage_type: str) -> str:
     return "implement"  # `custom` defaults to implement
 
 
-def _confine_to_repo(path: Path, what: str = "path") -> Path:
-    """Resolve `path` and reject anything outside the toolkit repository root.
+def _confine(path: Path, root: Path, what: str = "path") -> Path:
+    """Resolve `path` and reject anything outside `root`.
 
-    Skill/instruction file references come from the (untrusted) config, so an absolute
-    path or one escaping via `..` or a symlink — e.g. `/proc/self/environ` — must not be
-    read into a system prompt that a provider adapter could then transmit externally.
-    Resolution follows symlinks, so a symlinked escape is caught by the containment check.
+    Skill/instruction references come from the (untrusted) config, so an absolute path or one
+    escaping via `..` or a symlink — e.g. `/proc/self/environ` — must not be read into a system
+    prompt a provider adapter could transmit externally. Resolution follows symlinks, so a
+    symlinked escape is caught by the containment check.
     """
     resolved = path.resolve()
-    root = REPO_ROOT.resolve()
-    if not resolved.is_relative_to(root):
-        raise ValueError(f"{what} '{path}' resolves outside the repository root ({resolved})")
+    base = root.resolve()
+    if not resolved.is_relative_to(base):
+        raise ValueError(f"{what} '{path}' resolves outside {base}")
     return resolved
+
+
+def _confine_to_repo(path: Path, what: str = "path") -> Path:
+    return _confine(path, REPO_ROOT, what)
 
 
 def _read_skill_file(base: Path) -> str:
@@ -148,8 +152,8 @@ def load_skill(skill_id: str, cfg: dict[str, Any] | None = None, _seen: tuple[st
         if not loc:
             raise ValueError(f"skill '{skill_id}' has source: path but no path")
         content = _read_skill_file(_confine_to_repo(REPO_ROOT / loc, f"skill '{skill_id}' path"))
-    else:  # builtin
-        content = _read_skill_file(SKILLS_DIR / skill_id)
+    else:  # builtin — the id must name a skill directly under SKILLS_DIR, not an absolute/`..` path
+        content = _read_skill_file(_confine(SKILLS_DIR / skill_id, SKILLS_DIR, f"builtin skill '{skill_id}'"))
 
     base_id = reg.get("extends")
     if base_id:

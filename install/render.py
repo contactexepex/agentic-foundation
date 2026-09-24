@@ -109,6 +109,8 @@ def _ref_is_safe(ref: str) -> bool:
     return bool(ref) and not ref.startswith("-") and not _UNSAFE_REF.search(ref) and all(ord(c) >= 0x20 for c in ref)
 # A GitHub Actions secret name (what may follow `secrets.` in an expression).
 _SECRET_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# A model id safe to embed in a GitHub expression string literal (no quotes/metacharacters).
+_MODEL_SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
 
 # Agent contract files change the behavior/security posture of later automation, so they must never
 # ride the review fast path, whatever routing.fast_path.exclude is set to (root and nested).
@@ -365,6 +367,14 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     implementer_model = ""
     if implement_stage and _stage_backend(implement_stage) in BACKENDS_NEEDING_MODEL:
         implementer_model = resolve_model(cfg, implement_stage, "standard")
+        # The model is embedded in a GitHub expression literal (`… || '<model>'`). A value with a
+        # quote or expression metacharacter could break out and inject another operand (e.g. a
+        # secret) into the implementer's --model. Constrain it to model-id characters, fail loud.
+        if not _MODEL_SAFE.match(implementer_model):
+            raise RenderError(
+                f"resolved implementer model '{implementer_model}' contains characters unsafe to "
+                "template into a workflow expression (allowed: letters, digits, and '._:/-')"
+            )
 
     # Agent contract files are always excluded from the fast path (union with configured excludes,
     # de-duplicated, order preserved) so a nested AGENTS.md/CLAUDE.md can never be fast-path approved.
