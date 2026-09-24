@@ -6,6 +6,9 @@ name: Fast AI Code Review
 # pull_request_target so the trusted definition comes from the base branch; reads only
 # the changed-file list as data (no PR content is checked out or executed) and publishes
 # a commit status. It posts no PR comment, so pull-requests: read is sufficient.
+# Set routing.fast_path.enabled: false in the contract to disable the fast path entirely:
+# the glob list renders empty, nothing classifies as trivial, and every PR is routed to
+# the reviewer.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, edited]

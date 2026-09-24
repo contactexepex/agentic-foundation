@@ -48,7 +48,9 @@ criteria, what changed and why, checks run with results, and assumptions or open
 PR is sent to Codex for code + security review; findings block the merge as unresolved threads** (see
 "Codex review handoff"). The gate requires a head-bound *code* review and zero unresolved threads; it
 does not wait for security-review completion (that stronger gate is roadmap — `docs/CHARTER.md` §7).
-The deterministic fast-path lane may merge a trivial docs/text change without a paid review.
+The fast-path lane is disabled for this repository (`.agentic/config.yml` →
+`routing.fast_path.enabled: false`), so every PR — documentation included — goes through Codex review;
+nothing merges without it.
 
 Know the merge lane (see `AGENTS.md`). A **foundation** PR is merged automatically by the
 `Auto-merge foundation PRs` gate once green and Codex-clean — do not hand-merge and do not wait on a

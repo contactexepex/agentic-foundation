@@ -61,16 +61,12 @@ build:
   commands:
     test: "python .github/scripts/validate_config.py"
 
-# Fast-path only trivial top-level text changes; route everything substantive to Codex.
-# Mirrors .github/workflows/fast-ai-code-review.yml exactly: docs/** is DENIED (docs hold
-# operational/security contracts and must be independently reviewed), as are AGENTS.md / CLAUDE.md
-# at the root and any nested path.
+# Fast-path is DISABLED for this repository: every PR — docs included — is routed to Codex for an
+# independent review. This is a shared toolkit whose docs other people rely on, so nothing merges
+# without review (see AGENTS.md / CLAUDE.md). Mirrors .github/workflows/fast-ai-code-review.yml.
 routing:
   fast_path:
-    globs: ["**/*.md", "LICENSE", ".gitignore", ".gitattributes", ".editorconfig"]
-    max_files: 20
-    max_lines: 200
-    exclude: ["AGENTS.md", "**/AGENTS.md", "CLAUDE.md", "**/CLAUDE.md", "docs/**", ".agentic/**"]
+    enabled: false
 
 modules:
   auto_merge: true                    # fail-closed foundation auto-merge gate is active

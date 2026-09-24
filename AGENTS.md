@@ -60,12 +60,14 @@ clarification, treat the answer as evidence and re-run the affected validation.
 
 - Never work directly on `main`; use a focused branch and one PR.
 - Open every PR **ready for review — never a draft** — so review runs immediately.
-- **Every PR is sent to Codex for code + security review.** The merge gate requires a head-bound
-  Codex *code* review and zero unresolved review threads; it does **not** wait for security-review
-  completion, so a security finding blocks only via a review thread present at merge time. (Gating on
-  a head-bound security-review completion signal is roadmap — see `docs/CHARTER.md` §7.) The
-  deterministic fast-path lane may merge a trivial docs/text change without a paid review. Self-review
-  never substitutes for a required review.
+- **Every PR is sent to Codex for code + security review — no exceptions.** The fast-path lane is
+  disabled for this repository (`.agentic/config.yml` → `routing.fast_path.enabled: false`), so every
+  change, documentation included, is routed to Codex. This is a shared toolkit whose docs other people
+  rely on, so nothing merges without review. The merge gate requires a head-bound Codex *code* review
+  and zero unresolved review threads; it does **not** wait for security-review completion, so a
+  security finding blocks only via a review thread present at merge time. (Gating on a head-bound
+  security-review completion signal is roadmap — see `docs/CHARTER.md` §7.) Self-review never
+  substitutes for a required review.
 - Keep changes scoped to the requested task; read existing code before replacing it.
 - Do not overwrite unrelated human changes; do not force-push over concurrent work.
 - Do not merge a PR while mandatory CI, tests, or security checks are red or pending.
@@ -85,9 +87,11 @@ needing human judgment stays human-gated.
   branch, come from a trusted author, carry no `human-merge` label, have no merge conflict, have
   every commit status and check-run green (including the `Publish fast review result` router status),
   have zero unresolved review threads and no reviewer requesting changes, and — for the substantive
-  lane — carry a Codex code review of the current head. Every Codex finding (code or security) posts
-  as a review thread, so it is caught by the zero-unresolved-threads requirement. Any missing or
-  unknown signal skips the merge; it is retried on the next event or scheduled sweep.
+  lane — carry a Codex code review of the current head. The fast-path lane is disabled in this
+  repository (see Git rules above), so every PR takes the substantive lane and must carry that Codex
+  code review. Every Codex finding (code or security) posts as a review thread, so it is caught by the
+  zero-unresolved-threads requirement. Any missing or unknown signal skips the merge; it is retried on
+  the next event or scheduled sweep.
 - **Human-gated lane.** Any PR that needs human judgment carries the `human-merge` label, which the
   foundation gate treats as a hard stop. When in doubt, apply `human-merge`.
 

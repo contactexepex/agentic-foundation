@@ -385,6 +385,13 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     # de-duplicated, order preserved) so a nested AGENTS.md/CLAUDE.md can never be fast-path approved.
     fast_path_exclude = list(dict.fromkeys(MANDATORY_FAST_PATH_EXCLUDE + list(routing.get("exclude", []) or [])))
 
+    # `fast_path.enabled: false` turns the lane OFF: with no trivial globs, no file ever classifies as
+    # trivial, so the router always routes every PR (docs included) to the reviewer. This is the
+    # one-line way a repo declares "every change goes through review" (e.g. a shared toolkit whose docs
+    # other people rely on). Default is on.
+    fast_path_enabled = routing.get("enabled", True)
+    fast_path_globs = list(routing.get("globs", ["**/*.md"])) if fast_path_enabled else []
+
     return {
         "default_branch": default_branch,
         "human_merge_label": labels.get("human_merge", "human-merge"),
@@ -392,7 +399,7 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
         "trusted_roles_json": json.dumps(gh_roles),
         # Serialize glob lists as JSON so patterns with spaces/quotes survive intact
         # (the template parses them with jq, not word-splitting).
-        "fast_path_globs_json": json.dumps(routing.get("globs", ["**/*.md"])),
+        "fast_path_globs_json": json.dumps(fast_path_globs),
         "fast_path_exclude_json": json.dumps(fast_path_exclude),
         "fast_path_max_files": str(routing.get("max_files", 20)),
         "fast_path_max_lines": str(routing.get("max_lines", 200)),

@@ -194,6 +194,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "enabled": { "type": "boolean", "default": true, "description": "Set false to disable the fast-path lane so every PR (docs included) is routed to the reviewer." },
             "globs": { "type": "array", "items": { "type": "string" } },
             "max_files": { "type": "integer", "minimum": 0 },
             "max_lines": { "type": "integer", "minimum": 0 },

@@ -330,6 +330,14 @@ def test_round4_fixes() -> None:
     ex = json.loads(ctx["fast_path_exclude_json"])
     check({"AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLAUDE.md"} <= set(ex), "render: AGENTS/CLAUDE always fast-path-excluded")
 
+    # S3b: routing.fast_path.enabled: false disables the lane — the glob list renders empty, so the
+    # rendered router classifies nothing as trivial and routes every PR to the reviewer.
+    off = render.build_context({**base, "routing": {"fast_path": {"enabled": False,
+                               "globs": ["**/*.md"], "max_files": 20, "max_lines": 200}}})
+    check(json.loads(off["fast_path_globs_json"]) == [], "render: fast_path.enabled false empties trivial globs")
+    on = render.build_context({**base, "routing": {"fast_path": {"globs": ["**/*.md"]}}})
+    check(json.loads(on["fast_path_globs_json"]) == ["**/*.md"], "render: fast_path enabled by default keeps globs")
+
     # A3: an invalid token_secret name fails loud.
     expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "main",
                   "auth": {"token_secret": "bad-name"}}}), "render: invalid token_secret name fails loud")
