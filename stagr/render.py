@@ -620,17 +620,22 @@ def _codex_stages(stages: list[dict[str, Any]], stage_type: str) -> list[dict[st
     return [s for s in stages if s.get("type") == stage_type and _stage_backend(s) == BACKEND_CODEX]
 
 
+_PR_REVIEW_EVENTS = frozenset({"pr_opened", "pr_updated"})
+
+
+def _pr_review_triggers(stage: dict[str, Any]) -> set[str]:
+    """The PR-review events (pr_opened / pr_updated) a stage takes part in. No explicit `triggers`
+    defaults to both (see `_runs_on_pr_review`)."""
+    trig = stage.get("triggers")
+    if trig is None:
+        return set(_PR_REVIEW_EVENTS)
+    return _PR_REVIEW_EVENTS & set(trig)
+
+
 def _has_codex_code_review(stages: list[dict[str, Any]]) -> bool:
     # request-review.yml (the on-push re-request lane) renders when a codex CODE review stage runs on
     # each pushed head (`pr_updated`); a pr_opened-only code review is handled by the App on open.
     return any(_wants_push_review(s) for s in _codex_stages(stages, "review"))
-
-
-def _has_codex_code_review_stage(stages: list[dict[str, Any]]) -> bool:
-    # True when the graph has ANY codex code-review stage in the PR lifecycle (open and/or update) —
-    # i.e. a code review exists for the final security review to converge behind, regardless of whether
-    # the per-push re-request lane renders. Used by the security-graph guard below.
-    return any(_runs_on_pr_review(s) for s in _codex_stages(stages, "review"))
 
 
 def _has_codex_security_review(stages: list[dict[str, Any]]) -> bool:
@@ -646,22 +651,51 @@ def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
     return _has_codex_code_review(stages)
 
 
-def _ensure_supported_review_graph(stages: list[dict[str, Any]]) -> None:
-    """Reject a graph whose Codex security lane could never fire.
+def _needs_codex_pat(stages: list[dict[str, Any]]) -> bool:
+    # The real-user PAT authors every rendered Codex request/cleanup workflow — request-review.yml
+    # (code on-push), final-security-review.yml (the security lane), and resolve-threads.yml — so it is
+    # required whenever ANY of them render, including a pr_opened-only security graph that renders the
+    # security lane but no on-push lane.
+    return _has_codex_code_review(stages) or _has_codex_security_review(stages)
 
-    The final security review runs ONLY after the Codex code review converges
-    (final-security-review.yml waits for the code review's "Completed" row before requesting it). A
-    graph with a Codex `security` stage but no Codex `review` stage would therefore render a security
-    workflow that no event can ever satisfy, silently disabling the configured stage. Fail loud at the
-    front door instead, so an unsupported graph is a clear error rather than a dead lane.
+
+def _ensure_supported_review_graph(stages: list[dict[str, Any]]) -> None:
+    """Reject a Codex security lane that could never fire or would be orchestrated incoherently.
+
+    The final security review runs ONLY after the Codex code review converges on the same head
+    (final-security-review.yml waits for the code review's "Completed" row before requesting it). So:
+
+    * A Codex `security` stage with no Codex `review` stage would render a security workflow that no
+      event can ever satisfy — reject it.
+    * A Codex `security` stage that runs on a PR event the code-review stage does NOT run on is
+      incoherent: on that event there is no code review to converge behind (e.g. code review only on
+      `pr_opened` but security on `pr_updated` — pushed heads get no code re-review, so security can
+      never unlock). Require the security stage's PR triggers to be covered by the code-review stage's.
+
+    Fail loud at the front door so an unsupported graph is a clear error, not a dead or mis-wired lane.
     """
-    if _has_codex_security_review(stages) and not _has_codex_code_review_stage(stages):
+    security_stages = [s for s in _codex_stages(stages, "security") if _runs_on_pr_review(s)]
+    if not security_stages:
+        return
+    code_stages = [s for s in _codex_stages(stages, "review") if _runs_on_pr_review(s)]
+    if not code_stages:
         raise RenderError(
             "a Codex security-review stage requires a Codex code-review ('review') stage: the security "
             "review runs only after the code review has converged, so a security stage on its own would "
             "render a workflow that never fires. Add a codex-backed 'review' stage, or remove the "
             "'security' stage."
         )
+    code_triggers: set[str] = set().union(*(_pr_review_triggers(s) for s in code_stages))
+    for sec in security_stages:
+        sec_triggers = _pr_review_triggers(sec)
+        if not sec_triggers <= code_triggers:
+            raise RenderError(
+                "a Codex security-review stage must run only on PR triggers its Codex code-review "
+                "('review') stage also runs on — the security review runs after the code review "
+                f"converges on that event. Security triggers {sorted(sec_triggers)} are not covered by "
+                f"code-review triggers {sorted(code_triggers)}; align the security stage's "
+                "pr_opened/pr_updated triggers with the review stage."
+            )
 
 
 @dataclass(frozen=True)

@@ -379,6 +379,25 @@ def test_pipeline_selection() -> None:
     check("request-review.yml" not in r_open and "resolve-threads.yml" not in r_open,
           "select: on-push lanes absent when no stage requests pr_updated")
 
+    # doctor must report the PAT whenever a request/cleanup workflow renders — including a pr_opened-only
+    # security graph that renders final-security-review.yml (which reads the PAT) but no on-push lane.
+    check(render._needs_codex_pat(render.expand_stages(pr_opened_only)),
+          "select: PAT is required for a pr_opened-only security graph (doctor must report it)")
+
+    # Mismatched code/security PR triggers are rejected: a security stage running on an event the code
+    # review does not run on has no converged code review to gate behind.
+    mismatched = {"version": 2, "profile": "custom",
+                  "platform": {"type": "github", "default_branch": "main"},
+                  "defaults": {"provider": "openai", "models": {}},
+                  "stages": [{"id": "review", "type": "review", "provider": "openai",
+                              "backend": {"name": "codex"}, "triggers": ["pr_opened"]},
+                             {"id": "security", "type": "security", "provider": "openai",
+                              "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
+    expect_raises(lambda: render.render_all(mismatched, "github"),
+                  "select: mismatched code/security PR triggers fail loud (render)")
+    expect_raises(lambda: render.validate_config(mismatched),
+                  "validate: mismatched code/security PR triggers fail loud (front door)")
+
     # The dogfood config has a codex security stage -> the security review is requested ONLY from the
     # final-security-review lane (never alongside the code review), so the two never run concurrently.
     check("@codex security review" in rendered["final-security-review.yml"],
