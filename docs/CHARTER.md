@@ -8,16 +8,18 @@
 ## 1. What agentic-foundation is (one sentence)
 
 A **platform-neutral contract + renderer** that drops into any repository and turns one small
-declarative file (`.agentic/config.yml`) into a working, governed, multi-stage agentic SDLC pipeline
-on that repo's existing CI/SCM — with minimal configuration.
+declarative file (`.agentic/config.yml`) into a governed, multi-stage agentic SDLC pipeline on that
+repo's existing CI/SCM — with minimal configuration. This is the design goal; see the Status note
+below for what renders today.
 
 Its value is **integration, governance, and portability** — never agent capability.
 
 > **Status (today):** the supported platform is **GitHub**, and the toolkit renders the core lane —
 > validate, the review router, the implementer, and the Codex code/security review + thread cleanup.
 > **Multi-stage rendering** (plan / test / integration-test / docs / release and non-Codex reviewers)
-> and **other platforms** (GitLab, Bitbucket, Azure DevOps, …) are the roadmap in §7. Sections 2–6
-> describe the target this roadmap converges on, not everything that renders today.
+> and **other platforms** (GitLab, Bitbucket, Azure DevOps, …) are the roadmap in §7. This
+> one-sentence identity and Sections 2–6 describe the target this roadmap converges on, not
+> everything that renders today.
 
 ## 2. The line we never cross: declare · initialize · govern — never execute
 
