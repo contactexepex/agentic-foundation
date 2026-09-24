@@ -241,6 +241,30 @@ def test_round3_fixes() -> None:
                   "validate: source: uri skill fails loud")
 
 
+def test_pipeline_selection() -> None:
+    # A codex-backed review/security stage -> the review lane is emitted.
+    cfg = render.load_config(REPO_ROOT / ".agentic" / "config.yml")
+    rendered = render.render_all(cfg, "github")
+    for name in ("validate.yml", "review-router.yml", "implementor.yml",
+                 "request-review.yml", "resolve-threads.yml"):
+        check(name in rendered, f"select: {name} emitted for codex-review config")
+    # The codex PAT is referenced by NAME (from platform.auth.token_secret), never a value.
+    check("secrets.CODEX_REMEDIATION_TOKEN" in rendered["request-review.yml"],
+          "select: codex_review_secret NAME substituted into request-review")
+    check(not re.search(r"ghp_[A-Za-z0-9]{8,}", rendered["resolve-threads.yml"]),
+          "select: resolve-threads inlines no secret value")
+
+    # No codex review stage -> the review lane is NOT emitted (module-aware, not glob-all).
+    minimal = {"version": 2, "profile": "custom",
+               "platform": {"type": "github", "default_branch": "main"},
+               "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
+               "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
+    r2 = render.render_all(minimal, "github")
+    check("request-review.yml" not in r2 and "resolve-threads.yml" not in r2,
+          "select: no review lane without a codex review stage")
+    check("validate.yml" in r2, "select: core pipeline still emitted")
+
+
 def main() -> int:
     test_resolution()
     test_profile_expansion()
@@ -248,6 +272,7 @@ def main() -> int:
     test_new_behaviors()
     test_round2_fixes()
     test_round3_fixes()
+    test_pipeline_selection()
     test_render_structural()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)

@@ -315,6 +315,9 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     roles = platform.get("trusted_roles", ["owner", "member", "collaborator"])
     gh_roles = [GITHUB_ROLE_MAP[r] for r in roles if r in GITHUB_ROLE_MAP]
 
+    # NAME of the real-user PAT the codex review lane posts/resolves with (never a value).
+    codex_review_secret = ((platform.get("auth", {}) or {}).get("token_secret")) or "CODEX_REMEDIATION_TOKEN"
+
     stages = {s["id"]: s for s in expand_stages(cfg)}
     implement_stage = next((s for s in stages.values() if s.get("type") == "implement"), None)
     # Resolve the implementer model ONLY when the backend consumes one; otherwise the
@@ -337,6 +340,7 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
         "implementer_model": implementer_model,
         "build_steps": _build_steps(cfg),
         "review_status_context": "Publish fast review result",
+        "codex_review_secret": codex_review_secret,
     }
 
 
@@ -353,16 +357,42 @@ def render_template(text: str, context: dict[str, str]) -> str:
     return _TOKEN.sub(sub, text)
 
 
+# The always-emitted core: the repo's "green" check, the review router that classifies each
+# change, and the manual implementer entry point.
+CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl", "implementor.yml.tmpl"]
+# The codex review lane: request a re-review of each pushed head, and auto-resolve outdated
+# Codex threads. Emitted only when a codex-backed review/security stage is configured.
+REVIEW_TEMPLATES = ["request-review.yml.tmpl", "resolve-threads.yml.tmpl"]
+
+
+def select_templates(stages: list[dict[str, Any]]) -> list[str]:
+    """Choose which workflow templates to emit for this config.
+
+    Module-aware, not glob-all: a config with no codex review stage does not get the review
+    lane. (The `modules.auto_merge` gate template is intentionally not emitted yet — its
+    trust model is under review; see PR #2 — so an auto_merge config still renders its core
+    pipeline without a half-decided security gate.)
+    """
+    names = list(CORE_TEMPLATES)
+    if any(s.get("type") in {"review", "security"} and _stage_backend(s) == "codex" for s in stages):
+        names += REVIEW_TEMPLATES
+    return names
+
+
 def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
     tpl_dir = TEMPLATE_ROOT / platform
     if not tpl_dir.is_dir():
         raise RenderError(f"no templates for platform '{platform}' ({tpl_dir})")
     context = build_context(cfg)
+    selected = select_templates(list(expand_stages(cfg)))
     out: dict[str, str] = {}
-    for tpl in sorted(tpl_dir.glob("*.yml.tmpl")):
-        out[tpl.name[: -len(".tmpl")]] = render_template(tpl.read_text(), context)
+    for name in selected:
+        tpl = tpl_dir / name
+        if not tpl.is_file():
+            raise RenderError(f"selected template '{name}' not found in {tpl_dir}")
+        out[name[: -len(".tmpl")]] = render_template(tpl.read_text(), context)
     if not out:
-        raise RenderError(f"no *.yml.tmpl templates found in {tpl_dir}")
+        raise RenderError(f"no templates selected for platform '{platform}'")
     return out
 
 
