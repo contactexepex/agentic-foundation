@@ -5,10 +5,18 @@
 # package, so it ships in the wheel and resolves the same way in a source checkout and when
 # installed — no repository layout is assumed at runtime.
 [build-system]
-# Pin the build backend so every build (CI, `pip install .`, and `python -m build`, which installs
-# the backend into an isolated env from THIS list) resolves a known version rather than whatever is
-# newest — supply-chain hardening for the hosted runner.
-requires = ["hatchling==1.32.4"]
+# Pin the build backend AND its full transitive closure, so the isolated build environment that
+# `python -m build` (and `pip install .`) creates resolves NOTHING at latest — every build on the
+# hosted runner installs exactly these versions. Supply-chain hardening; refresh the pins together
+# with a `uv pip compile hatchling==<new>` when bumping the backend.
+requires = [
+  "hatchling==1.32.4",
+  "packaging==26.3",
+  "pathspec==1.1.1",
+  "pluggy==1.6.0",
+  "tomlkit==0.15.1",
+  "trove-classifiers==2026.9.21.13",
+]
 build-backend = "hatchling.build"
 
 [project]
