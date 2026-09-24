@@ -27,16 +27,16 @@ defaults the workflows read; keep them unless you also update the rendered workf
 | Purpose | Name | Type | Required when | Scope / notes |
 |---|---|---|---|---|
 | Claude model access | `ANTHROPIC_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: anthropic` | Never a personal key. Rotate independently. |
-| OpenAI/Codex model access | `OPENAI_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: openai` | Never a personal key. |
+| OpenAI model access (roadmap) | `OPENAI_API_KEY` | **Service account** (dedicated API key) | **Not required today** — `openai` runs Codex, which is app-backed and supplies its own model. Reserved for a future model-consuming OpenAI backend. | Never a personal key. |
 | Codex comment-trigger / PR publication | `REMEDIATION_TOKEN` | **Fine-grained PAT (real user)** | reviewer or dispatch uses Codex's `@codex` comment flow | Least scope: **Contents: R/W** + **Pull requests: R/W**. **No** admin/merge. Must be a real, attributable user — bot/App tokens do not reliably trigger `@codex`. |
 | SonarQube/SonarCloud token | `SONAR_TOKEN` | **Service account** | `modules.sonar: true` | Read/analysis scope for the project. |
 | Sonar host (SonarQube only) | `SONAR_HOST_URL` | Variable | `modules.sonar: true` on self-hosted | Omit for SonarCloud. |
 | GitHub API (statuses, PR reads) | `GITHUB_TOKEN` | Provided by Actions | always | No action needed; least-privilege per-workflow permissions are set in each workflow. |
 
 **Why the split (PAT vs service account):**
-- **Model API keys** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are machine credentials for paid model
-  usage — use dedicated **service-account** keys so cost and access are isolated from any person and
-  can be rotated without touching a human account.
+- **Model API keys** (today `ANTHROPIC_API_KEY`; `OPENAI_API_KEY` is roadmap — Codex supplies its own
+  model) are machine credentials for paid model usage — use dedicated **service-account** keys so cost
+  and access are isolated from any person and can be rotated without touching a human account.
 - **`REMEDIATION_TOKEN`** must be a **real-user PAT** because Codex acts on `@codex` commands
   only from an attributable user, and PR publication needs an attributable repository member. Grant
   it the minimum (Contents + Pull requests, R/W) — it needs no permission to merge or administer.
