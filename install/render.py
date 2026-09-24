@@ -97,10 +97,16 @@ def _is_uri(ref: str) -> bool:
     return bool(_URI_SCHEME.match(ref))
 
 
-# A git ref safe to interpolate into generated YAML/shell: no quotes, colons, whitespace, or YAML
-# indicator characters. Real branch names fit this; anything else fails loud rather than producing
-# broken or structurally altered workflows.
-_SAFE_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+# A git ref is safe to interpolate into our generated workflows as long as it cannot break out of a
+# double-quoted YAML scalar or a shell double-quoted string. We therefore reject only the genuinely
+# dangerous characters (quotes, backtick, $, backslash, whitespace, control chars, leading '-') and
+# allow every other git-valid name (e.g. `release+hotfix`, `release,2026`, `feat/x`) rather than an
+# over-strict allowlist. A name with a rejected character fails loud at render time.
+_UNSAFE_REF = re.compile(r"""[\s"'`$\\]""")
+
+
+def _ref_is_safe(ref: str) -> bool:
+    return bool(ref) and not ref.startswith("-") and not _UNSAFE_REF.search(ref) and all(ord(c) >= 0x20 for c in ref)
 # A GitHub Actions secret name (what may follow `secrets.` in an expression).
 _SECRET_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -144,7 +150,14 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
     ext = cfg.get("extends")
     if not ext:
         return cfg
-    bases = [ext] if isinstance(ext, str) else list(ext)
+    # Only a string or a list of strings is a valid `extends`. A mapping (e.g. {base.yml: ...})
+    # would otherwise have its KEYS iterated as base paths, silently inheriting an unintended policy.
+    if isinstance(ext, str):
+        bases = [ext]
+    elif isinstance(ext, list) and all(isinstance(b, str) for b in ext):
+        bases = list(ext)
+    else:
+        raise RenderError("extends must be a string or a list of path strings")
     _seen = _seen or set()
     merged: dict[str, Any] = {}
     for ref in bases:
@@ -328,10 +341,11 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     gh_roles = [GITHUB_ROLE_MAP[r] for r in roles if r in GITHUB_ROLE_MAP]
 
     default_branch = str(platform.get("default_branch", "main"))
-    if not _SAFE_REF.match(default_branch):
+    if not _ref_is_safe(default_branch):
         raise RenderError(
-            f"platform.default_branch '{default_branch}' contains characters unsafe for workflow "
-            "generation; allowed: letters, digits, and '._/-'"
+            f"platform.default_branch '{default_branch}' contains a character that cannot be safely "
+            "templated into the workflows (quote, backtick, $, backslash, whitespace, control, or a "
+            "leading '-'); rename the branch or set a safe default_branch"
         )
 
     # NAME of the real-user PAT the codex review lane posts/resolves with (never a value). Validate

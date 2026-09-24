@@ -285,10 +285,17 @@ def test_round4_fixes() -> None:
     # S2: unsafe default_branch fails loud; a normal one is fine.
     base = {"version": 2, "profile": "custom", "defaults": {"provider": "claude", "models": {"claude": {"default": "c"}}},
             "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}]}
-    expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "release,2026"}}),
-                  "render: unsafe default_branch fails loud")
+    expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": 'release"2026'}}),
+                  "render: quote in default_branch fails loud")
     ctx = render.build_context({**base, "platform": {"type": "github", "default_branch": "release/2026"}})
     check(ctx["default_branch"] == "release/2026", "render: normal default_branch accepted")
+    # git-valid names with '+' or ',' are safe in quoted contexts — accepted, not rejected.
+    ctx2 = render.build_context({**base, "platform": {"type": "github", "default_branch": "release+hotfix,2026"}})
+    check(ctx2["default_branch"] == "release+hotfix,2026", "render: '+'/',' branch names accepted (serialize-safe)")
+
+    # R8: a mapping `extends` is rejected rather than having its keys iterated as base paths.
+    expect_raises(lambda: render.resolve_extends({"extends": {"base.yml": "ignored"}}, REPO_ROOT),
+                  "extends: mapping shape fails loud")
 
     # S3: agent contracts are always excluded from the fast path.
     ex = json.loads(ctx["fast_path_exclude_json"])
