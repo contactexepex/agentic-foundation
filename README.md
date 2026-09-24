@@ -144,7 +144,7 @@ Full field reference, provider→secret mapping, and troubleshooting:
 ## Layout
 
 ```
-stagr/                                 the installable CLI package: cli.py, render.py,
+stagr/                                 the installable CLI package: cli.py, render/ (package),
                                        config.schema.json, backends/ (init / doctor / plan / apply)
 stagr/templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
 stagr/templates/agents/<id>.yml        pre-wired agent presets that reference a skill
@@ -166,7 +166,7 @@ skill/                                 the Claude Code front-door skill (M4)
 
 This repository runs the pattern on itself. `.agentic/config.yml` is its declarative source of truth,
 and `.github/workflows/` are the hand-written **reference implementation** the GitHub renderer
-(`stagr/render.py`) mirrors:
+(`stagr/render/`) mirrors:
 
 - **Claude implements** (`claude-code-implementor.yml`, manual dispatch) and **Codex implements**
   (`authorized-engineering-task.yml`, on the `codex-engineering` issue label) via an

@@ -13,7 +13,7 @@ from .context import build_context, render_template
 from .errors import RenderError
 from .lanes import select_templates
 from .stages import expand_stages
-from .util import confine_config_path
+from .util import _confine_to_project_root, confine_config_path
 
 
 def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
@@ -49,18 +49,22 @@ def main(argv: list[str] | None = None) -> int:
         validate_config(cfg)
         platform = args.platform or (cfg.get("platform", {}) or {}).get("type", "github")
         rendered = render_all(cfg, platform)
+        # Confine the CLI-supplied output dir to the project root, exactly as `--config` is confined:
+        # `--out` is an untrusted path and stagr must only ever write inside the repository it operates
+        # on (a `../../…`, absolute, or symlink-escaping value is a mistake or a path-traversal attempt).
+        out_dir = _confine_to_project_root(args.out, "output dir") if args.out else None
     except RenderError as exc:
         print(f"render error: {exc}", file=sys.stderr)
         return 1
 
-    if args.print or not args.out:
+    if args.print or out_dir is None:
         for name, content in rendered.items():
             print(f"# ===== {name} =====")
             print(content)
         return 0
 
-    args.out.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for name, content in rendered.items():
-        (args.out / name).write_text(content, encoding="utf-8")
-        print(f"wrote {args.out / name}")
+        (out_dir / name).write_text(content, encoding="utf-8")
+        print(f"wrote {out_dir / name}")
     return 0

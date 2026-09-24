@@ -30,8 +30,9 @@ _UNSAFE_REF = re.compile(r"""[\s"'`$\\]""")
 
 def _ref_is_safe(ref: str) -> bool:
     return bool(ref) and not ref.startswith("-") and not _UNSAFE_REF.search(ref) and all(ord(c) >= 0x20 for c in ref)
-# A GitHub Actions secret name (what may follow `secrets.` in an expression).
-_SECRET_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# A GitHub Actions secret name (what may follow `secrets.` in an expression). re.ASCII keeps `\w`
+# ASCII-only ([A-Za-z0-9_]); without it `\w` would also match Unicode word characters.
+_SECRET_NAME = re.compile(r"^[A-Za-z_]\w*$", re.ASCII)
 # A model id safe to embed in a GitHub expression string literal (no quotes/metacharacters).
 _MODEL_SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
 
