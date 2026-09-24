@@ -50,8 +50,14 @@ defaults the workflows read; keep them unless you also update the rendered workf
 
 ## 3. `.agentic/config.yml` — field reference
 
-Copy `templates/config/agentic.config.yml.tmpl` to `.agentic/config.yml`. It is validated against
-`install/config.schema.json`.
+Create `.agentic/config.yml` from the annotated template. The template ships inside the installed
+package, so download it rather than copying from the install:
+[`agentic.config.yml.tmpl`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/templates/config/agentic.config.yml.tmpl)
+(e.g. `curl -o .agentic/config.yml <that URL>`), or start from the minimal example in section 5. It is
+validated against
+[`stagr/config.schema.json`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/config.schema.json).
+(A `stagr init` command that writes a starter config for you is on the roadmap — see
+[CHARTER.md](CHARTER.md) §7.)
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
 (default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). A stage
@@ -118,18 +124,18 @@ defaults:
 
 ### `skills` (optional — methodology registry)
 A **skill** is the reusable methodology/content for a stage (checklist, rubric, output format),
-provider-/backend-/language-agnostic. Built-ins ship under `templates/skills/<id>/` (starter set:
+provider-/backend-/language-agnostic. Built-ins ship under `stagr/templates/skills/<id>/` (starter set:
 `code-review`, `security-review`). Register your own or override a shipped one by id; a stage picks one
 via `stages[].skill`.
 
 | Field | Meaning |
 |---|---|
-| `skills.<id>.source` | `builtin` (uses `templates/skills/<id>/`), `path`, or `uri`. Default `builtin`. |
+| `skills.<id>.source` | `builtin` (uses `stagr/templates/skills/<id>/`), `path`, or `uri`. Default `builtin`. |
 | `skills.<id>.path` / `.uri` | Location of the skill content for `path`/`uri` sources. |
 | `skills.<id>.version` | Optional version pin. |
 | `skills.<id>.extends` | Base skill id to layer on top of (base first, this overrides) — e.g. a house style over `code-review`. |
 
-**Skills vs. agents vs. stages:** a *skill* is the content; an *agent preset* (`templates/agents/<id>.yml`)
+**Skills vs. agents vs. stages:** a *skill* is the content; an *agent preset* (`stagr/templates/agents/<id>.yml`)
 is a pre-wired stage (type + skill + backend + gate + triggers, with an **optional** model binding —
 presets may omit it so the model resolves via `defaults`) you drop in via `stages[].from`; a *stage*
 is that agent placed in the pipeline graph.
@@ -142,7 +148,7 @@ same `id` overrides). Each stage is one agent; mix providers, models, and backen
 |---|---|
 | `id` | **Required.** Unique stage id (`^[a-z0-9][a-z0-9-_]*$`), e.g. `plan`, `implement`, `security`, `integration-test`. |
 | `type` | **Required.** `plan` \| `implement` \| `security` \| `test` \| `integration-test` \| `review` \| `docs` \| `release` \| `custom`. Drives sensible defaults (review/security/test default to a blocking gate; plan/docs to advisory). |
-| `from` | Agent-preset id (from `templates/agents/`, e.g. `code-review`, `security-review`) to base this stage on. Fields you set here override the preset. |
+| `from` | Agent-preset id (from `stagr/templates/agents/`, e.g. `code-review`, `security-review`) to base this stage on. Fields you set here override the preset. |
 | `name` | Human-readable label. |
 | `enabled` | `false` to keep a stage defined but off. Default `true`. |
 | `provider` | Provider id for this stage. Omit to inherit `defaults.provider`. |
@@ -176,7 +182,7 @@ See **Model resolution** below for the full precedence order.
 ### `build` (optional)
 | Field | Meaning |
 |---|---|
-| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `templates/presets/` (the presets directory is a planned M2 deliverable; until then, set `commands` directly). |
+| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `commands` from `stagr/templates/presets/` (the presets directory is a planned M2 deliverable; until then, set `commands` directly). |
 | `commands.{install,lint,test,typecheck}` | What "green" means for this repo. The workflows run exactly these — **any language**. Override any preset value. |
 
 Omit `build` entirely (or leave `commands` empty) for a repo with no build gate, e.g. docs-only.
@@ -195,8 +201,14 @@ documentation other people depend on. This repository does exactly that.
 ### `modules`
 | Field | Meaning |
 |---|---|
-| `auto_merge` | `true` installs the fail-closed foundation auto-merge gate. Default `false`. |
-| `sonar` | `true` wires SonarQube/SonarCloud as a required check. Default `false`. |
+| `auto_merge` | `true` requests the fail-closed foundation auto-merge gate. Default `false`. |
+| `sonar` | `true` requests SonarQube/SonarCloud as a required check. Default `false`. |
+
+> **Not yet rendered.** `apply` does not emit a workflow for either module today — the renderer
+> installs only the core lane (see §5, "What renders today"). Enable them in the contract to declare
+> intent, but the gates themselves are roadmap ([CHARTER.md](CHARTER.md) §7). This repository's own
+> auto-merge/Sonar wiring lives in hand-written `.github/workflows/`, which is the reference the
+> renderer will follow.
 
 ### `budgets` (optional — cost / token caps)
 | Field | Meaning |
@@ -336,19 +348,27 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 ## 5. Setup steps
 
-> **Status:** the renderer (M2), the `doctor`/`plan`/`apply` CLI (M3), and the front-door skill (M4)
-> are **not shipped on `main` yet** (see the roadmap). Steps 3–4 below describe the intended automated
-> experience; today, follow the manual path noted in each.
+> Install the CLI first (needs Python 3.10+). `stagr` is not on PyPI yet, so install from the
+> repository's source archive (no `git` required):
+> `pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"`.
+> For a reproducible install, pin the URL to a commit SHA or release tag instead of `main`. See
+> [CLI.md](CLI.md) for full options.
 
-1. Add `.agentic/config.yml` (edit the template — the drafting skill is M4). Start with a `profile`,
-   a `platform`, and a model binding for any model-consuming stage; add `stages` only for finer control.
-2. Create the secrets your stages/providers and platform require (section 2). (`doctor` will list the
-   exact set by name once M3 ships.)
-3. **Planned (M2/M3):** run `agentic apply` — it validates the config, renders the enabled stages for
-   your `platform`, and installs the pipeline. **Today (manual):** hand-adapt the automation you need;
-   the toolkit's own `.github/workflows/` validate *this* repo's contract and are references, not
-   drop-in files.
-4. **Planned:** merge the bootstrap PR/MR. **Today:** commit the workflows you adapted.
+1. Add `.agentic/config.yml`. Start with a `profile`, a `platform`, and a model binding for any
+   model-consuming stage; add `stages` only for finer control. (A drafting skill that proposes this
+   for you is roadmap — M4.)
+2. Run `stagr doctor` — it validates the config and lists the exact secret NAMES to create.
+3. Create those secrets in your CI/SCM secret store (section 2), then run `stagr plan` to preview and
+   `stagr apply` to render the pipeline for your `platform` into `.github/workflows/`.
+4. Commit and merge the rendered workflows.
+
+> **What renders today:** `apply` emits the core lane — the `Validate` check, the review router, the
+> Claude implementer, and (when a Codex review/security stage is configured) the Codex review +
+> thread-cleanup lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`,
+> `docs`, `release`, and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) —
+> they are declared and validated but do not yet emit workflows; that rendering is on the roadmap (see
+> [CHARTER.md](CHARTER.md) §7). Always read `stagr plan` output — it lists the exact files that will be
+> written — so a declared stage or module that does not yet render is visible before you commit.
 
 ---
 

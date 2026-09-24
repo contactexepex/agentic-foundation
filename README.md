@@ -100,22 +100,39 @@ assume a language.
 
 ## Quickstart
 
-> **Status:** the renderer (M2) and the one-command CLI (`doctor`/`plan`/`apply`, M3) and front-door
-> skill (M4) are **not shipped on `main` yet** — see the roadmap. Until then, follow the manual flow
-> below; step 3's "Planned" note describes the intended automated experience.
+1. **Install the CLI** (needs only Python 3.10+; see [docs/CLI.md](docs/CLI.md) for options). `stagr`
+   is not on PyPI yet, so install it from the repository's source archive — pip/pipx download and
+   build it with no `git` required:
+   ```bash
+   pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
+   # once published this becomes: pipx install stagr
+   ```
+   For a reproducible, auditable install, pin the URL to a commit SHA (or a release tag) instead of
+   `main` — see [docs/CLI.md](docs/CLI.md).
+2. In your target repo, add `.agentic/config.yml` — set a `profile` and a `platform`. A minimal
+   example is in [docs/CONFIGURATION.md](docs/CONFIGURATION.md); the full annotated template is
+   downloadable at
+   [`stagr/templates/config/agentic.config.yml.tmpl`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/templates/config/agentic.config.yml.tmpl)
+   (it ships inside the installed package, so grab it from that URL rather than the isolated install).
+3. Validate and preview:
+   ```bash
+   stagr doctor                # validate the contract + list the secret NAMES to configure
+   stagr plan                  # show exactly which files would be written to .github/workflows/
+   ```
+4. Create those secrets in your CI/SCM secret store (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+   for service-account vs PAT guidance), then render the pipeline:
+   ```bash
+   stagr apply                 # write .github/workflows/ from your contract
+   ```
+5. Commit and merge the rendered workflows.
 
-1. In your target repo, add `.agentic/config.yml` (copy `templates/config/agentic.config.yml.tmpl`
-   and edit it — set a `profile` and `platform`).
-2. Create the secrets your stages/providers and platform require — see
-   [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for names and service-account vs PAT guidance.
-3. **Today (manual):** hand-adapt the automation you need. The workflows in this repo's
-   `.github/workflows/` are the toolkit's *own* pipeline — e.g. `validate.yml` runs
-   `validate_config.py` against *this* repo's contract tree — so they are references to adapt, **not
-   files to copy verbatim** into a target repo (a verbatim copy would fail CI on the missing
-   validator). There is no standalone target-repo config validator until the renderer/CLI land.
-   **Planned (M2/M3):** the renderer generates your `.github/workflows/` from `.agentic/config.yml`,
-   and `agentic doctor` / `agentic apply` validate the config and install the pipeline for you.
-4. Merge it. The pipeline is live.
+> **What renders today:** the core lane — the `Validate` check, the review router, the Claude
+> implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
+> lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`,
+> and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) — these are declared
+> and validated but do not yet emit workflows; that rendering is on the roadmap
+> ([docs/CHARTER.md](docs/CHARTER.md) §7). `stagr plan` always shows the exact set of files that will
+> be written, so review it before committing.
 
 Full field reference, provider→secret mapping, and troubleshooting:
 **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
@@ -123,28 +140,29 @@ Full field reference, provider→secret mapping, and troubleshooting:
 ## Layout
 
 ```
-templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
-templates/agents/<id>.yml        pre-wired agent presets that reference a skill
-templates/config/                the .agentic/config.yml template
-install/                         config.schema.json, modules.yml
-docs/                            ARCHITECTURE.md, CONFIGURATION.md, LANDSCAPE.md
-.github/workflows/               this repo's live automation (reference impl for the renderer)
-.github/scripts/                 validate_config.py + docs
-.agentic/config.yml              this repo's own agentic contract (dogfood)
+stagr/                                 the installable CLI package: cli.py, render.py,
+                                       config.schema.json, backends/ (doctor / plan / apply)
+stagr/templates/skills/<id>/           reusable skill methodologies (code-review, security-review, ...)
+stagr/templates/agents/<id>.yml        pre-wired agent presets that reference a skill
+stagr/templates/config/                the .agentic/config.yml template
+stagr/templates/workflows/<platform>/  per-platform pipeline templates (github first)
+stagr/templates/contract/              AGENTS.md / CLAUDE.md skeletons
+pyproject.toml                         packaging for the `stagr` command
+docs/                                  ARCHITECTURE.md, CONFIGURATION.md, CLI.md, CHARTER.md, LANDSCAPE.md
+.github/workflows/                     this repo's live automation (reference impl for the renderer)
+.github/scripts/                       validate_config.py + tests
+.agentic/config.yml                    this repo's own agentic contract (dogfood)
 
 # Planned (see ARCHITECTURE.md roadmap):
-templates/workflows/<platform>/  per-platform pipeline templates (M2; github first)
-templates/contract/              AGENTS.md / CLAUDE.md skeletons (M2)
-templates/presets/               per-ecosystem command presets (M2)
-install/ (installer/CLI)         doctor / plan / apply (M3)
-skill/                           the Claude Code front-door skill (M4)
+stagr/templates/presets/               per-ecosystem command presets
+skill/                                 the Claude Code front-door skill (M4)
 ```
 
 ## Dogfooding
 
 This repository runs the pattern on itself. `.agentic/config.yml` is its declarative source of truth,
-and `.github/workflows/` are the hand-written **reference implementation** the M2 GitHub renderer will
-later generate:
+and `.github/workflows/` are the hand-written **reference implementation** the GitHub renderer
+(`stagr/render.py`) mirrors:
 
 - **Claude implements** (`claude-code-implementor.yml`, manual dispatch) and **Codex implements**
   (`authorized-engineering-task.yml`, on the `codex-engineering` issue label) via an
@@ -156,7 +174,8 @@ later generate:
   (`resolve-fixed-codex-review-threads.yml`); the **fail-closed foundation gate**
   (`auto-merge-foundation-prs.yml`) merges provably-ready PRs. Humans keep authority via `human-merge`.
 
-> Status: **M1 — contract layer (v2), now dogfooded.** Platform-neutral stage-graph schema, profiles,
-> provider/model resolution, backends, cross-cutting policy, and the toolkit's own live Claude+Codex
-> automation are in place. Next: templatize these workflows into `templates/workflows/github/` and
-> build the generic backend + installer/CLI (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).
+> Status: **contract layer + GitHub renderer + `stagr` CLI, dogfooded.** The platform-neutral
+> stage-graph schema, profiles, provider/model resolution, backends, cross-cutting policy, the GitHub
+> renderer + generic backend, and the installable `stagr` CLI (`doctor`/`plan`/`apply`) are in place,
+> alongside the toolkit's own live Claude+Codex automation. Next: multi-stage rendering, more platform
+> renderers, and the front-door skill (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).

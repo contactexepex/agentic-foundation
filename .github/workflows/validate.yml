@@ -53,3 +53,28 @@ jobs:
       - name: Validate contract
         run: |
           python .github/scripts/validate_config.py
+
+      - name: Renderer & CLI unit tests
+        run: |
+          python .github/scripts/test_render.py
+          python .github/scripts/test_cli.py
+
+      - name: Build the package and smoke-test the installed CLI
+        run: |
+          set -euo pipefail
+          # Pin the build frontend AND its full closure so this install resolves nothing at latest
+          # on the runner (Python 3.12). The build BACKEND closure is pinned separately in
+          # pyproject.toml [build-system].requires.
+          python -m pip install --only-binary=:all: "build==1.6.1" "packaging==26.3" "pyproject-hooks==1.3.3"
+          python -m build
+          # Install the built wheel into an isolated venv and confirm the `stagr` command works
+          # AND finds its bundled data (schema + templates) from site-packages — run it from a
+          # temp project dir so cwd is not this repository.
+          python -m venv /tmp/stagr-ci-venv
+          /tmp/stagr-ci-venv/bin/pip install --quiet dist/stagr-*.whl
+          /tmp/stagr-ci-venv/bin/stagr --help >/dev/null
+          proj="$(mktemp -d)"
+          mkdir -p "$proj/.agentic"
+          cp .agentic/config.yml "$proj/.agentic/config.yml"
+          ( cd "$proj" && /tmp/stagr-ci-venv/bin/stagr doctor >/dev/null && /tmp/stagr-ci-venv/bin/stagr plan >/dev/null )
+          echo "stagr wheel builds and runs from an isolated install."

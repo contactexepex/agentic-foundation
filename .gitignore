@@ -1,2 +1,8 @@
 __pycache__/
 *.pyc
+
+# Python build / packaging artifacts
+build/
+dist/
+*.egg-info/
+.venv/

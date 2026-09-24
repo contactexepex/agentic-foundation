@@ -16,10 +16,10 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO_ROOT / "install"))
+sys.path.insert(0, str(REPO_ROOT))
 
-import render  # noqa: E402
-from backends.generic import build_invocation  # noqa: E402
+from stagr import render  # noqa: E402
+from stagr.backends.generic import build_invocation  # noqa: E402
 
 failures: list[str] = []
 
@@ -185,12 +185,12 @@ def test_round2_fixes() -> None:
 
     # instructions as a file path is loaded
     inv = build_invocation({"defaults": {"provider": "claude"}},
-                           {"id": "x", "type": "custom", "provider": "claude", "instructions": "templates/skills/code-review/SKILL.md"}, "m")
+                           {"id": "x", "type": "custom", "provider": "claude", "instructions": "stagr/templates/skills/code-review/SKILL.md"}, "m")
     check("Code Review" in inv.system_prompt, "backend: instructions file path is loaded as content")
 
 
 def test_round3_fixes() -> None:
-    from backends.generic import runner as gen
+    from stagr.backends.generic import runner as gen
 
     # redact_secrets: default true; guardrails toggle propagates to the invocation.
     inv = build_invocation({"defaults": {"provider": "claude"}},
@@ -268,12 +268,12 @@ def test_pipeline_selection() -> None:
 
 
 def test_round4_fixes() -> None:
-    from backends.generic import runner as gen
+    from stagr.backends.generic import runner as gen
 
     # S1: cyclic skill extends fails loud instead of RecursionError (use real files as content).
     cyc = {"skills": {
-        "a": {"source": "path", "path": "templates/skills/code-review/SKILL.md", "extends": "b"},
-        "b": {"source": "path", "path": "templates/skills/security-review/SKILL.md", "extends": "a"},
+        "a": {"source": "path", "path": "stagr/templates/skills/code-review/SKILL.md", "extends": "b"},
+        "b": {"source": "path", "path": "stagr/templates/skills/security-review/SKILL.md", "extends": "a"},
     }}
     try:
         gen.load_skill("a", cyc)
@@ -298,7 +298,7 @@ def test_round4_fixes() -> None:
                   "extends: mapping shape fails loud")
 
     # S-a: a builtin skill id that escapes SKILLS_DIR (absolute / ..) is rejected.
-    from backends.generic import runner as _gen
+    from stagr.backends.generic import runner as _gen
     try:
         _gen.load_skill("/proc/self/environ", {})
         failures.append("load_skill must confine builtin skill ids to SKILLS_DIR")

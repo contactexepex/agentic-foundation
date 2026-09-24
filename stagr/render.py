@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""agentic-foundation — GitHub pipeline renderer (M2).
+"""stagr — GitHub pipeline renderer (M2).
 
 Reads a repository's `.agentic/config.yml`, resolves it against the contract
-(`install/config.schema.json`), and renders the platform pipeline from the
-tokenized templates in `templates/workflows/<platform>/` into `.github/workflows/`.
+(`stagr/config.schema.json`), and renders the platform pipeline from the
+tokenized templates in `stagr/templates/workflows/<platform>/` into `.github/workflows/`.
 
 Design notes
 ------------
@@ -16,8 +16,8 @@ Design notes
   the rendered pipeline reflects the fully-merged contract.
 
 CLI:
-    python install/render.py --config .agentic/config.yml --out .github/workflows
-    python install/render.py --config .agentic/config.yml --print
+    python -m stagr.render --config .agentic/config.yml --out .github/workflows
+    python -m stagr.render --config .agentic/config.yml --print
 """
 from __future__ import annotations
 
@@ -31,10 +31,12 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_PATH = REPO_ROOT / "install" / "config.schema.json"
-TEMPLATE_ROOT = REPO_ROOT / "templates" / "workflows"
-AGENTS_DIR = REPO_ROOT / "templates" / "agents"
+# Toolkit data (schema + templates) ships INSIDE this package, so it is found the same
+# way in a source checkout and in an installed wheel — no repo layout is assumed.
+PKG_ROOT = Path(__file__).resolve().parent
+SCHEMA_PATH = PKG_ROOT / "config.schema.json"
+TEMPLATE_ROOT = PKG_ROOT / "templates" / "workflows"
+AGENTS_DIR = PKG_ROOT / "templates" / "agents"
 
 GITHUB_ROLE_MAP = {
     "owner": "OWNER",

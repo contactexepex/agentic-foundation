@@ -1,16 +1,69 @@
-# `agentic` CLI (M3)
+# `stagr` CLI
 
-The operator CLI turns a `.agentic/config.yml` contract into a working pipeline. It is a thin,
-deterministic layer over the M2 renderer core (`install/render.py`): no network, and **no secret
+`stagr` turns a `.agentic/config.yml` contract into a working pipeline on your repo's CI/SCM. It is a
+thin, deterministic layer over the renderer core (`stagr/render.py`): no network, and **no secret
 values are ever read, printed, or logged** — only the secret *names* the contract references.
 
+## What you need
+
+- **Python 3.10 or newer.** Check with `python3 --version` (Linux/macOS) or `py --version` (Windows —
+  the launcher, since a default Windows install exposes `py`/`python`, not `python3`). That is the only
+  prerequisite — `stagr` is pure Python and its two dependencies (PyYAML, jsonschema) install
+  automatically.
+- **[pipx](https://pipx.pypa.io)** is the recommended installer: it puts `stagr` on your `PATH` in an
+  isolated environment so it never clashes with other Python tools. If you don't have it, bootstrap it,
+  add its shims to `PATH`, and open a new terminal:
+  ```bash
+  # Linux / macOS
+  python3 -m pip install --user pipx && python3 -m pipx ensurepath
+  # Windows (py launcher)
+  py -m pip install --user pipx && py -m pipx ensurepath
+  ```
+  `ensurepath` is what makes the `pipx` command available in the next shell. Before that PATH entry is
+  active you can still invoke it as a module — `python3 -m pipx install …` (or `py -m pipx install …`)
+  — which is equivalent to the `pipx …` commands below.
+
+`stagr` runs the same way on **Linux, macOS, and Windows** — one Python package, one command.
+
+## Install
+
+> **Not on PyPI yet.** Until the first release, install from the repository's source archive — pip/pipx
+> download and build it with **no `git` required** (so it works on a clean Python-only machine,
+> including Windows). For a reproducible, auditable install, pin to an **immutable revision** — a
+> commit SHA (or a release tag once one exists); use `main` only for the latest evaluation build:
+>
+> ```bash
+> # reproducible — replace <commit> with a specific commit SHA (or a release tag):
+> pipx install "https://github.com/contactexepex/agentic-foundation/archive/<commit>.tar.gz"
+> # or the latest tip of main (evaluation only, mutable):
+> pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
+> ```
+>
+> or, from a local checkout of this repository: `pipx install .` (or `pip install .`).
+
+Once published, the standard install will be:
+
 ```bash
-python install/cli.py <doctor|plan|apply> [--config .agentic/config.yml] [--platform github]
+pipx install stagr        # isolated global command on Linux / macOS / Windows
+pip install stagr         # or into the current environment / CI
 ```
 
-(Once packaged, this is exposed as the `agentic` command; the examples below use that name.)
+Verify it:
 
-## `agentic doctor`
+```bash
+stagr --help
+```
+
+## Use it in your repo
+
+From the root of the repository you want to add the pipeline to (the folder holding — or that will
+hold — `.agentic/config.yml`):
+
+```bash
+stagr <doctor|plan|apply> [--config .agentic/config.yml] [--platform github]
+```
+
+### `stagr doctor`
 
 Validate the contract and resolve the stage graph, then print a health report:
 
@@ -25,31 +78,39 @@ Exits non-zero if the config is invalid or any required model cannot be resolved
 hidden default). `--json` emits the report as machine-readable JSON for CI.
 
 ```bash
-agentic doctor --config .agentic/config.yml
-agentic doctor --json        # for CI health checks
+stagr doctor --config .agentic/config.yml
+stagr doctor --json        # for CI health checks
 ```
 
-## `agentic plan`
+### `stagr plan`
 
 Dry run: show exactly what `apply` **would** write to `.github/workflows/`, marking each workflow
 `new`, `changed`, or `unchanged`, and listing any hand-written workflows the config does not render
 (left untouched). Writes nothing.
 
 ```bash
-agentic plan                 # summary against .github/workflows/
-agentic plan --diff          # unified diff for changed workflows
-agentic plan --out some/dir  # compare against a different target
+stagr plan                 # summary against .github/workflows/
+stagr plan --diff          # unified diff for changed workflows
+stagr plan --out some/dir  # compare against a different target
 ```
 
-## `agentic apply`
+### `stagr apply`
 
 Render the pipeline and write it to `.github/workflows/` (override with `--out`). Idempotent — only
 files whose content changed are written. By default it never deletes: a workflow present in the
 target that this config does not render is kept and reported. Pass `--prune` to remove such orphans.
 
+> **What renders today:** the core lane — the `Validate` check, the review router, the Claude
+> implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
+> lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`,
+> and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) — declared and
+> validated but they do not yet emit workflows; multi-stage rendering is roadmap
+> ([CHARTER.md](CHARTER.md) §7). Run `plan` first: it lists the exact files `apply` will write, so a
+> declared stage or module that does not yet render is visible before you commit.
+
 ```bash
-agentic apply                # write/update the rendered pipeline
-agentic apply --prune        # also remove workflows this config no longer renders
+stagr apply                # write/update the rendered pipeline
+stagr apply --prune        # also remove workflows this config no longer renders
 ```
 
 ## Safety model
@@ -61,3 +122,17 @@ agentic apply --prune        # also remove workflows this config no longer rende
   `uri` skill source or `extends` base offline), or a missing selected template stops the command
   with a precise error rather than emitting a broken pipeline.
 - **Non-destructive by default.** `apply` adds and updates; it deletes only with `--prune`.
+
+## Build the package (maintainers)
+
+The CLI and its data (schema + `templates/`) live in the `stagr/` package, so a standard build ships
+everything needed:
+
+```bash
+pip install build
+python -m build            # writes dist/stagr-<version>-py3-none-any.whl and .tar.gz
+pipx install dist/stagr-*.whl   # smoke-test the built wheel
+```
+
+The single wheel is what every install path uses (`pipx`, `pip`, and — later — any OS package that
+wraps it). Publishing to PyPI is a future step (add a LICENSE first).
