@@ -126,7 +126,11 @@ def _review_snippet(gate: str) -> str:
         "    skill: code-review          # built-in; override with your own via the `skills:` registry\n"
         "    backend: { name: codex }\n"
         f"    gate: {gate}\n"
-        "    triggers: [pr_opened, pr_updated]"
+        # On PR open the Codex app reviews natively (that is what services `pr_opened`); stagr's
+        # rendered workflow re-requests a review on each push (`pr_updated`), which Codex does not
+        # auto-handle.
+        "    triggers: [pr_opened, pr_updated]   # pr_opened: Codex app reviews on open; "
+        "pr_updated: stagr re-requests per push"
     )
 
 # A `custom` profile has no stages yet — define your own. Left fully commented so the file is valid
@@ -161,7 +165,10 @@ def _security_snippet(blocking: bool) -> str:
         "    skill: security-review      # built-in; override via the `skills:` registry\n"
         "    backend: { name: codex }\n"
         f"    gate: {gate}\n"
-        "    triggers: [pr_opened, pr_updated]"
+        # As with the code review: Codex reviews security on PR open via its app; stagr re-requests
+        # on each push.
+        "    triggers: [pr_opened, pr_updated]   # pr_opened: Codex app reviews on open; "
+        "pr_updated: stagr re-requests per push"
     )
 
 
