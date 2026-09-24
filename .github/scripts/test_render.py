@@ -105,10 +105,50 @@ def test_render_structural() -> None:
     check(render.render_all(cfg, "github") == rendered, "render: deterministic / idempotent")
 
 
+def test_new_behaviors() -> None:
+    import tempfile
+
+    # extends: base merged before child; child wins
+    with tempfile.TemporaryDirectory() as d:
+        dp = Path(d)
+        (dp / "base.yml").write_text("version: 2\ndefaults:\n  provider: claude\n  models:\n    claude: {default: c-base}\n")
+        (dp / "child.yml").write_text("version: 2\nextends: base.yml\nprofile: custom\ndefaults:\n  models:\n    openai: {default: o-child}\n")
+        merged = render.load_config(dp / "child.yml")
+        check(merged["defaults"]["provider"] == "claude", "extends: inherits base provider")
+        check(merged["defaults"]["models"]["claude"]["default"] == "c-base", "extends: inherits base model")
+        check(merged["defaults"]["models"]["openai"]["default"] == "o-child", "extends: child adds model")
+
+    # from-preset expansion: a stage with only id+from gains the preset's type/skill
+    stages = render.expand_stages({"profile": "custom", "stages": [{"id": "review", "from": "code-review"}]})
+    rv = next(s for s in stages if s["id"] == "review")
+    check(rv.get("type") == "review" and rv.get("skill") == "code-review", "from: preset supplies type + skill")
+
+    # build_steps includes the configured command
+    steps = render._build_steps({"build": {"commands": {"test": "make test"}}})
+    check("make test" in steps, "build_steps: includes configured test command")
+    check("No build commands" in render._build_steps({}), "build_steps: empty -> no-op message")
+
+    # fail-loud: a generic-backed stage with no resolvable model raises during render
+    expect_raises(
+        lambda: render.build_context({"profile": "custom", "defaults": {"provider": "openai", "models": {}},
+                                      "stages": [{"id": "implement", "type": "implement", "backend": {"name": "generic"}}]}),
+        "render: build_context fails loud on unresolved generic implementer model",
+    )
+    # app-backed implement stage with no model does NOT raise (backend supplies it)
+    try:
+        render.build_context({"profile": "custom", "defaults": {"provider": "openai", "models": {}},
+                              "stages": [{"id": "implement", "type": "implement", "backend": {"name": "codex"}}]})
+        print("OK  render: app-backed implementer needs no resolved model")
+    except render.RenderError:
+        failures.append("app-backed implementer must not require a model")
+        print("FAIL app-backed implementer must not require a model", file=sys.stderr)
+
+
 def main() -> int:
     test_resolution()
     test_profile_expansion()
     test_backend()
+    test_new_behaviors()
     test_render_structural()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)

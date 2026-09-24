@@ -7,18 +7,17 @@ tokenized templates in `templates/workflows/<platform>/` into `.github/workflows
 
 Design notes
 ------------
-- Deterministic: given the same config + templates, output is byte-identical.
-- No network, no secrets. Secrets are referenced by NAME only; this renderer never
-  reads or emits a secret value.
+- Deterministic: same config + templates -> byte-identical output.
+- No network, no secrets. Secrets are referenced by NAME only.
 - Provider/model resolution is the reusable core (M3's doctor/plan/apply import it):
-  per-stage, per-tier, precedence = per-request > stage > org/account default, with
+  per-stage, per-tier, precedence per-request > stage > org/account default, with
   `models.aliases` expansion, and FAIL-LOUD if nothing resolves (no hidden default).
-- The core workflows are generic; their only config-derived parts are scalars/small
-  lists, so templating is simple token substitution (`{{ token }}`), not loops.
+- `extends`, `from`-presets, and skills-registry resolution happen before rendering so
+  the rendered pipeline reflects the fully-merged contract.
 
 CLI:
     python install/render.py --config .agentic/config.yml --out .github/workflows
-    python install/render.py --config .agentic/config.yml --print   # to stdout, no writes
+    python install/render.py --config .agentic/config.yml --print
 """
 from __future__ import annotations
 
@@ -35,8 +34,8 @@ from jsonschema import Draft202012Validator
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "install" / "config.schema.json"
 TEMPLATE_ROOT = REPO_ROOT / "templates" / "workflows"
+AGENTS_DIR = REPO_ROOT / "templates" / "agents"
 
-# Normalized (platform-neutral) trusted roles -> GitHub author_association values.
 GITHUB_ROLE_MAP = {
     "owner": "OWNER",
     "member": "MEMBER",
@@ -44,8 +43,10 @@ GITHUB_ROLE_MAP = {
     "contributor": "CONTRIBUTOR",
 }
 
-# Profile -> default stage graph (expanded when the config does not list a stage of
-# the same id). Kept in sync with docs/CONFIGURATION.md `profile`.
+# Backends that consume a resolved model from the contract. App backends (codex,
+# openhands, swe-agent, pr-agent) choose their own model, so resolution is skipped.
+BACKENDS_NEEDING_MODEL = {"generic", "claude-code-action"}
+
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
         {"id": "implement", "type": "implement", "gate": "advisory"},
@@ -76,16 +77,56 @@ class RenderError(Exception):
 # --------------------------------------------------------------------------- config
 
 
-def load_config(path: Path) -> dict[str, Any]:
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge overlay onto base (overlay wins). Lists/scalars are replaced."""
+    out = dict(base)
+    for k, v in overlay.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _read_yaml(path: Path) -> dict[str, Any]:
     try:
-        cfg = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text())
     except FileNotFoundError as exc:
-        raise RenderError(f"config not found: {path}") from exc
+        raise RenderError(f"file not found: {path}") from exc
     except yaml.YAMLError as exc:
-        raise RenderError(f"config is not valid YAML: {exc}") from exc
-    if not isinstance(cfg, dict):
-        raise RenderError("config root must be a mapping")
-    return cfg
+        raise RenderError(f"{path} is not valid YAML: {exc}") from exc
+    if not isinstance(data, dict):
+        raise RenderError(f"{path} must be a mapping")
+    return data
+
+
+def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None = None) -> dict[str, Any]:
+    """Merge `extends` base config(s) before this file (local values win).
+
+    Bases are resolved relative to `base_dir`. `uri:`-style remote bases are not
+    fetched here — a base that is not a readable local path fails loudly.
+    """
+    ext = cfg.get("extends")
+    if not ext:
+        return cfg
+    bases = [ext] if isinstance(ext, str) else list(ext)
+    _seen = _seen or set()
+    merged: dict[str, Any] = {}
+    for ref in bases:
+        p = (base_dir / ref).resolve()
+        key = str(p)
+        if key in _seen:
+            raise RenderError(f"circular extends via {ref}")
+        _seen.add(key)
+        base = resolve_extends(_read_yaml(p), p.parent, _seen)
+        merged = _deep_merge(merged, base)
+    child = {k: v for k, v in cfg.items() if k != "extends"}
+    return _deep_merge(merged, child)
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    cfg = _read_yaml(path)
+    return resolve_extends(cfg, path.parent)
 
 
 def validate_config(cfg: dict[str, Any]) -> None:
@@ -101,11 +142,15 @@ def validate_config(cfg: dict[str, Any]) -> None:
 # ------------------------------------------------------------------------- stages
 
 
-def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
-    """Merge the profile's default stages with explicitly listed stages.
+def _load_agent_preset(name: str) -> dict[str, Any]:
+    p = AGENTS_DIR / f"{name}.yml"
+    if not p.is_file():
+        raise RenderError(f"agent preset '{name}' not found at {p}")
+    return _read_yaml(p)
 
-    A listed stage with the same id overrides the profile's; otherwise it is appended.
-    """
+
+def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expand `from` presets and merge the profile's stages with explicit stages."""
     profile = cfg.get("profile", "standard")
     if profile not in PROFILE_STAGES:
         raise RenderError(f"unknown profile: {profile}")
@@ -115,10 +160,17 @@ def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
         sid = stage.get("id")
         if not sid:
             raise RenderError("every stage needs an id")
+        resolved = dict(stage)
+        # `from` supplies preset defaults; the stage's own fields override them.
+        if "from" in resolved:
+            preset = _load_agent_preset(resolved["from"])
+            merged = _deep_merge(preset, {k: v for k, v in resolved.items() if k != "from"})
+            resolved = merged
+            resolved["id"] = sid
         if sid in base:
-            base[sid].update(stage)
+            base[sid] = _deep_merge(base[sid], resolved)
         else:
-            base[sid] = dict(stage)
+            base[sid] = resolved
             order.append(sid)
     return [base[sid] for sid in order if base[sid].get("enabled", True)]
 
@@ -139,11 +191,7 @@ def resolve_model(
     tier: str = "standard",
     request_override: str | None = None,
 ) -> str:
-    """Resolve a stage's model for a tier, most-specific-first, then fail loud.
-
-    1. per-request override  2. stage model  3. defaults.models.<provider>
-    A resolved value that matches a `models.aliases` name expands per provider.
-    """
+    """Resolve a stage's model for a tier, most-specific-first, then fail loud."""
     provider = stage.get("provider") or (cfg.get("defaults", {}) or {}).get("provider")
     if not provider:
         raise RenderError(
@@ -159,7 +207,6 @@ def resolve_model(
             f"no model resolves for stage '{stage.get('id')}' (provider '{provider}', tier "
             f"'{tier}'): set stages[].model or defaults.models.{provider}.default"
         )
-    # Alias expansion (last step): a value matching an alias name maps per provider.
     aliases = (cfg.get("models", {}) or {}).get("aliases", {}) or {}
     if value in aliases:
         mapped = aliases[value].get(provider)
@@ -172,11 +219,34 @@ def resolve_model(
     return value
 
 
+def _stage_backend(stage: dict[str, Any]) -> str:
+    return ((stage.get("backend") or {}).get("name")) or "generic"
+
+
 # ----------------------------------------------------------------------- rendering
 
 
+def _build_steps(cfg: dict[str, Any]) -> str:
+    """Render the repo's build.commands into a shell block for the Validate job.
+
+    Runs whichever of install/lint/typecheck/test are set, in that order — the
+    repo's own definition of "green", not the toolkit's schema validator.
+    """
+    commands = (cfg.get("build", {}) or {}).get("commands", {}) or {}
+    order = ["install", "lint", "typecheck", "test"]
+    lines: list[str] = ["set -euo pipefail"]
+    for name in order:
+        cmd = (commands.get(name) or "").strip()
+        if cmd:
+            lines.append(f'echo "::group::{name}"')
+            lines.append(cmd)
+            lines.append('echo "::endgroup::"')
+    if len(lines) == 1:
+        lines.append('echo "No build commands configured; nothing to run."')
+    return "\n          ".join(lines)
+
+
 def build_context(cfg: dict[str, Any]) -> dict[str, str]:
-    """Compute the token values the GitHub templates substitute."""
     platform = cfg.get("platform", {}) or {}
     labels = platform.get("labels", {}) or {}
     routing = (cfg.get("routing", {}) or {}).get("fast_path", {}) or {}
@@ -184,33 +254,28 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     roles = platform.get("trusted_roles", ["owner", "member", "collaborator"])
     gh_roles = [GITHUB_ROLE_MAP[r] for r in roles if r in GITHUB_ROLE_MAP]
 
-    # Resolve the implementer model default (used by the claude implementor template).
     stages = {s["id"]: s for s in expand_stages(cfg)}
-    implement_stage = next(
-        (s for s in stages.values() if s.get("type") == "implement"), None
-    )
+    implement_stage = next((s for s in stages.values() if s.get("type") == "implement"), None)
+    # Resolve the implementer model ONLY when the backend consumes one; otherwise the
+    # app backend supplies it. Do NOT swallow a resolution error — fail loud.
     implementer_model = ""
-    if implement_stage:
-        try:
-            implementer_model = resolve_model(cfg, implement_stage, "standard")
-        except RenderError:
-            implementer_model = ""  # left to the workflow's own var fallback
+    if implement_stage and _stage_backend(implement_stage) in BACKENDS_NEEDING_MODEL:
+        implementer_model = resolve_model(cfg, implement_stage, "standard")
 
-    globs = routing.get("globs", ["**/*.md"])
-    exclude = routing.get("exclude", [])
     return {
         "default_branch": platform.get("default_branch", "main"),
         "human_merge_label": labels.get("human_merge", "human-merge"),
         "dispatch_label": labels.get("dispatch", "agentic-task"),
         "trusted_roles_json": json.dumps(gh_roles),
-        "fast_path_globs": " ".join(globs),
-        "fast_path_exclude": " ".join(exclude),
+        # Serialize glob lists as JSON so patterns with spaces/quotes survive intact
+        # (the template parses them with jq, not word-splitting).
+        "fast_path_globs_json": json.dumps(routing.get("globs", ["**/*.md"])),
+        "fast_path_exclude_json": json.dumps(routing.get("exclude", [])),
         "fast_path_max_files": str(routing.get("max_files", 20)),
         "fast_path_max_lines": str(routing.get("max_lines", 200)),
         "implementer_model": implementer_model,
+        "build_steps": _build_steps(cfg),
         "review_status_context": "Publish fast review result",
-        "codex_bot_login_rest": "chatgpt-codex-connector[bot]",
-        "codex_bot_login_graphql": "chatgpt-codex-connector",
     }
 
 
@@ -228,7 +293,6 @@ def render_template(text: str, context: dict[str, str]) -> str:
 
 
 def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
-    """Render every template for the platform. Returns {output_filename: content}."""
     tpl_dir = TEMPLATE_ROOT / platform
     if not tpl_dir.is_dir():
         raise RenderError(f"no templates for platform '{platform}' ({tpl_dir})")

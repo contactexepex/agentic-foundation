@@ -4,7 +4,8 @@ name: Fast AI Code Review
 # Deterministic review router — no model call, no secrets. Trivial textual changes are
 # fast-path approved; every substantive change is routed to the reviewer. Runs as
 # pull_request_target so the trusted definition comes from the base branch; reads only
-# the changed-file list as data (no PR content is checked out or executed).
+# the changed-file list as data (no PR content is checked out or executed) and publishes
+# a commit status. It posts no PR comment, so pull-requests: read is sufficient.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, edited]
@@ -15,13 +16,17 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
   statuses: write
 
 env:
   REVIEW_STATUS_CONTEXT: {{ review_status_context }}
-  TRIVIAL_GLOBS: '{{ fast_path_globs }}'
-  DENY_GLOBS: '{{ fast_path_exclude }}'
+  # Glob lists are JSON (parsed with jq), so patterns containing spaces or quotes
+  # survive intact instead of being word-split or breaking the YAML scalar.
+  TRIVIAL_GLOBS_JSON: >-
+    {{ fast_path_globs_json }}
+  DENY_GLOBS_JSON: >-
+    {{ fast_path_exclude_json }}
   TRIVIAL_MAX_FILES: '{{ fast_path_max_files }}'
   TRIVIAL_MAX_LINES: '{{ fast_path_max_lines }}'
 
@@ -54,11 +59,13 @@ jobs:
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
             --jq '.[] | [.filename, (.additions + .deletions), (.patch != null), .status, (.previous_filename // "")] | @tsv' > "$RUNNER_TEMP/files.tsv"
 
+          # Parse JSON glob lists into arrays (preserves spaces/quotes within a pattern).
+          mapfile -t GLOBS < <(jq -r '.[]' <<<"$TRIVIAL_GLOBS_JSON")
+          mapfile -t DENY < <(jq -r '.[]' <<<"$DENY_GLOBS_JSON")
+
           FILE_COUNT=0
           TOTAL_LINES=0
           TRIVIAL=true
-          read -ra GLOBS <<< "$TRIVIAL_GLOBS"
-          read -ra DENY <<< "$DENY_GLOBS"
 
           matches_trivial_path() {
             local path="$1" glob deny hit=false
