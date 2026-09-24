@@ -350,6 +350,19 @@ def test_pipeline_selection() -> None:
     check("final-security-review.yml" not in r_code,
           "select: no security lane without a codex security stage")
 
+    # A codex security stage WITHOUT a codex code-review stage is rejected: the security review runs
+    # only after the code review converges, so a security-only graph would render a workflow that can
+    # never fire. Fail loud at both the render path and the validation front door.
+    security_only = {"version": 2, "profile": "custom",
+                     "platform": {"type": "github", "default_branch": "main"},
+                     "defaults": {"provider": "openai", "models": {}},
+                     "stages": [{"id": "security", "type": "security", "provider": "openai",
+                                 "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
+    expect_raises(lambda: render.render_all(security_only, "github"),
+                  "select: codex security stage without a code-review stage fails loud (render)")
+    expect_raises(lambda: render.validate_config(security_only),
+                  "validate: codex security stage without a code-review stage fails loud (front door)")
+
     # The dogfood config has a codex security stage -> the security review is requested ONLY from the
     # final-security-review lane (never alongside the code review), so the two never run concurrently.
     check("@codex security review" in rendered["final-security-review.yml"],

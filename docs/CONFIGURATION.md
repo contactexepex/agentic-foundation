@@ -379,6 +379,13 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 > `final-security-review.yml` requests a **single security** review as the last step before merge.
 > Without the app installed a PR can open with no review, so install/enable it **before** relying on
 > the pipeline and confirm on a test PR that the reviews run.
+>
+> **Configure the App to auto-run the *code* review only on open — not the security review.** Whether
+> the Codex App runs a security review automatically when a PR opens is a ChatGPT-side App setting the
+> toolkit cannot render. Leave it **off**: if the App auto-runs a security review on open, it races the
+> code review on every open and hits the same backend concurrency error the serialized flow exists to
+> avoid. `final-security-review.yml` is the sole trigger of the security review, so the App only needs
+> to review code on open; the workflow drives the single security review at the end.
 > The `anthropic` implementer needs no GitHub App: it runs the pinned Claude Code action from
 > `workflow_dispatch` and authenticates directly with the `ANTHROPIC_API_KEY` secret (`doctor` lists
 > the exact secret NAMES your config needs).

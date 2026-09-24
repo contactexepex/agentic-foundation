@@ -1,7 +1,8 @@
 name: Request Codex security review (final pre-merge)
 
 # Rendered by the stagr CLI (from stagr/templates/workflows/github/). Do not edit by hand; edit the
-# template and re-render. Emitted when the pipeline has a codex-backed security stage.
+# template and re-render. Emitted when the pipeline has a codex-backed security stage (which the
+# renderer only allows alongside a codex-backed code-review stage — see _ensure_supported_review_graph).
 #
 # It requests exactly ONE Codex security review, as the FINAL step before merge — after the code
 # review has converged (the Codex code review is "Completed" for the current head and there are no
@@ -9,14 +10,25 @@ name: Request Codex security review (final pre-merge)
 # two never run concurrently: Codex's cloud backend errors when a code and a security review run at
 # the same time on one PR.
 #
-# It runs on comment activity (Codex edits its "Review Summary" comment to "Completed" when the code
-# review finishes) and completed check suites, performs only GitHub API work (reads the PR, its review
-# threads, and Codex's summary comment; posts one comment) — no PR content is checked out or executed.
-# The comment is posted with the narrowly-scoped remediation PAT so it is authored by a trusted user
-# (Codex honours "@codex" commands from a real user).
+# IMPORTANT — the Codex App must be configured to run only the CODE review automatically on PR open
+# (not the security review). Whether the App auto-runs a security review on open is a ChatGPT-side App
+# setting this toolkit cannot render; if it is left on, the App's native security review races the code
+# review on every open and re-hits the same backend concurrency error. This workflow is the SOLE
+# trigger of the security review.
+#
+# It runs on: comment activity (Codex edits its "Review Summary" comment to "Completed" when the code
+# review finishes), a review thread being resolved (the last finding may be resolved with no other
+# event — GitHub emits no issue_comment/check_suite for a resolve, so without this trigger the head
+# would never be re-evaluated and the merge gate would deadlock), and completed check suites. It
+# performs only GitHub API work (reads the PR, its review threads, and Codex's summary comment; posts
+# one comment) — no PR content is checked out or executed. The comment is posted with the
+# narrowly-scoped remediation PAT so it is authored by a trusted user (Codex honours "@codex" commands
+# from a real user).
 on:
   issue_comment:
     types: [created, edited]
+  pull_request_review_thread:
+    types: [resolved]
   check_suite:
     types: [completed]
 
@@ -24,10 +36,11 @@ permissions:
   contents: read
   pull-requests: read
 
-# One in-flight evaluation per PR; a newer trigger supersedes it. The "already requested for this
-# head" check below makes the request itself idempotent regardless.
+# One in-flight evaluation per PR; a newer trigger supersedes it. Idempotency does NOT rely on this:
+# the per-head request marker check below is durable, so a duplicate security review is never posted
+# even if runs interleave or the concurrency group differs across event types.
 concurrency:
-  group: request-codex-security-${{ github.event.issue.number || github.event.check_suite.pull_requests[0].number || github.run_id }}
+  group: request-codex-security-${{ github.event.issue.number || github.event.pull_request.number || github.event.check_suite.pull_requests[0].number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -47,6 +60,7 @@ jobs:
           DEFAULT_BRANCH: "{{ default_branch }}"
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           IS_PR_COMMENT: ${{ github.event.issue.pull_request.url != '' }}
+          PR_FROM_THREAD: ${{ github.event.pull_request.number }}
           CHECK_SUITE_SHA: ${{ github.event.check_suite.head_sha }}
         run: |
           set -euo pipefail
@@ -56,18 +70,52 @@ jobs:
             exit 0
           fi
 
+          REPO="$GITHUB_REPOSITORY"
+          OWNER="${REPO%/*}"
+          NAME="${REPO#*/}"
+
+          # count_unresolved_threads <pr>: number of unresolved review threads (any author), PAGINATED.
+          # A single first:100 page can miss unresolved findings on a heavily reviewed PR and spend the
+          # paid security review before the code review is actually clean; walk every page. Returns
+          # non-zero on API error (fail-closed: caller waits).
+          count_unresolved_threads() {
+            local pr="$1" q cursor="null" resp total=0 page has_next
+            q='query($owner:String!,$repo:String!,$number:Int!,$cursor:String){
+                 repository(owner:$owner,name:$repo){
+                   pullRequest(number:$number){
+                     reviewThreads(first:100,after:$cursor){
+                       nodes{ isResolved }
+                       pageInfo{ hasNextPage endCursor }
+                     }}}}'
+            while :; do
+              if [[ "$cursor" == "null" ]]; then
+                resp="$(gh api graphql -f query="$q" -f owner="$OWNER" -f repo="$NAME" -F number="$pr")" || return 1
+              else
+                resp="$(gh api graphql -f query="$q" -f owner="$OWNER" -f repo="$NAME" -F number="$pr" -f cursor="$cursor")" || return 1
+              fi
+              page="$(jq -r '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' <<<"$resp")" || return 1
+              total=$((total + page))
+              has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$resp")"
+              [[ "$has_next" == "true" ]] || break
+              cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<<"$resp")"
+            done
+            echo "$total"
+          }
+
           # Resolve the PR number from whichever event fired.
           PR_NUMBER=""
           if [[ -n "${ISSUE_NUMBER:-}" ]]; then
             [[ "${IS_PR_COMMENT}" == "true" ]] || { echo "Comment is not on a pull request; nothing to do."; exit 0; }
             PR_NUMBER="${ISSUE_NUMBER}"
+          elif [[ -n "${PR_FROM_THREAD:-}" && "${PR_FROM_THREAD}" != "null" ]]; then
+            PR_NUMBER="${PR_FROM_THREAD}"
           elif [[ -n "${CHECK_SUITE_SHA:-}" ]]; then
-            PR_NUMBER="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${CHECK_SUITE_SHA}/pulls" \
+            PR_NUMBER="$(gh api "repos/${REPO}/commits/${CHECK_SUITE_SHA}/pulls" \
               --jq '[.[] | select(.state=="open")] | (first // {}) | .number // ""' 2>/dev/null || echo "")"
           fi
           [[ -n "$PR_NUMBER" ]] || { echo "No open PR resolved from this event; nothing to do."; exit 0; }
 
-          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")" || { echo "Cannot read PR #${PR_NUMBER}; skipping."; exit 0; }
+          PR_JSON="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")" || { echo "Cannot read PR #${PR_NUMBER}; skipping."; exit 0; }
           state="$(jq -r '.state' <<<"$PR_JSON")"
           draft="$(jq -r '.draft' <<<"$PR_JSON")"
           head_repo="$(jq -r '.head.repo.full_name' <<<"$PR_JSON")"
@@ -77,15 +125,29 @@ jobs:
 
           # Same eligibility guard as the on-push lane: open, non-draft, same-repo head, default base,
           # trusted author. Fork PRs and untrusted authors never drive an automated review request.
-          [[ "$state" == "open" && "$draft" == "false" && "$head_repo" == "$GITHUB_REPOSITORY" && "$base_ref" == "$DEFAULT_BRANCH" ]] \
+          [[ "$state" == "open" && "$draft" == "false" && "$head_repo" == "$REPO" && "$base_ref" == "$DEFAULT_BRANCH" ]] \
             || { echo "PR #${PR_NUMBER} not eligible (state/draft/fork/base); skipping."; exit 0; }
           printf '%s' "$TRUSTED_ROLES" | jq -e --arg a "$author_assoc" 'index($a) != null' >/dev/null 2>&1 \
             || { echo "Author association '$author_assoc' is not trusted; skipping."; exit 0; }
 
+          # Durable, per-head idempotency marker. Our own request comment carries it (invisible HTML
+          # comment), so once ANY request has been posted for this head, every later run — including the
+          # issue_comment:created event fired by our own comment, and rapid unrelated comments — detects
+          # it and does nothing. This is what actually guarantees "exactly one security review per head";
+          # the concurrency group only serializes/cancels runs and provides no durable idempotency.
+          MARKER="<!-- agentic-foundation:final-security-review-requested:${head_sha} -->"
+
+          # Read PR issue comments once (paginated) for both the idempotency marker and the Codex summary.
+          COMMENTS_JSON="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments?per_page=100" --slurp \
+            | jq 'add // []')" || { echo "Cannot read PR comments; skipping."; exit 0; }
+
+          if jq -e --arg m "$MARKER" 'any(.[]?; (.body // "") | contains($m))' <<<"$COMMENTS_JSON" >/dev/null; then
+            echo "Security review already requested for head ${head_sha} (marker present); nothing to do."; exit 0
+          fi
+
           # The latest Codex "Review Summary" comment carries the per-review status rows.
-          summary="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" --slurp \
-            | jq -r --arg bot "$CODEX_BOT_LOGIN" '[ add[]? | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""')" \
-            || { echo "Cannot read PR comments; skipping."; exit 0; }
+          summary="$(jq -r --arg bot "$CODEX_BOT_LOGIN" \
+            '[ .[] | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$COMMENTS_JSON")"
           [[ -n "$summary" ]] || { echo "No Codex review summary yet (code review has not run); skipping."; exit 0; }
 
           # The code review must be Completed for the CURRENT head before security runs.
@@ -94,30 +156,38 @@ jobs:
           code_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$code_row" | head -1 | tr -d '`' || true)"
           [[ -n "$code_sha" && "$head_sha" == "$code_sha"* ]] || { echo "Code review is bound to a different head; skipping."; exit 0; }
 
-          # Request the security review exactly once per head: if the Security Review row is already
-          # Running or Completed for this head, there is nothing to do.
+          # Belt-and-suspenders on top of the marker: if Codex has already flipped the Security Review
+          # row to Running/Completed for this head, there is nothing to do.
           sec_row="$(grep -i 'Security Review' <<<"$summary" | head -1 || true)"
           sec_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$sec_row" | head -1 | tr -d '`' || true)"
           if [[ -n "$sec_sha" && "$head_sha" == "$sec_sha"* ]] && grep -qiE 'Completed|Running' <<<"$sec_row"; then
             echo "Security review already requested/completed for head ${head_sha}; nothing to do."; exit 0
           fi
 
-          # The code review must be CLEAN: no unresolved review threads. (A finding leaves a thread; we
-          # wait for it to be addressed before spending the final security review on this head.)
-          unresolved="$(gh api graphql -f query='
-            query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100){nodes{isResolved}}}}}' \
-            -F owner="${GITHUB_REPOSITORY%/*}" -F repo="${GITHUB_REPOSITORY#*/}" -F pr="$PR_NUMBER" \
-            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' 2>/dev/null || echo "1")"
+          # The code review must be CLEAN: no unresolved review threads (paginated). A finding leaves a
+          # thread; we wait for it to be addressed before spending the final security review on this head.
+          unresolved="$(count_unresolved_threads "$PR_NUMBER")" || { echo "Cannot read review threads; skipping."; exit 0; }
           [[ "$unresolved" == "0" ]] || { echo "Code review has ${unresolved} unresolved thread(s); waiting before the security review. Skipping."; exit 0; }
 
-          # Ready: request the single final security review, authored by the trusted PAT user.
+          # Re-check the PR head immediately before posting. If a push landed after head_sha was read,
+          # the comment would attach to the now-updated PR and Codex would review the new head while the
+          # on-push lane simultaneously requests its code review — recreating the concurrent code/security
+          # run this workflow exists to prevent. Abort unless the head is still head_sha; the new head's
+          # own events will drive the flow.
+          current_head="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')" || { echo "Cannot re-read PR head before posting; skipping."; exit 0; }
+          [[ "$current_head" == "$head_sha" ]] || { echo "PR head moved to ${current_head} after evaluation; a later event will re-evaluate. Skipping."; exit 0; }
+
+          # Ready: request the single final security review, authored by the trusted PAT user. The
+          # invisible marker makes this head's request idempotent for every subsequent run.
           {
             echo '@codex security review'
             echo
             echo "_Final pre-merge security review for head \`${head_sha}\` — the code review has completed clean. Requested once, after the code review, never concurrently._"
             echo
+            echo "$MARKER"
+            echo
             echo '---'
             echo '_Generated by [Claude Code](https://claude.ai/code)_'
           } > "$RUNNER_TEMP/comment.md"
-          GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
+          GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
           echo "Requested the final Codex security review for head ${head_sha} on PR #${PR_NUMBER}."

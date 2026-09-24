@@ -298,6 +298,10 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
             f"-> defaults.models.{PROVIDER_ANTHROPIC}) to '{PROVIDER_ANTHROPIC}'."
         )
 
+    # A Codex security lane that no event can ever satisfy (security stage without a code-review
+    # stage) is rejected here at the front door, not left to render a dead workflow.
+    _ensure_supported_review_graph(expand_stages(cfg))
+
 
 # ------------------------------------------------------------------------- stages
 
@@ -622,6 +626,24 @@ def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
     return _has_codex_code_review(stages) or _has_codex_security_review(stages)
 
 
+def _ensure_supported_review_graph(stages: list[dict[str, Any]]) -> None:
+    """Reject a graph whose Codex security lane could never fire.
+
+    The final security review runs ONLY after the Codex code review converges
+    (final-security-review.yml waits for the code review's "Completed" row before requesting it). A
+    graph with a Codex `security` stage but no Codex `review` stage would therefore render a security
+    workflow that no event can ever satisfy, silently disabling the configured stage. Fail loud at the
+    front door instead, so an unsupported graph is a clear error rather than a dead lane.
+    """
+    if _has_codex_security_review(stages) and not _has_codex_code_review(stages):
+        raise RenderError(
+            "a Codex security-review stage requires a Codex code-review ('review') stage: the security "
+            "review runs only after the code review has converged, so a security stage on its own would "
+            "render a workflow that never fires. Add a codex-backed 'review' stage, or remove the "
+            "'security' stage."
+        )
+
+
 @dataclass(frozen=True)
 class Lane:
     """One rendered workflow lane: its `templates` are emitted when `applies` holds for the
@@ -649,6 +671,7 @@ LANES: tuple[Lane, ...] = (
 
 def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     """Choose which workflow templates to emit, driven by the `LANES` registry (emit order)."""
+    _ensure_supported_review_graph(stages)
     names: list[str] = []
     for lane in LANES:
         if lane.applies(stages):
