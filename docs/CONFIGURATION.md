@@ -191,7 +191,7 @@ See **Model resolution** below for the full precedence order.
 ### `build` (optional)
 | Field | Meaning |
 |---|---|
-| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `build.commands` with that toolchain's install/lint/test (see [§4 Presets](#4-presets) for the exact commands); `custom` pre-fills nothing. Any command you set under `commands` overrides the preset per key. `stagr init` **autodetects** this from your repo's build markers (`pyproject.toml`/`setup.py`/`requirements.txt` → `python`, `pom.xml` → `maven`, `build.gradle[.kts]` → `gradle`, `package.json` → `node`, `go.mod` → `go`, `Cargo.toml` → `rust`, `*.csproj`/`*.sln` → `dotnet`, else `custom`) and proposes it as the default. Because a preset activates real CI commands (injected at render time, not written into the config), preview them with `stagr plan --diff` and override any that don't fit by setting `commands`. |
+| `preset` | `python \| maven \| gradle \| node \| go \| rust \| dotnet \| custom`. Pre-fills `build.commands` with that toolchain's install/lint/test (see [§4 Presets](#4-presets) for the exact commands); `custom` pre-fills nothing. Any command you set under `commands` overrides the preset per key. `stagr init` **autodetects** this from your repo's build markers (`pyproject.toml`/`setup.py`/`requirements.txt` → `python`, `pom.xml` → `maven`, `build.gradle[.kts]` → `gradle`, `package.json` → `node`, `go.mod` → `go`, `Cargo.toml` → `rust`, `*.csproj`/`*.sln` → `dotnet`, else `custom`) and proposes it as the default. Because a preset activates real CI commands (injected at render time, not written into the config), preview them with `python -m stagr.render --print` and override any that don't fit by setting `commands`. |
 | `commands.{install,lint,test,typecheck}` | What "green" means for this repo. The workflows run exactly these — **any language**. Override any preset value. |
 
 Omit `build` entirely (or leave `commands` empty) for a repo with no build gate, e.g. docs-only.
@@ -346,7 +346,7 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 
 | Preset | install | lint | test |
 |---|---|---|---|
-| `python` | `pip install -r requirements.txt` | `ruff check .` | `python -m pytest` |
+| `python` | `requirements.txt` if present, then `pip install -e .` for a `pyproject.toml`/`setup.py` | `ruff check .` | `python -m pytest` |
 | `maven` | `mvn -q -N install` | `mvn -q spotless:check` | `mvn -q verify` |
 | `gradle` | `./gradlew dependencies` | `./gradlew check -x test` | `./gradlew test` |
 | `node` | `npm ci` | `npm run lint` | `npm test` |

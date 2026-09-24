@@ -262,7 +262,13 @@ def generate(choices: dict[str, Any]) -> str:
     resolved = {**default_choices(profile), **choices}
 
     test_cmd = resolved["build_test"]
-    test_hint = "" if test_cmd else '            # e.g. "pytest" / "npm test" — fill in your test command'
+    if test_cmd:
+        test_hint = ""
+    elif resolved["build_preset"] != CUSTOM_PRESET:
+        # An empty override inherits the preset's test command at render time (render._build_steps).
+        test_hint = f"            # blank inherits the {resolved['build_preset']} preset's test; set to override"
+    else:
+        test_hint = '            # e.g. "pytest" / "npm test" — no preset default; set your test command'
     stages_block = _stages_block(resolved)
     # Emit every free-form string as a JSON scalar (a valid YAML double-quoted scalar), so a value
     # that YAML would otherwise reinterpret — a branch named `on`/`no` (bool), a name with a colon
@@ -358,7 +364,11 @@ def run_wizard(read_input: Callable[[str], str] = input,
         # immediately fails `stagr doctor`. Fall back to the toolchain-agnostic 'custom'.
         write_line(f"  (unknown preset '{build_preset}', using '{CUSTOM_PRESET}')")
         build_preset = CUSTOM_PRESET
-    build_test = _ask(read_input, write_line, "Test command (blank to fill later)", "")
+    # A blank test command inherits the preset's test command at render time (render._build_steps
+    # ignores an empty override), so say that rather than "fill later" when a preset is selected.
+    test_prompt = ("Test command (blank uses the preset's default)" if build_preset != CUSTOM_PRESET
+                   else "Test command (blank to set later)")
+    build_test = _ask(read_input, write_line, test_prompt, "")
 
     security_blocking = _profile_security_blocking(profile)
     if profile in ("standard", "full"):

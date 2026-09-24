@@ -83,8 +83,8 @@ matching `build.preset` as the default (the wizard pre-selects it; `--profile` g
 `dotnet`, and `custom` when nothing is recognized. Detection reads only these top-level filenames
 (offline, no file contents), and the value stays overridable. A preset determines the install/lint/test
 commands the rendered Validate workflow runs (see [CONFIGURATION.md §4 Presets](CONFIGURATION.md#4-presets));
-preview the exact commands with `stagr plan --diff`, and override any that don't fit by setting them
-under `build.commands` in the config.
+preview the exact rendered commands with `python -m stagr.render --print` (or run `stagr apply` and read
+`.github/workflows/`), and override any that don't fit by setting them under `build.commands` in the config.
 
 ```bash
 stagr init                      # guided wizard
