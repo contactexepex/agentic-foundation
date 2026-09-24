@@ -190,7 +190,7 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
                 f"extends references a URI ('{ref}'), which the offline renderer does not "
                 "fetch; vendor the base config locally and reference it by relative path"
             )
-        p = (base_dir / ref).resolve()
+        p = _confine_to_project_root(base_dir / ref, f"extends base '{ref}'")
         key = str(p)
         if key in _seen:
             raise RenderError(f"circular extends via {ref}")
@@ -204,25 +204,30 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
     return _deep_merge(merged, child)
 
 
-def confine_config_path(path: Path) -> Path:
-    """Confine a CLI-supplied config path to the project root (the CWD) and return it resolved.
+def _confine_to_project_root(path: Path, what: str) -> Path:
+    """Resolve `path` and reject anything outside the project root (the CWD); return it resolved.
 
-    The `--config` value arrives from the command line. stagr is a control plane that operates on
-    the current repository, so its contract lives inside that checkout; a value resolving outside it
-    (`--config ../../etc/passwd`, an absolute host path) is either a mistake or — in an agentic flow,
-    where a CLI argument can be steered by untrusted data — an attempt to read an arbitrary host file
-    into the pipeline. Reject anything outside the project root, the same containment the toolkit
-    already applies to skill/preset/instruction paths (see `_load_agent_preset` and
-    `backends/generic/runner._confine`), so the read sink only ever sees a validated in-repo path.
+    stagr is a control plane that operates on the current repository, so every path it reads or
+    writes — the `--config` contract, its `extends` bases, the file `init` scaffolds — must live
+    inside that checkout. A value resolving outside it (`../../etc/passwd`, an absolute host path,
+    or a symlink escape — `.resolve()` follows symlinks) is either a mistake or, in an agentic flow
+    where these values can be steered by untrusted data, an attempt to read or clobber an arbitrary
+    host file. Reject it, the same containment the toolkit applies to skill/preset/instruction paths
+    (see `_load_agent_preset` and `backends/generic/runner._confine`).
     """
     root = Path.cwd().resolve()
     resolved = path.resolve()
     if not resolved.is_relative_to(root):
         raise RenderError(
-            f"config path '{path}' resolves outside the project root ({root}); "
-            "run stagr from your repository with the config inside it"
+            f"{what} '{path}' resolves outside the project root ({root}); "
+            "run stagr from your repository with the file inside it"
         )
     return resolved
+
+
+def confine_config_path(path: Path) -> Path:
+    """Confine a CLI-supplied `--config` path to the project root; see `_confine_to_project_root`."""
+    return _confine_to_project_root(path, "config path")
 
 
 def load_config(path: Path) -> dict[str, Any]:

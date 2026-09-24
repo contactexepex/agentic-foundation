@@ -8,10 +8,11 @@ unresolvable config, and plan/apply determinism + idempotency + prune. Exit 0 = 
 from __future__ import annotations
 
 import io
+import os
 import re
 import sys
 import tempfile
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,23 @@ from stagr import render  # noqa: E402
 
 failures: list[str] = []
 SECRET_VALUE = re.compile(r"sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{8,}")
+
+
+@contextmanager
+def _project_dir():
+    """A temp dir that is also the CWD for the block.
+
+    stagr confines the config file, its extends bases, and init's write destination to the project
+    root (the CWD), so a test that exercises those write/read paths must run from inside a project
+    checkout (a real operator runs stagr from their repo).
+    """
+    prev = Path.cwd()
+    with tempfile.TemporaryDirectory() as d:
+        os.chdir(d)
+        try:
+            yield Path(d)
+        finally:
+            os.chdir(prev)
 
 
 def check(cond: bool, msg: str) -> None:
@@ -75,34 +93,34 @@ def test_doctor_no_secret_values_and_exit() -> None:
 
 
 def test_doctor_fail_loud() -> None:
-    import os
-    with tempfile.TemporaryDirectory() as d:
-        bad = Path(d) / "config.yml"
+    with _project_dir() as d:
+        bad = d / "config.yml"
         bad.write_text(
             "version: 2\nprofile: custom\n"
             "platform: {type: github, default_branch: main}\n"
             "defaults: {provider: openai, models: {}}\n"
             "stages:\n  - {id: implement, type: implement, backend: {name: generic}}\n"
         )
-        # The config must sit inside the project root the CLI confines `--config` to, so this
-        # exercises the model-resolution failure (not the containment guard). Run from the tmp repo.
-        prev = Path.cwd()
-        os.chdir(d)
-        try:
-            rc = cli.main(["doctor", "--config", "config.yml", "--json"])
-        finally:
-            os.chdir(prev)
+        # The config sits inside the project root the CLI confines `--config` to, so this exercises
+        # the model-resolution failure (not the containment guard).
+        rc = cli.main(["doctor", "--config", "config.yml", "--json"])
         check(rc == 1, "doctor: unresolvable generic implementer model exits 1")
 
 
 def test_config_path_confined_to_project_root() -> None:
-    # A `--config` resolving outside the project root (CWD) is rejected before any read, so an
-    # agentic caller cannot be steered into reading an arbitrary host file into the pipeline.
+    # A config/init path resolving outside the project root (CWD) is rejected before any read/write,
+    # so an agentic caller cannot be steered into reading or clobbering an arbitrary host file.
     with tempfile.TemporaryDirectory() as outside:
         target = Path(outside) / "secret.yml"
         target.write_text("version: 2\n")
-        rc = cli.main(["doctor", "--config", str(target)])
-        check(rc == 1, "doctor: refuses a --config outside the project root")
+        # doctor refuses to READ an out-of-repo config...
+        with _project_dir():
+            rc = cli.main(["doctor", "--config", str(target)])
+            check(rc == 1, "doctor: refuses a --config outside the project root")
+            # ...and init refuses to WRITE outside the repo (even with --force).
+            rc_init = cli.main(["init", "--profile", "minimal", "--config", str(target), "--force"])
+            check(rc_init == 1 and target.read_text() == "version: 2\n",
+                  "init: refuses to write a config outside the project root")
         try:
             render.confine_config_path(target)
             confined = False
@@ -164,7 +182,7 @@ def test_init_profiles_generate_valid_configs() -> None:
 
 
 def test_init_write_and_overwrite_guard() -> None:
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         dest = Path(d) / ".agentic" / "config.yml"
         rc = cli.main(["init", "--profile", "minimal", "--config", str(dest)])
         check(rc == 0 and dest.exists(), "init: writes the config file")
@@ -223,8 +241,7 @@ def test_init_escapes_test_command() -> None:
 
 
 def test_init_refuses_symlink_destination() -> None:
-    import os
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         target = Path(d) / "outside.yml"
         link = Path(d) / "config.yml"
         os.symlink(target, link)  # broken symlink (target does not exist)
@@ -234,7 +251,7 @@ def test_init_refuses_symlink_destination() -> None:
 
     # A symlinked ANCESTOR (e.g. `.agentic` -> outside the checkout) must also be refused: the
     # leaf itself is not a symlink, but writing would follow the parent and escape.
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         outside = Path(d) / "outside"
         outside.mkdir()
         linked_dir = Path(d) / ".agentic"
@@ -246,7 +263,7 @@ def test_init_refuses_symlink_destination() -> None:
 
     # Same symlinked ancestor, but the outside target file ALREADY exists: --force must not
     # overwrite it (the leaf exists via the symlink, so an exists()-based boundary would miss it).
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         outside = Path(d) / "outside"
         outside.mkdir()
         sentinel = outside / "config.yml"
@@ -261,7 +278,7 @@ def test_init_refuses_symlink_destination() -> None:
     # Symlinked ancestor with an existing subdirectory below it: `.agentic` -> outside, outside/nested/
     # exists, dest = .agentic/nested/config.yml. An is_dir() boundary would stop at nested (following
     # the symlink) and never inspect `.agentic`; every component must be checked.
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         outside = Path(d) / "outside"
         (outside / "nested").mkdir(parents=True)
         linked_dir = Path(d) / ".agentic"
@@ -273,7 +290,7 @@ def test_init_refuses_symlink_destination() -> None:
 
     # A `..` AFTER a symlink must not slip past the guard: `link/../config.yml` normalizes lexically
     # to just `config.yml`, but the filesystem follows `link` first, so the write lands outside.
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         (Path(d) / "outside" / "nested").mkdir(parents=True)
         link = Path(d) / "link"
         os.symlink(Path(d) / "outside" / "nested", link)  # link -> outside/nested
@@ -344,7 +361,7 @@ def test_init_rejects_pasted_credential_value() -> None:
 
 
 def test_init_next_steps_carry_custom_config_path() -> None:
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         dest = Path(d) / "config files" / "stagr.yml"  # a space: no shell-specific quoting is emitted
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -356,7 +373,7 @@ def test_init_next_steps_carry_custom_config_path() -> None:
 
 
 def test_init_writes_utf8() -> None:
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         dest = Path(d) / ".agentic" / "config.yml"
         rc = cli.main(["init", "--profile", "standard", "--config", str(dest)])
         raw = dest.read_bytes()
@@ -365,7 +382,7 @@ def test_init_writes_utf8() -> None:
 
 
 def test_init_reports_write_failure_without_traceback() -> None:
-    with tempfile.TemporaryDirectory() as d:
+    with _project_dir() as d:
         blocker = Path(d) / "afile"
         blocker.write_text("x")  # a regular file where init expects a parent directory
         dest = blocker / "config.yml"  # mkdir/write_text will raise OSError

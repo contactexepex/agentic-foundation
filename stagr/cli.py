@@ -430,6 +430,14 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 0
 
     dest = args.config
+    # Confine the write destination to the project root, matching the read confinement on
+    # doctor/plan/apply. Otherwise init could scaffold a config outside the checkout that those
+    # commands then refuse to read, or (with --force) overwrite an arbitrary out-of-repo file.
+    try:
+        render.confine_config_path(dest)
+    except render.RenderError as exc:
+        print(f"init: {exc}\n  Nothing was written.", file=sys.stderr)
+        return 1
     rc = _write_generated_config(dest, text, args.force)
     if rc != 0:
         return rc

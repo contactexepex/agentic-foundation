@@ -9,8 +9,11 @@ validity + determinism of the rendered GitHub workflows. Exit 0 = pass.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
@@ -22,6 +25,22 @@ from stagr import render  # noqa: E402
 from stagr.backends.generic import build_invocation  # noqa: E402
 
 failures: list[str] = []
+
+
+@contextmanager
+def _project_dir():
+    """A temp dir that is also the CWD for the block.
+
+    load_config confines a config's `extends` bases to the project root (the CWD), so a test that
+    reads config files from a temp tree must run from inside it (as a real operator runs stagr).
+    """
+    prev = Path.cwd()
+    with tempfile.TemporaryDirectory() as d:
+        os.chdir(d)
+        try:
+            yield Path(d)
+        finally:
+            os.chdir(prev)
 
 
 def check(cond: bool, msg: str) -> None:
@@ -107,17 +126,24 @@ def test_render_structural() -> None:
 
 
 def test_new_behaviors() -> None:
-    import tempfile
-
     # extends: base merged before child; child wins
-    with tempfile.TemporaryDirectory() as d:
-        dp = Path(d)
+    with _project_dir() as dp:
         (dp / "base.yml").write_text("version: 2\ndefaults:\n  provider: claude\n  models:\n    claude: {default: c-base}\n")
         (dp / "child.yml").write_text("version: 2\nextends: base.yml\nprofile: custom\ndefaults:\n  models:\n    openai: {default: o-child}\n")
         merged = render.load_config(dp / "child.yml")
         check(merged["defaults"]["provider"] == "claude", "extends: inherits base provider")
         check(merged["defaults"]["models"]["claude"]["default"] == "c-base", "extends: inherits base model")
         check(merged["defaults"]["models"]["openai"]["default"] == "o-child", "extends: child adds model")
+
+    # extends confinement: a base resolving OUTSIDE the project root is rejected (untrusted config
+    # content must not read an arbitrary host file into the merged contract).
+    with _project_dir() as dp:
+        (dp.parent / "outside-base.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
+        (dp / "child.yml").write_text("version: 2\nextends: ../outside-base.yml\nprofile: custom\n")
+        expect_raises(
+            lambda: render.load_config(dp / "child.yml"),
+            "extends: a base outside the project root is rejected",
+        )
 
     # from-preset expansion: a stage with only id+from gains the preset's type/skill
     stages = render.expand_stages({"profile": "custom", "stages": [{"id": "review", "from": "code-review"}]})
@@ -146,8 +172,6 @@ def test_new_behaviors() -> None:
 
 
 def test_round2_fixes() -> None:
-    import tempfile
-
     # duplicate explicit stage id -> fail loud
     expect_raises(
         lambda: render.expand_stages({"profile": "custom", "stages": [{"id": "a", "type": "review"}, {"id": "a", "type": "security"}]}),
@@ -155,8 +179,7 @@ def test_round2_fixes() -> None:
     )
 
     # diamond extends (two bases share an ancestor) must NOT raise circular
-    with tempfile.TemporaryDirectory() as d:
-        dp = Path(d)
+    with _project_dir() as dp:
         (dp / "org.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
         (dp / "teamA.yml").write_text("version: 2\nextends: org.yml\n")
         (dp / "teamB.yml").write_text("version: 2\nextends: org.yml\n")
