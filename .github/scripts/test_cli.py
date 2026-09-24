@@ -266,9 +266,48 @@ def test_init_rejects_values_the_pipeline_would_reject() -> None:
             rc = cli.main(["init", "--config", str(dest)])
             check(rc == 1 and not dest.exists(),
                   "init: an invalid secret name is rejected and no file is written")
+        # --print must validate too (before the early return), so a redirected --print never emits
+        # an invalid config; stdout stays empty on rejection.
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc_print = cli.main(["init", "--print"])
+        check(rc_print == 1 and buf.getvalue() == "",
+              "init --print: an invalid value is rejected and nothing is printed")
     finally:
         sys.stdin = old_stdin
         scaffold.run_wizard = original_run_wizard
+
+
+def test_init_print_keeps_stdout_yaml_only() -> None:
+    # Interactive stdin + redirected stdout (`stagr init --print > .agentic/config.yml`): the
+    # wizard's UI must go to stderr and validation must run, so stdout is pure, valid YAML.
+    import yaml as _yaml
+
+    class _TTYStdin:
+        def isatty(self) -> bool:
+            return True
+
+        def readline(self) -> str:
+            return "\n"  # accept every default
+    old_stdin = sys.stdin
+    sys.stdin = _TTYStdin()  # type: ignore[assignment]
+    buf = io.StringIO()
+    try:
+        with redirect_stdout(buf):
+            rc = cli.main(["init", "--print"])
+    finally:
+        sys.stdin = old_stdin
+    out = buf.getvalue()
+    check(rc == 0, "init --print (wizard, all defaults): exits 0")
+    check("── Scope ──" not in out and "Press Enter" not in out,
+          "init --print: wizard UI is kept off stdout")
+    parsed = None
+    try:
+        parsed = _yaml.safe_load(out)
+    except _yaml.YAMLError:
+        parsed = None
+    check(isinstance(parsed, dict) and parsed.get("version") == 2,
+          "init --print: stdout is valid YAML only")
 
 
 def test_init_full_profile_keeps_security_blocking() -> None:
@@ -382,6 +421,7 @@ def main() -> int:
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
     test_init_rejects_values_the_pipeline_would_reject()
+    test_init_print_keeps_stdout_yaml_only()
     test_init_full_profile_keeps_security_blocking()
     test_init_review_gate_derived_from_profile()
     test_init_quotes_yaml_keyword_scalars()

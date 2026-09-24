@@ -289,6 +289,19 @@ def _symlink_in_chain(dest: Path) -> Path | None:
         cur = parent
 
 
+def _emit_to_stderr(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def _prompt_from_stdin(prompt: str) -> str:
+    # Write the prompt to STDERR (not stdout) and read the answer from stdin, so the wizard's UI
+    # never lands on stdout. This keeps `stagr init --print > .agentic/config.yml` (interactive
+    # stdin, redirected stdout) producing a file that is pure YAML.
+    sys.stderr.write(prompt)
+    sys.stderr.flush()
+    return sys.stdin.readline()
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Scaffold a commented .agentic/config.yml — interactively, or from a profile."""
     if args.profile or args.yes:
@@ -298,7 +311,9 @@ def cmd_init(args: argparse.Namespace) -> int:
             print(f"init: {exc}", file=sys.stderr)
             return 1
     elif sys.stdin.isatty():
-        choices = scaffold.run_wizard()
+        # The wizard is UI: route every prompt and message to stderr so stdout stays reserved for
+        # the generated config (`--print`) or the result messages.
+        choices = scaffold.run_wizard(read_input=_prompt_from_stdin, write_line=_emit_to_stderr)
     else:
         print(
             "init: not a terminal, and no --profile given.\n"
@@ -309,12 +324,10 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 1
 
     text = scaffold.generate(choices)
-    if args.print_only:
-        print(text, end="")
-        return 0
 
-    # Validate what we are about to write, so init never leaves behind a config that then fails the
-    # `doctor`/`plan` step it points the user at. This catches semantically invalid free-form values
+    # Validate the generated config BEFORE printing or writing it, so neither `--print` (which a
+    # user may redirect into .agentic/config.yml) nor a write ever emits a config that then fails
+    # the `doctor`/`plan` step init points at. This catches semantically invalid free-form values
     # the schema alone accepts — a secret name with a hyphen, a branch with whitespace, a model id
     # with expression metacharacters — which the renderer (the single source of truth) rejects.
     try:
@@ -326,6 +339,10 @@ def cmd_init(args: argparse.Namespace) -> int:
               "  Nothing was written. Re-run and choose values the message above accepts.",
               file=sys.stderr)
         return 1
+
+    if args.print_only:
+        print(text, end="")
+        return 0
 
     dest = args.config
     # Refuse to write through a symlink anywhere in the destination's chain — the leaf OR an
