@@ -45,7 +45,9 @@ artifacts and unrelated changes. Commit only after self-review and relevant vali
 Push the task branch and open one PR targeting `main`, **ready for review — never a draft** — so Codex
 review runs immediately; never hand-merge it. The PR description states the task and acceptance
 criteria, what changed and why, checks run with results, and assumptions or open questions. **Every
-PR must pass Codex code + security review before it can merge** (see "Codex review handoff").
+PR is reviewed by Codex (code + security); findings block the merge as unresolved threads** (see
+"Codex review handoff"). The one exception is the deterministic fast-path lane for trivial docs/text
+changes, which the gate may merge without a paid review.
 
 Know the merge lane (see `AGENTS.md`). A **foundation** PR is merged automatically by the
 `Auto-merge foundation PRs` gate once green and Codex-clean — do not hand-merge and do not wait on a

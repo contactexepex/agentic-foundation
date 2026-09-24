@@ -13,6 +13,12 @@ on that repo's existing CI/SCM — with minimal configuration.
 
 Its value is **integration, governance, and portability** — never agent capability.
 
+> **Status (today):** the supported platform is **GitHub**, and the toolkit renders the core lane —
+> validate, the review router, the implementer, and the Codex code/security review + thread cleanup.
+> **Multi-stage rendering** (plan / test / integration-test / docs / release and non-Codex reviewers)
+> and **other platforms** (GitLab, Bitbucket, Azure DevOps, …) are the roadmap in §7. Sections 2–6
+> describe the target this roadmap converges on, not everything that renders today.
+
 ## 2. The line we never cross: declare · initialize · govern — never execute
 
 agentic-foundation is a **control plane**, not a **runtime**.
@@ -47,8 +53,9 @@ The canonical flow, generalized from the permission-api origin:
 The toolkit's job is to let a repo declare **its own "definition of ready-to-approve"** — which in a
 large org is **not** just CI + Sonar, but an arbitrary, ordered graph of gates (build, unit,
 integration, security review, code review, license/compliance, custom) — and to **orchestrate and
-gate** that graph across whatever platform the repo lives on. It orchestrates and governs those
-stages; it never *is* any of them.
+gate** that graph on its platform (today GitHub; more platforms in §7). It orchestrates and governs
+those stages; it never *is* any of them. (This is the target; §7 tracks what renders today vs. what
+is still roadmap.)
 
 ## 4. The litmus test (apply to every feature and every config key)
 
@@ -64,7 +71,7 @@ If the latter, **reference it by name — don't re-declare it.**
 
 - ❌ **Not an agent runtime / execution engine** — delegate to Claude Code, Codex, etc.
 - ❌ **Not a skills/prompt library or marketplace** — ship a few reference skills; orgs bring their own by id.
-- ❌ **Not a model gateway/proxy** — reference provider endpoints by name; never route calls through the toolkit.
+- ❌ **Not a model gateway/proxy** — never route model calls through the toolkit. Reference provider *credentials* by secret name; non-secret endpoint metadata (`base_url`, `api_version`, `deployment`) may live in `providers.<id>` and is passed to the runner-side adapter.
 - ❌ **Not memory / RAG / knowledge base** — a backend concern.
 - ❌ **Not a GUI / dashboard / control-plane service** — stay CLI + config + CI; emit to the user's tools.
 - ❌ **Not a general workflow engine** (Airflow/Temporal) — it is an opinionated SDLC stage graph; the opinionation is the feature.
