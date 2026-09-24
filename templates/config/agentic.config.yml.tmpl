@@ -5,9 +5,10 @@
 # makes the toolkit portable: it never hardcodes a language, provider, model,
 # or SCM platform.
 #
-# EASY BY DEFAULT: pick a `profile` and a `platform` and you're done — the
-# profile expands to a default stage graph. ADD `stages:` only when you want
-# granular control. Everything else is optional and falls back to defaults.
+# EASY BY DEFAULT: pick a `profile`, a `platform`, and a model default under
+# `defaults` — the profile expands to a default stage graph. ADD `stages:` only
+# when you want granular control. Model resolution is fail-loud (no hidden
+# fallback), so a model binding is always required; every other block is optional.
 # Full reference: docs/CONFIGURATION.md   Design: docs/ARCHITECTURE.md
 # =============================================================================
 version: 2
@@ -19,7 +20,7 @@ version: 2
 #   - team/backend.yml
 
 # ===========================================================================
-# SIMPLE — a newcomer needs only these two.
+# SIMPLE — a profile + a platform here, plus a model default under `defaults`.
 # ===========================================================================
 
 # Onboarding shortcut. Expands to a default stage graph you can override below.
@@ -46,7 +47,10 @@ build:
     typecheck: ""
 
 # ===========================================================================
-# ADVANCED — everything below is OPTIONAL. Delete any block to accept defaults.
+# MODEL DEFAULTS (required) + ADVANCED (optional).
+# `defaults` below is REQUIRED: resolution is fail-loud, so every stage needs a
+# model from `defaults.models.<provider>` (or its own `stages[].model`). Every
+# OTHER block below is optional — delete any one to accept its default.
 # ===========================================================================
 
 # --- Model resolution --------------------------------------------------------

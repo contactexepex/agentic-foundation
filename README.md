@@ -105,10 +105,12 @@ assume a language.
    and edit it — set a `profile` and `platform`).
 2. Create the secrets your stages/providers and platform require — see
    [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for names and service-account vs PAT guidance.
-3. **Today (manual):** validate with `python .github/scripts/validate_config.py`, and copy/adapt the
-   workflows from this repo's `.github/workflows/` into your repo.
-   **Planned (M3):** run `agentic apply` — it validates the config, renders the enabled stages for
-   your `platform`, and opens a bootstrap PR/MR.
+3. **Today (manual):** copy/adapt the workflows from this repo's `.github/workflows/` into your repo.
+   Once pushed, the `Validate` workflow checks your `.agentic/config.yml` in CI. (The toolkit's own
+   `.github/scripts/validate_config.py` validates *this* repo's tree, not an arbitrary target, so
+   it is not a local check you run inside your repo.)
+   **Planned (M3):** run `agentic doctor` to validate your config locally, then `agentic apply` —
+   it renders the enabled stages for your `platform` and opens a bootstrap PR/MR.
 4. Merge it. The pipeline is live.
 
 Full field reference, provider→secret mapping, and troubleshooting:
