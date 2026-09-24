@@ -9,8 +9,11 @@ validity + determinism of the rendered GitHub workflows. Exit 0 = pass.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
@@ -22,6 +25,22 @@ from stagr import render  # noqa: E402
 from stagr.backends.generic import build_invocation  # noqa: E402
 
 failures: list[str] = []
+
+
+@contextmanager
+def _project_dir():
+    """A temp dir that is also the CWD for the block.
+
+    load_config confines a config's `extends` bases to the project root (the CWD), so a test that
+    reads config files from a temp tree must run from inside it (as a real operator runs stagr).
+    """
+    prev = Path.cwd()
+    with tempfile.TemporaryDirectory() as d:
+        os.chdir(d)
+        try:
+            yield Path(d)
+        finally:
+            os.chdir(prev)
 
 
 def check(cond: bool, msg: str) -> None:
@@ -107,17 +126,33 @@ def test_render_structural() -> None:
 
 
 def test_new_behaviors() -> None:
-    import tempfile
-
     # extends: base merged before child; child wins
-    with tempfile.TemporaryDirectory() as d:
-        dp = Path(d)
+    with _project_dir() as dp:
         (dp / "base.yml").write_text("version: 2\ndefaults:\n  provider: claude\n  models:\n    claude: {default: c-base}\n")
         (dp / "child.yml").write_text("version: 2\nextends: base.yml\nprofile: custom\ndefaults:\n  models:\n    openai: {default: o-child}\n")
         merged = render.load_config(dp / "child.yml")
         check(merged["defaults"]["provider"] == "claude", "extends: inherits base provider")
         check(merged["defaults"]["models"]["claude"]["default"] == "c-base", "extends: inherits base model")
         check(merged["defaults"]["models"]["openai"]["default"] == "o-child", "extends: child adds model")
+
+    # extends confinement: a base resolving OUTSIDE the project root is rejected (untrusted config
+    # content must not read an arbitrary host file into the merged contract). Keep BOTH the project
+    # and the out-of-repo base inside one managed temp dir so every fixture is cleaned up (never
+    # write a predictable sibling like /tmp/outside-base.yml).
+    with tempfile.TemporaryDirectory() as outer:
+        project = Path(outer) / "project"
+        project.mkdir()
+        (Path(outer) / "outside-base.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
+        (project / "child.yml").write_text("version: 2\nextends: ../outside-base.yml\nprofile: custom\n")
+        prev = Path.cwd()
+        os.chdir(project)
+        try:
+            expect_raises(
+                lambda: render.load_config(project / "child.yml"),
+                "extends: a base outside the project root is rejected",
+            )
+        finally:
+            os.chdir(prev)
 
     # from-preset expansion: a stage with only id+from gains the preset's type/skill
     stages = render.expand_stages({"profile": "custom", "stages": [{"id": "review", "from": "code-review"}]})
@@ -146,8 +181,6 @@ def test_new_behaviors() -> None:
 
 
 def test_round2_fixes() -> None:
-    import tempfile
-
     # duplicate explicit stage id -> fail loud
     expect_raises(
         lambda: render.expand_stages({"profile": "custom", "stages": [{"id": "a", "type": "review"}, {"id": "a", "type": "security"}]}),
@@ -155,8 +188,7 @@ def test_round2_fixes() -> None:
     )
 
     # diamond extends (two bases share an ancestor) must NOT raise circular
-    with tempfile.TemporaryDirectory() as d:
-        dp = Path(d)
+    with _project_dir() as dp:
         (dp / "org.yml").write_text("version: 2\ndefaults: {provider: claude}\n")
         (dp / "teamA.yml").write_text("version: 2\nextends: org.yml\n")
         (dp / "teamB.yml").write_text("version: 2\nextends: org.yml\n")
@@ -251,7 +283,7 @@ def test_pipeline_selection() -> None:
                  "request-review.yml", "resolve-threads.yml"):
         check(name in rendered, f"select: {name} emitted for codex-review config")
     # The codex PAT is referenced by NAME (from platform.auth.token_secret), never a value.
-    check("secrets.CODEX_REMEDIATION_TOKEN" in rendered["request-review.yml"],
+    check("secrets.REMEDIATION_TOKEN" in rendered["request-review.yml"],
           "select: codex_review_secret NAME substituted into request-review")
     check(not re.search(r"ghp_[A-Za-z0-9]{8,}", rendered["resolve-threads.yml"]),
           "select: resolve-threads inlines no secret value")
@@ -266,17 +298,46 @@ def test_pipeline_selection() -> None:
           "select: no review lane without a codex review stage")
     check("validate.yml" in r2, "select: core pipeline still emitted")
 
+    # No implement stage -> implementor.yml is NOT emitted (it would carry an empty model and a
+    # provider key the graph never uses); the review lane still renders for the review stage.
+    review_only = {"version": 2, "profile": "custom",
+                   "platform": {"type": "github", "default_branch": "main"},
+                   "defaults": {"provider": "openai", "models": {}},
+                   "stages": [{"id": "review", "type": "review", "provider": "openai",
+                               "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
+    r3 = render.render_all(review_only, "github")
+    check("implementor.yml" not in r3, "select: no implementor.yml without an implement stage")
+    check("validate.yml" in r3 and "request-review.yml" in r3,
+          "select: core + review lane still emitted for a review-only graph")
+
+    # Per-lane review requests: a code-review-only graph asks for @codex review but NOT security.
+    code_only = {"version": 2, "profile": "custom",
+                 "platform": {"type": "github", "default_branch": "main"},
+                 "defaults": {"provider": "openai", "models": {}},
+                 "stages": [{"id": "review", "type": "review", "provider": "openai",
+                             "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
+    # Assert on the actual command line (the template's header comment mentions both phrases).
+    req_code_only = render.render_all(code_only, "github")["request-review.yml"]
+    check("post_codex '@codex review'" in req_code_only
+          and "post_codex '@codex security review'" not in req_code_only,
+          "request-review: code-review-only graph does not request a security review")
+    # The dogfood config has both review and security stages -> both requests are present.
+    req_both = rendered["request-review.yml"]
+    check("post_codex '@codex review'" in req_both
+          and "post_codex '@codex security review'" in req_both,
+          "request-review: a graph with a security stage requests both reviews")
+
 
 def test_round4_fixes() -> None:
     from stagr.backends.generic import runner as gen
 
     # S1: cyclic skill extends fails loud instead of RecursionError (use real files as content).
-    cyc = {"skills": {
+    cyclic_config = {"skills": {
         "a": {"source": "path", "path": "stagr/templates/skills/code-review/SKILL.md", "extends": "b"},
         "b": {"source": "path", "path": "stagr/templates/skills/security-review/SKILL.md", "extends": "a"},
     }}
     try:
-        gen.load_skill("a", cyc)
+        gen.load_skill("a", cyclic_config)
         failures.append("load_skill must reject a skill extends cycle")
         print("FAIL load_skill must reject a skill extends cycle", file=sys.stderr)
     except ValueError:
@@ -342,10 +403,15 @@ def test_round4_fixes() -> None:
     expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "main",
                   "auth": {"token_secret": "bad-name"}}}), "render: invalid token_secret name fails loud")
 
+    # A3b: GITHUB_TOKEN (the workflow's own principal, not a real-user PAT) is rejected as token_secret.
+    expect_raises(lambda: render.build_context({**base, "platform": {"type": "github", "default_branch": "main",
+                  "auth": {"token_secret": "GITHUB_TOKEN"}}}),
+                  "render: GITHUB_TOKEN token_secret fails loud (reserved, not a real-user PAT)")
+
     # A2: narrowed trusted_roles render into the review lane (not a hardcoded allowlist).
     narrow = {"version": 2, "profile": "custom",
               "platform": {"type": "github", "default_branch": "main", "trusted_roles": ["owner"],
-                           "auth": {"token_secret": "CODEX_REMEDIATION_TOKEN"}},
+                           "auth": {"token_secret": "REMEDIATION_TOKEN"}},
               "defaults": {"provider": "openai", "models": {"openai": {"default": "o"}}},
               "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"}, "triggers": ["pr_updated"]}]}
     rn = render.render_all(narrow, "github")

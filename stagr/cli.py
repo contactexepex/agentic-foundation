@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""stagr — the agentic-foundation control plane CLI (M3).
+"""stagr — the agentic-foundation control plane CLI.
 
-Three subcommands over the M2 renderer core (`render.py`), so newcomers can adopt the
-toolkit with one command and experts can inspect exactly what it will do first:
+Subcommands over the renderer core (`render.py`), so newcomers can adopt the toolkit with one
+command and experts can inspect exactly what it will do first:
 
+    stagr init     # scaffold a commented .agentic/config.yml (guided wizard, or --profile to generate)
     stagr doctor   # validate config + resolve the graph; report health, secrets (by NAME), lanes
     stagr plan     # dry run: show what apply WOULD write to .github/workflows (no writes)
     stagr apply    # render the pipeline and write it (idempotent; never deletes unless --prune)
+    stagr help     # list commands, or `stagr help <command>` / `stagr <command> help` for detail
 
 Design invariants (shared with the renderer):
   * No network. No secret VALUES are ever read, printed, or logged — only the secret NAMES
@@ -20,12 +22,25 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import re
+import stat
 import sys
 from pathlib import Path
 from typing import Any
 
-from . import render
+import yaml
+
+from . import render, scaffold
 from .backends.generic.runner import DEFAULT_KEY_SECRET
+
+# Shapes of real credentials that must never be serialized into a generated config: GitHub tokens
+# (ghp_/gho_/ghu_/ghs_/ghr_/github_pat_) and provider API keys (sk-…, incl. sk-ant-…). A secret
+# NAME never looks like these, so matching one means a value was pasted where a NAME was expected.
+_SECRET_VALUE_RE = re.compile(r"gh[porsu]_[A-Za-z0-9]{8,}|github_pat_\w{8,}|sk-[A-Za-z0-9-]{8,}")
+
+# The conventional in-repo location of the contract. Used as every command's `--config` default and
+# to detect when `init` wrote somewhere else, so its "next steps" hint can point at the right file.
+DEFAULT_CONFIG_PATH = Path(".agentic/config.yml")
 
 
 # --------------------------------------------------------------------------- helpers
@@ -84,8 +99,10 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
                 report["problems"].append(f"stage '{stage.get('id')}': {exc}")
         else:
             entry["model"] = f"(app-supplied by backend '{backend}')"
-        # Record the secret NAME this stage's provider needs (never a value).
-        if provider:
+        # Record the provider API-key NAME (never a value) ONLY for backends that consume a model
+        # key. App backends (e.g. codex) drive their own model via their GitHub App and never read
+        # the provider key, so reporting it would tell the operator to create an unused credential.
+        if provider and backend in render.BACKENDS_NEEDING_MODEL:
             secret_names.add(_key_secret_name(cfg, provider))
             extra = ((cfg.get("providers", {}) or {}).get(provider, {}) or {}).get("extra_headers_secret")
             if extra:
@@ -93,8 +110,9 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
         report["stages"].append(entry)
 
     # The codex review lane authors comments/resolutions with a real-user PAT (NAME only).
-    if any(s.get("type") in {"review", "security"} and render._stage_backend(s) == "codex" for s in stages):
-        secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or "CODEX_REMEDIATION_TOKEN")
+    if any(stage.get("type") in render.REVIEW_LANE_TYPES and render._stage_backend(stage) == render.BACKEND_CODEX
+           for stage in stages):
+        secret_names.add(((plat.get("auth", {}) or {}).get("token_secret")) or render.DEFAULT_TOKEN_SECRET)
 
     report["secret_names"] = sorted(secret_names)
     try:
@@ -105,7 +123,7 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
 
 
 def _load_validated(config_path: Path) -> tuple[dict[str, Any], str]:
-    cfg = render.load_config(config_path)
+    cfg = render.load_config(render.confine_config_path(config_path))
     render.validate_config(cfg)
     platform = (cfg.get("platform", {}) or {}).get("type", "github")
     return cfg, platform
@@ -131,13 +149,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"  profile:        {report['profile']}")
     print(f"  platform:       {report['platform']} (default branch: {report['default_branch']})")
     print(f"  trusted roles:  {', '.join(report['trusted_roles'])}")
-    mods = ", ".join(f"{k}={v}" for k, v in report["modules"].items()) or "(none)"
-    print(f"  modules:        {mods}")
+    module_summary = ", ".join(f"{name}={value}" for name, value in report["modules"].items()) or "(none)"
+    print(f"  modules:        {module_summary}")
     print("  stages:")
-    for s in report["stages"]:
+    for stage in report["stages"]:
         print(
-            f"    - {s['id']:<16} type={s['type']:<16} backend={s['backend']:<16} "
-            f"model={s['model']}"
+            f"    - {stage['id']:<16} type={stage['type']:<16} backend={stage['backend']:<16} "
+            f"model={stage['model']}"
         )
     print("  secrets required (configure these NAMES; values live in CI secrets, never here):")
     for name in report["secret_names"]:
@@ -146,8 +164,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     if report["problems"]:
         print("\ndoctor: problems found:", file=sys.stderr)
-        for p in report["problems"]:
-            print(f"  - {p}", file=sys.stderr)
+        for problem in report["problems"]:
+            print(f"  - {problem}", file=sys.stderr)
         return 1
     print("\ndoctor: healthy — config resolves and the pipeline renders.")
     return 0
@@ -156,10 +174,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 # ----------------------------------------------------------------------- plan / apply
 
 
-def _render_or_fail(config_path: Path, platform_override: str | None) -> tuple[dict[str, str], Path]:
+def _render_or_fail(config_path: Path, platform_override: str | None) -> dict[str, str]:
     cfg, platform = _load_validated(config_path)
-    platform = platform_override or platform
-    return render.render_all(cfg, platform), Path()
+    return render.render_all(cfg, platform_override or platform)
 
 
 def _classify(out_dir: Path, rendered: dict[str, str]) -> list[tuple[str, str]]:
@@ -169,7 +186,7 @@ def _classify(out_dir: Path, rendered: dict[str, str]) -> list[tuple[str, str]]:
         target = out_dir / name
         if not target.exists():
             result.append(("new", name))
-        elif target.read_text() == content:
+        elif target.read_text(encoding="utf-8") == content:
             result.append(("unchanged", name))
         else:
             result.append(("changed", name))
@@ -178,7 +195,7 @@ def _classify(out_dir: Path, rendered: dict[str, str]) -> list[tuple[str, str]]:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     try:
-        rendered, _ = _render_or_fail(args.config, args.platform)
+        rendered = _render_or_fail(args.config, args.platform)
     except render.RenderError as exc:
         print(f"plan: {exc}", file=sys.stderr)
         return 1
@@ -188,7 +205,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         marker = {"new": "+ new     ", "changed": "~ changed ", "unchanged": "= unchanged"}[status]
         print(f"  {marker} {name}")
         if status == "changed" and args.diff:
-            current = (out_dir / name).read_text().splitlines()
+            current = (out_dir / name).read_text(encoding="utf-8").splitlines()
             new = rendered[name].splitlines()
             for line in difflib.unified_diff(current, new, fromfile=f"a/{name}", tofile=f"b/{name}", lineterm=""):
                 print(f"      {line}")
@@ -211,7 +228,7 @@ def _orphans(out_dir: Path, rendered: dict[str, str]) -> list[str]:
 
 def cmd_apply(args: argparse.Namespace) -> int:
     try:
-        rendered, _ = _render_or_fail(args.config, args.platform)
+        rendered = _render_or_fail(args.config, args.platform)
     except render.RenderError as exc:
         print(f"apply: {exc}", file=sys.stderr)
         return 1
@@ -222,7 +239,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         if status == "unchanged":
             print(f"  = unchanged {name}")
             continue
-        (out_dir / name).write_text(rendered[name])
+        (out_dir / name).write_text(rendered[name], encoding="utf-8")
         written += 1
         print(f"  {'+ wrote    ' if status == 'new' else '~ updated  '} {name}")
 
@@ -238,39 +255,276 @@ def cmd_apply(args: argparse.Namespace) -> int:
     return 0
 
 
+# ------------------------------------------------------------------------------- init
+
+
+_REPARSE_POINT_ATTR = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+
+
+def _is_reparse_point(path: Path) -> bool:
+    """True if `path` is a Windows reparse point — a symlink OR an NTFS directory junction.
+
+    `Path.is_symlink()` does not flag junctions, so a junctioned ancestor could still redirect the
+    write on Windows. The reparse-point flag (exposed only on Windows via lstat's
+    `st_file_attributes`) catches both symlinks and junctions. On POSIX that attribute is absent, so
+    this returns False and `is_symlink()` alone does the work — the check is inert off Windows.
+    """
+    try:
+        return bool(path.lstat().st_file_attributes & _REPARSE_POINT_ATTR)
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def _symlink_in_chain(dest: Path) -> Path | None:
+    """First symlink/junction in `dest`'s chain, checking EVERY component, or None if there is none.
+
+    Walks the destination from the leaf to the filesystem root, testing each component with
+    `is_symlink()` (and, on Windows, the reparse-point flag) — an lstat of that single component
+    that does not follow it. Any symlink or junction is rejected: the leaf itself (so even a broken
+    link is caught) OR an ancestor such as a crafted `.agentic` -> outside in an untrusted checkout,
+    which `mkdir`/`write_text` would follow to escape the repo. Every component is inspected — there
+    is no early exists()/is_dir() boundary, because those follow symlinks in earlier components and
+    could skip a symlinked ancestor.
+
+    The absolute path is built by joining onto the (already symlink-free) cwd WITHOUT normalizing
+    `..`. `os.path.abspath`/`normpath` would collapse `link/../x` to `x` lexically, hiding the
+    `link` symlink the filesystem actually follows; Path joining and Path.parent are purely
+    lexical, so a symlinked component that precedes a `..` is still visited and rejected.
+    """
+    cur = dest if dest.is_absolute() else Path.cwd() / dest
+    while True:
+        if cur.is_symlink() or _is_reparse_point(cur):
+            return cur
+        parent = cur.parent
+        if parent == cur:  # reached the filesystem anchor
+            return None
+        cur = parent
+
+
+def _emit_to_stderr(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def _prompt_from_stdin(prompt: str) -> str:
+    # Write the prompt to STDERR (not stdout) and read the answer from stdin, so the wizard's UI
+    # never lands on stdout. This keeps `stagr init --print > .agentic/config.yml` (interactive
+    # stdin, redirected stdout) producing a file that is pure YAML.
+    sys.stderr.write(prompt)
+    sys.stderr.flush()
+    return sys.stdin.readline()
+
+
+def _resolve_init_choices(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Pick the wizard/profile answers for `init`.
+
+    Returns the choices, or None when setup cannot proceed (a `--profile` value the scaffold
+    rejects, or a non-interactive run with no `--profile`); the reason is printed to stderr.
+    """
+    if args.profile or args.yes:
+        try:
+            return scaffold.default_choices(args.profile or "standard")
+        except ValueError as exc:
+            print(f"init: {exc}", file=sys.stderr)
+            return None
+    if sys.stdin.isatty():
+        # The wizard is UI: route every prompt and message to stderr so stdout stays reserved for
+        # the generated config (`--print`) or the result messages.
+        return scaffold.run_wizard(read_input=_prompt_from_stdin, write_line=_emit_to_stderr)
+    print(
+        "init: not a terminal, and no --profile given.\n"
+        "  Run `stagr init` in a terminal for guided setup, or\n"
+        "  `stagr init --profile <minimal|standard|full|custom>` to generate a file directly.",
+        file=sys.stderr,
+    )
+    return None
+
+
+def _generated_config_is_valid(text: str) -> bool:
+    """Validate the generated config BEFORE it is printed or written.
+
+    So neither `--print` (which a user may redirect into .agentic/config.yml) nor a write ever
+    emits a config that then fails the `doctor`/`plan` step init points at. This catches
+    semantically invalid free-form values the schema alone accepts — a secret name with a hyphen,
+    a branch with whitespace, a model id with expression metacharacters — which the renderer (the
+    single source of truth) rejects. Returns True when valid; otherwise prints why and returns False.
+    """
+    try:
+        generated_cfg = yaml.safe_load(text)
+        render.validate_config(generated_cfg)
+        render.render_all(generated_cfg, (generated_cfg.get("platform", {}) or {}).get("type", "github"))
+    except (render.RenderError, yaml.YAMLError) as exc:
+        print(f"init: the chosen values produce a config the pipeline rejects: {exc}\n"
+              "  Nothing was written. Re-run and choose values the message above accepts.",
+              file=sys.stderr)
+        return False
+    return True
+
+
+def _write_generated_config(dest: Path, text: str, force: bool) -> int:
+    """Write the generated config to `dest` with symlink/overwrite/IO guards. Returns an exit code."""
+    # Refuse to write through a symlink anywhere in the destination's chain — the leaf OR an
+    # ancestor (e.g. a crafted `.agentic` symlink in an untrusted checkout would redirect the
+    # write outside the repo, and a broken symlink would even slip past the exists() guard).
+    # `mkdir`/`write_text` both follow parent symlinks, so guard the whole chain up to the
+    # nearest existing real directory (the boundary init writes within).
+    linked = _symlink_in_chain(dest)
+    if linked is not None:
+        which = "" if linked == dest else f" (via ancestor {linked})"
+        print(f"init: {dest} is reached through a symlink{which}; refusing to write through it. "
+              f"Remove it or pass a different --config path.", file=sys.stderr)
+        return 1
+    if dest.exists() and not force:
+        print(f"init: {dest} already exists — use --force to overwrite, or --print to preview.",
+              file=sys.stderr)
+        return 1
+    # Report a write failure (unwritable location, a file where a parent dir is expected, a
+    # directory at the destination) as a concise error and exit 1 — not an uncaught traceback.
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        # Always UTF-8: the generated file contains em dashes and box-drawing characters that a
+        # non-UTF-8 locale encoding (e.g. Windows CP932) cannot represent — a plain write_text would
+        # raise UnicodeEncodeError and leave a truncated file.
+        dest.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"init: could not write {dest}: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _print_init_next_steps(dest: Path) -> None:
+    """Point the user at the follow-up commands after `init` writes the config."""
+    # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, point the user at
+    # the file. Show the path plainly rather than a copy-paste command: shells quote differently
+    # (POSIX/PowerShell single quotes vs cmd.exe double quotes), so one quoted command can't be
+    # correct everywhere — leave shell-specific quoting to the user.
+    if dest == DEFAULT_CONFIG_PATH:
+        print("next: `stagr doctor` to validate, `stagr plan` to preview, `stagr apply` to write workflows.")
+    else:
+        print(f"next: run `stagr doctor`, then `stagr plan`, then `stagr apply`, passing `--config` "
+              f"with this file's path to each: {dest}  (quote it for your shell if it has spaces).")
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold a commented .agentic/config.yml — interactively, or from a profile."""
+    choices = _resolve_init_choices(args)
+    if choices is None:
+        return 1
+
+    text = scaffold.generate(choices)
+
+    # Never let a real credential reach the file or stdout. If a user pastes a token/key VALUE
+    # where a secret NAME is expected (an easy onboarding mistake — `ghp_…`, `github_pat_…`, an
+    # `sk-…` API key), it can satisfy the secret-name regex and be serialized. Refuse to emit
+    # anything in that case; the value belongs only in the CI secret store, referenced by NAME.
+    if _SECRET_VALUE_RE.search(text):
+        print("init: an entered value looks like a real credential, not a secret NAME. stagr never\n"
+              "  stores secret values — enter the NAME of the secret (its value lives in your CI\n"
+              "  secret store). Nothing was written.", file=sys.stderr)
+        return 1
+
+    if not _generated_config_is_valid(text):
+        return 1
+
+    if args.print_only:
+        print(text, end="")
+        return 0
+
+    dest = args.config
+    # Confine the write destination to the project root, matching the read confinement on
+    # doctor/plan/apply. Otherwise init could scaffold a config outside the checkout that those
+    # commands then refuse to read, or (with --force) overwrite an arbitrary out-of-repo file.
+    try:
+        render.confine_config_path(dest)
+    except render.RenderError as exc:
+        print(f"init: {exc}\n  Nothing was written.", file=sys.stderr)
+        return 1
+    rc = _write_generated_config(dest, text, args.force)
+    if rc != 0:
+        return rc
+    print(f"init: wrote {dest} (profile: {choices['profile']}).")
+    _print_init_next_steps(dest)
+    return 0
+
+
+# ------------------------------------------------------------------------------- help
+
+
+def _subparser_choices(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    for action in parser._actions:  # noqa: SLF001 — argparse exposes subparsers only here
+        if isinstance(action, argparse._SubParsersAction):
+            return action.choices
+    return {}
+
+
+def cmd_help(args: argparse.Namespace) -> int:
+    """`stagr help` lists commands; `stagr help <command>` details one."""
+    parser = build_parser()
+    topic = getattr(args, "topic", None)
+    if not topic:
+        parser.print_help()
+        return 0
+    choices = _subparser_choices(parser)
+    if topic in choices:
+        choices[topic].print_help()
+        return 0
+    print(f"help: unknown command '{topic}'. Available: {', '.join(sorted(choices))}", file=sys.stderr)
+    return 1
+
+
 # ----------------------------------------------------------------------------- main
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="stagr", description="stagr — the agentic-foundation control plane CLI.")
-    sub = ap.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(prog="stagr", description="stagr — the agentic-foundation control plane CLI.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    def common(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--config", default=Path(".agentic/config.yml"), type=Path,
-                       help="path to the .agentic/config.yml contract")
-        p.add_argument("--platform", default=None, help="override platform.type (e.g. github)")
+    def add_common_arguments(command_parser: argparse.ArgumentParser) -> None:
+        command_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, type=Path,
+                                    help="path to the .agentic/config.yml contract")
+        command_parser.add_argument("--platform", default=None, help="override platform.type (e.g. github)")
 
-    d = sub.add_parser("doctor", help="validate config + report health, secrets (by NAME), and lanes")
-    common(d)
-    d.add_argument("--json", action="store_true", help="emit the report as JSON")
-    d.set_defaults(func=cmd_doctor)
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="validate config + report health, secrets (by NAME), and lanes")
+    add_common_arguments(doctor_parser)
+    doctor_parser.add_argument("--json", action="store_true", help="emit the report as JSON")
+    doctor_parser.set_defaults(func=cmd_doctor)
 
-    p = sub.add_parser("plan", help="dry run: show what apply would write (no writes)")
-    common(p)
-    p.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
-    p.add_argument("--diff", action="store_true", help="show a unified diff for changed workflows")
-    p.set_defaults(func=cmd_plan)
+    plan_parser = subparsers.add_parser("plan", help="dry run: show what apply would write (no writes)")
+    add_common_arguments(plan_parser)
+    plan_parser.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
+    plan_parser.add_argument("--diff", action="store_true", help="show a unified diff for changed workflows")
+    plan_parser.set_defaults(func=cmd_plan)
 
-    a = sub.add_parser("apply", help="render the pipeline and write it (idempotent)")
-    common(a)
-    a.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
-    a.add_argument("--prune", action="store_true",
-                   help="also delete workflow files in the target that this config does not render")
-    a.set_defaults(func=cmd_apply)
-    return ap
+    apply_parser = subparsers.add_parser("apply", help="render the pipeline and write it (idempotent)")
+    add_common_arguments(apply_parser)
+    apply_parser.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
+    apply_parser.add_argument("--prune", action="store_true",
+                              help="also delete workflow files in the target that this config does not render")
+    apply_parser.set_defaults(func=cmd_apply)
+
+    init_parser = subparsers.add_parser(
+        "init", help="scaffold a .agentic/config.yml (interactive, or --profile to generate)")
+    init_parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, type=Path, help="output path")
+    init_parser.add_argument("--profile", choices=list(scaffold.PROFILES),
+                             help="generate non-interactively from this profile (skips the wizard)")
+    init_parser.add_argument("--print", dest="print_only", action="store_true",
+                             help="print to stdout; write nothing")
+    init_parser.add_argument("--force", action="store_true", help="overwrite an existing config file")
+    init_parser.add_argument("--yes", action="store_true",
+                             help="accept defaults without prompting (profile defaults to standard)")
+    init_parser.set_defaults(func=cmd_init)
+
+    help_parser = subparsers.add_parser("help", help="show help for all commands, or `stagr help <command>`")
+    help_parser.add_argument("topic", nargs="?", help="a command name to describe in detail")
+    help_parser.set_defaults(func=cmd_help)
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # Accept `stagr <command> help` as an alias for `stagr help <command>`.
+    if len(argv) == 2 and argv[1] == "help" and argv[0] != "help":
+        argv = ["help", argv[0]]
     args = build_parser().parse_args(argv)
     return args.func(args)
 

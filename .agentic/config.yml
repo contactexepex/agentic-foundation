@@ -12,7 +12,7 @@ platform:
     human_merge: human-merge          # foundation gate hard-stop
     dispatch: codex-engineering       # issue label that dispatches the Codex implementor
   # Publication/remediation uses a real-user PAT; reads use the workflow GITHUB_TOKEN.
-  auth: { token_secret: CODEX_REMEDIATION_TOKEN }
+  auth: { token_secret: REMEDIATION_TOKEN }
 
 defaults:
   provider: claude

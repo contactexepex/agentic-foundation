@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # A real-user PAT (Contents R/W + Pull requests R/W): the comment must be authored by a
           # trusted user for Codex to act on the "@codex" commands, so the posts below use it.
-          CODEX_PAT: ${{ secrets.CODEX_REMEDIATION_TOKEN }}
+          CODEX_PAT: ${{ secrets.REMEDIATION_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -60,7 +60,7 @@ jobs:
           # Without the PAT the request can only be authored by github-actions[bot], which Codex does
           # not reliably act on; skip cleanly rather than post a comment that does nothing.
           if [[ -z "${CODEX_PAT:-}" ]]; then
-            echo "::warning::CODEX_REMEDIATION_TOKEN is not configured; Codex code+security re-review will NOT be requested for pushed heads. Substantive PRs will not become mergeable until it is set."
+            echo "::warning::REMEDIATION_TOKEN is not configured; Codex code+security re-review will NOT be requested for pushed heads. Substantive PRs will not become mergeable until it is set."
             exit 0
           fi
 

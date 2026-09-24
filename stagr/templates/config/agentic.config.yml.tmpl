@@ -16,9 +16,11 @@ version: 2
 
 # Optional: inherit base config(s) first; values in THIS file win. Layer an
 # org base, then a team base, then this repo. (String or list.)
+# Bases must live INSIDE this repo checkout (vendor a shared org base in — commit
+# it or fetch it at checkout); a path outside the repo is rejected at load time.
 # extends:
-#   - org/agentic-base.yml
-#   - team/backend.yml
+#   - .agentic/base/org.yml
+#   - .agentic/base/backend.yml
 
 # ===========================================================================
 # SIMPLE — a profile + a platform. (Add a model default under `defaults` for any
@@ -36,7 +38,9 @@ platform:
   type: github                 # github | gitlab | azure_devops | bitbucket | gitea | other
   # host: ""                   # self-hosted/enterprise host; blank = public host
   default_branch: main
-  # auth: { token_secret: GITHUB_TOKEN }   # NAME of the platform token secret
+  # auth: { token_secret: REMEDIATION_TOKEN }  # NAME of the real-user PAT that pushes the
+  #                                            # implementer's fixes / re-requests reviews.
+  #                                            # Default: REMEDIATION_TOKEN.
 
 build:
   # What "green" means for THIS repo. Language-agnostic; omit for docs-only.

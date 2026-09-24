@@ -38,6 +38,10 @@ SCHEMA_PATH = PKG_ROOT / "config.schema.json"
 TEMPLATE_ROOT = PKG_ROOT / "templates" / "workflows"
 AGENTS_DIR = PKG_ROOT / "templates" / "agents"
 
+# Default NAME of the real-user PAT the review lane pushes/posts with when `platform.auth.token_secret`
+# is not set. Provider-neutral (the toolkit is provider-agnostic); the value lives in CI secrets.
+DEFAULT_TOKEN_SECRET = "REMEDIATION_TOKEN"
+
 GITHUB_ROLE_MAP = {
     "owner": "OWNER",
     "member": "MEMBER",
@@ -45,9 +49,22 @@ GITHUB_ROLE_MAP = {
     "contributor": "CONTRIBUTOR",
 }
 
+# Backend names, referenced in routing/model logic across modules — kept as named constants so the
+# strings are not repeated as literals in comparisons.
+BACKEND_GENERIC = "generic"          # the built-in, provider-agnostic runner (the default)
+BACKEND_CLAUDE_ACTION = "claude-code-action"
+BACKEND_CODEX = "codex"
+
 # Backends that consume a resolved model from the contract. App backends (codex,
 # openhands, swe-agent, pr-agent) choose their own model, so resolution is skipped.
-BACKENDS_NEEDING_MODEL = {"generic", "claude-code-action"}
+BACKENDS_NEEDING_MODEL = {BACKEND_GENERIC, BACKEND_CLAUDE_ACTION}
+
+# Gate strengths a stage can carry.
+GATE_ADVISORY = "advisory"
+GATE_BLOCKING = "blocking"
+
+# Stage types whose Codex stage drives the on-push review lane (request-review + resolve-threads).
+REVIEW_LANE_TYPES = {"review", "security"}
 
 # Preset -> default build commands (pre-fill; explicit build.commands override per key).
 # Mirrors docs/CONFIGURATION.md "Presets".
@@ -64,22 +81,22 @@ PRESET_COMMANDS: dict[str, dict[str, str]] = {
 
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
-        {"id": "implement", "type": "implement", "gate": "advisory"},
-        {"id": "review", "type": "review", "gate": "advisory"},
+        {"id": "implement", "type": "implement", "gate": GATE_ADVISORY},
+        {"id": "review", "type": "review", "gate": GATE_ADVISORY},
     ],
     "standard": [
         {"id": "implement", "type": "implement"},
-        {"id": "review", "type": "review", "gate": "blocking"},
-        {"id": "security", "type": "security", "gate": "advisory"},
+        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
+        {"id": "security", "type": "security", "gate": GATE_ADVISORY},
     ],
     "full": [
-        {"id": "plan", "type": "plan", "gate": "advisory"},
+        {"id": "plan", "type": "plan", "gate": GATE_ADVISORY},
         {"id": "implement", "type": "implement"},
-        {"id": "security", "type": "security", "gate": "blocking"},
-        {"id": "test", "type": "test", "gate": "blocking"},
-        {"id": "integration-test", "type": "integration-test", "gate": "blocking"},
-        {"id": "review", "type": "review", "gate": "blocking"},
-        {"id": "docs", "type": "docs", "gate": "advisory"},
+        {"id": "security", "type": "security", "gate": GATE_BLOCKING},
+        {"id": "test", "type": "test", "gate": GATE_BLOCKING},
+        {"id": "integration-test", "type": "integration-test", "gate": GATE_BLOCKING},
+        {"id": "review", "type": "review", "gate": GATE_BLOCKING},
+        {"id": "docs", "type": "docs", "gate": GATE_ADVISORY},
     ],
     "custom": [],
 }
@@ -124,18 +141,21 @@ MANDATORY_FAST_PATH_EXCLUDE = ["AGENTS.md", "CLAUDE.md", "**/AGENTS.md", "**/CLA
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """Deep-merge overlay onto base (overlay wins). Lists/scalars are replaced."""
-    out = dict(base)
-    for k, v in overlay.items():
-        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = _deep_merge(out[k], v)
+    merged = dict(base)
+    for key, overlay_value in overlay.items():
+        base_value = merged.get(key)
+        if isinstance(base_value, dict) and isinstance(overlay_value, dict):
+            merged[key] = _deep_merge(base_value, overlay_value)
         else:
-            out[k] = v
-    return out
+            merged[key] = overlay_value
+    return merged
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
     try:
-        data = yaml.safe_load(path.read_text())
+        # UTF-8 explicitly: generated configs are written UTF-8 (em dashes, box-drawing), so reading
+        # them back must not depend on a non-UTF-8 locale encoding (e.g. Windows CP932).
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise RenderError(f"file not found: {path}") from exc
     except yaml.YAMLError as exc:
@@ -170,7 +190,7 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
                 f"extends references a URI ('{ref}'), which the offline renderer does not "
                 "fetch; vendor the base config locally and reference it by relative path"
             )
-        p = (base_dir / ref).resolve()
+        p = _confine_to_project_root(base_dir / ref, f"extends base '{ref}'")
         key = str(p)
         if key in _seen:
             raise RenderError(f"circular extends via {ref}")
@@ -184,19 +204,52 @@ def resolve_extends(cfg: dict[str, Any], base_dir: Path, _seen: set[str] | None 
     return _deep_merge(merged, child)
 
 
+def _confine_to_project_root(path: Path, what: str) -> Path:
+    """Resolve `path` and reject anything outside the project root (the CWD); return it resolved.
+
+    stagr is a control plane that operates on the current repository, so every path it reads or
+    writes — the `--config` contract, its `extends` bases, the file `init` scaffolds — must live
+    inside that checkout. A value resolving outside it (`../../etc/passwd`, an absolute host path,
+    or a symlink escape — `.resolve()` follows symlinks) is either a mistake or, in an agentic flow
+    where these values can be steered by untrusted data, an attempt to read or clobber an arbitrary
+    host file. Reject it, the same containment the toolkit applies to skill/preset/instruction paths
+    (see `_load_agent_preset` and `backends/generic/runner._confine`).
+    """
+    root = Path.cwd().resolve()
+    try:
+        resolved = path.resolve()
+    except (OSError, RuntimeError) as exc:
+        # An untrusted checkout can contain a symlink loop (a -> b -> a) in the path chain, which
+        # makes Path.resolve() raise RuntimeError (or OSError). Turn any resolution failure into a
+        # clean RenderError so callers report it, rather than crashing with a traceback.
+        raise RenderError(f"{what} '{path}' cannot be resolved: {exc}") from exc
+    if not resolved.is_relative_to(root):
+        raise RenderError(
+            f"{what} '{path}' resolves outside the project root ({root}); "
+            "run stagr from your repository with the file inside it"
+        )
+    return resolved
+
+
+def confine_config_path(path: Path) -> Path:
+    """Confine a CLI-supplied `--config` path to the project root; see `_confine_to_project_root`."""
+    return _confine_to_project_root(path, "config path")
+
+
 def load_config(path: Path) -> dict[str, Any]:
     cfg = _read_yaml(path)
     return resolve_extends(cfg, path.parent)
 
 
 def validate_config(cfg: dict[str, Any]) -> None:
-    schema = json.loads(SCHEMA_PATH.read_text())
-    errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda e: list(e.path))
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda err: list(err.path))
     if errors:
-        lines = "; ".join(
-            f"{'/'.join(str(p) for p in e.path) or '(root)'}: {e.message}" for e in errors
+        details = "; ".join(
+            f"{'/'.join(str(part) for part in error.path) or '(root)'}: {error.message}"
+            for error in errors
         )
-        raise RenderError(f"config does not conform to schema: {lines}")
+        raise RenderError(f"config does not conform to schema: {details}")
     _validate_semantics(cfg)
 
 
@@ -235,37 +288,37 @@ def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
     profile = cfg.get("profile", "standard")
     if profile not in PROFILE_STAGES:
         raise RenderError(f"unknown profile: {profile}")
-    base = {s["id"]: dict(s) for s in PROFILE_STAGES[profile]}
-    order = [s["id"] for s in PROFILE_STAGES[profile]]
+    stages_by_id = {stage_def["id"]: dict(stage_def) for stage_def in PROFILE_STAGES[profile]}
+    order = [stage_def["id"] for stage_def in PROFILE_STAGES[profile]]
     explicit_ids: set[str] = set()
     for stage in cfg.get("stages", []) or []:
-        sid = stage.get("id")
-        if not sid:
+        stage_id = stage.get("id")
+        if not stage_id:
             raise RenderError("every stage needs an id")
         # Two explicit stages sharing an id would silently deep-merge into a hybrid stage and drop
         # a graph node; reject it. (Overriding a PROFILE-provided stage by id is still allowed.)
-        if sid in explicit_ids:
-            raise RenderError(f"duplicate explicit stage id '{sid}'")
-        explicit_ids.add(sid)
+        if stage_id in explicit_ids:
+            raise RenderError(f"duplicate explicit stage id '{stage_id}'")
+        explicit_ids.add(stage_id)
         resolved = dict(stage)
         # `from` supplies preset defaults; the stage's own fields override them.
         if "from" in resolved:
             preset = _load_agent_preset(resolved["from"])
-            merged = _deep_merge(preset, {k: v for k, v in resolved.items() if k != "from"})
-            resolved = merged
-            resolved["id"] = sid
-        if sid in base:
-            base[sid] = _deep_merge(base[sid], resolved)
+            resolved = _deep_merge(preset, {k: v for k, v in resolved.items() if k != "from"})
+            resolved["id"] = stage_id
+        if stage_id in stages_by_id:
+            stages_by_id[stage_id] = _deep_merge(stages_by_id[stage_id], resolved)
         else:
-            base[sid] = resolved
-            order.append(sid)
-    return [base[sid] for sid in order if base[sid].get("enabled", True)]
+            stages_by_id[stage_id] = resolved
+            order.append(stage_id)
+    return [stages_by_id[stage_id] for stage_id in order if stages_by_id[stage_id].get("enabled", True)]
 
 
 # -------------------------------------------------------------------- model resolve
 
 
-def _lookup(binding: dict[str, Any] | None, tier: str) -> str | None:
+def _model_for_tier(binding: dict[str, Any] | None, tier: str) -> str | None:
+    """Pick a model id from a `{tiers: {...}, default: ...}` binding for `tier`, else None."""
     if not binding:
         return None
     tiers = binding.get("tiers") or {}
@@ -286,8 +339,8 @@ def resolve_model(
         )
     value = (
         request_override
-        or _lookup(stage.get("model"), tier)
-        or _lookup((cfg.get("defaults", {}).get("models", {}) or {}).get(provider), tier)
+        or _model_for_tier(stage.get("model"), tier)
+        or _model_for_tier((cfg.get("defaults", {}).get("models", {}) or {}).get(provider), tier)
     )
     if not value:
         raise RenderError(
@@ -307,7 +360,7 @@ def resolve_model(
 
 
 def _stage_backend(stage: dict[str, Any]) -> str:
-    return ((stage.get("backend") or {}).get("name")) or "generic"
+    return ((stage.get("backend") or {}).get("name")) or BACKEND_GENERIC
 
 
 # ----------------------------------------------------------------------- rendering
@@ -323,18 +376,18 @@ def _build_steps(cfg: dict[str, Any]) -> str:
     preset = build.get("preset", "custom")
     # Preset pre-fills commands; explicit non-empty build.commands override per key.
     commands = dict(PRESET_COMMANDS.get(preset, {}))
-    for k, v in (build.get("commands", {}) or {}).items():
-        if (v or "").strip():
-            commands[k] = v
+    for step_name, command in (build.get("commands", {}) or {}).items():
+        if (command or "").strip():
+            commands[step_name] = command
     order = ["install", "lint", "typecheck", "test"]
     lines: list[str] = ["set -euo pipefail"]
-    for name in order:
-        cmd = (commands.get(name) or "").strip()
-        if cmd:
-            lines.append(f'echo "::group::{name}"')
+    for step_name in order:
+        command = (commands.get(step_name) or "").strip()
+        if command:
+            lines.append(f'echo "::group::{step_name}"')
             # Split multiline commands so EVERY physical line is indented by the join below;
             # otherwise continuation lines land at column 0 and break the `run: |` YAML block.
-            lines.extend(cmd.splitlines())
+            lines.extend(command.splitlines())
             lines.append('echo "::endgroup::"')
     if len(lines) == 1:
         lines.append('echo "No build commands configured; nothing to run."')
@@ -360,15 +413,25 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     # NAME of the real-user PAT the codex review lane posts/resolves with (never a value). Validate
     # it as a GitHub secret name so it cannot break out of the `secrets.<NAME>` expression it is
     # inserted into (e.g. a hyphen, punctuation, or newline).
-    codex_review_secret = ((platform.get("auth", {}) or {}).get("token_secret")) or "CODEX_REMEDIATION_TOKEN"
+    codex_review_secret = ((platform.get("auth", {}) or {}).get("token_secret")) or DEFAULT_TOKEN_SECRET
     if not _SECRET_NAME.match(str(codex_review_secret)):
         raise RenderError(
             f"platform.auth.token_secret '{codex_review_secret}' is not a valid GitHub secret name "
             "(letters, digits, underscore; not starting with a digit)"
         )
+    # The review lane must post as a REAL-USER PAT; GITHUB_TOKEN is the workflow's own principal
+    # (read-scoped in these workflows), so a review request posted with it is skipped or fails. Any
+    # GITHUB_-prefixed name is also a reserved secret name GitHub forbids. Reject it so `doctor`
+    # cannot call a pipeline healthy while conflating the workflow token with the required PAT.
+    if str(codex_review_secret).upper().startswith("GITHUB_"):
+        raise RenderError(
+            f"platform.auth.token_secret '{codex_review_secret}' uses the reserved GITHUB_ prefix; "
+            "the review lane needs a real-user PAT, not the workflow's own GITHUB_TOKEN (GitHub also "
+            "forbids user secrets named GITHUB_*). Use a different secret name."
+        )
 
-    stages = {s["id"]: s for s in expand_stages(cfg)}
-    implement_stage = next((s for s in stages.values() if s.get("type") == "implement"), None)
+    stages = {stage["id"]: stage for stage in expand_stages(cfg)}
+    implement_stage = next((stage for stage in stages.values() if stage.get("type") == "implement"), None)
     # Resolve the implementer model ONLY when the backend consumes one; otherwise the
     # app backend supplies it. Do NOT swallow a resolution error — fail loud.
     implementer_model = ""
@@ -394,6 +457,8 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     fast_path_enabled = routing.get("enabled", True)
     fast_path_globs = list(routing.get("globs", ["**/*.md"])) if fast_path_enabled else []
 
+    code_review_request, security_review_request = _review_request_lines(list(stages.values()))
+
     return {
         "default_branch": default_branch,
         "human_merge_label": labels.get("human_merge", "human-merge"),
@@ -409,6 +474,8 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
         "build_steps": _build_steps(cfg),
         "review_status_context": "Publish fast review result",
         "codex_review_secret": codex_review_secret,
+        "code_review_request": code_review_request,
+        "security_review_request": security_review_request,
     }
 
 
@@ -416,18 +483,20 @@ _TOKEN = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 
 
 def render_template(text: str, context: dict[str, str]) -> str:
-    def sub(m: re.Match[str]) -> str:
-        key = m.group(1)
-        if key not in context:
-            raise RenderError(f"template references unknown token '{{{{ {key} }}}}'")
-        return context[key]
+    def substitute_token(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if token not in context:
+            raise RenderError(f"template references unknown token '{{{{ {token} }}}}'")
+        return context[token]
 
-    return _TOKEN.sub(sub, text)
+    return _TOKEN.sub(substitute_token, text)
 
 
-# The always-emitted core: the repo's "green" check, the review router that classifies each
-# change, and the manual implementer entry point.
-CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl", "implementor.yml.tmpl"]
+# The always-emitted core: the repo's "green" check and the review router that classifies each
+# change. The implementer entry point is emitted separately, only when an implement stage exists
+# (otherwise implementor.yml would carry an empty model and reference a key the graph never needs).
+CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl"]
+IMPLEMENTOR_TEMPLATE = "implementor.yml.tmpl"
 # The codex review lane: request a re-review of each pushed head, and auto-resolve outdated
 # Codex threads. Emitted only when a codex-backed review/security stage is configured.
 REVIEW_TEMPLATES = ["request-review.yml.tmpl", "resolve-threads.yml.tmpl"]
@@ -447,6 +516,30 @@ def _wants_push_review(stage: dict[str, Any]) -> bool:
     return "pr_updated" in trig
 
 
+def _review_request_lines(stages: list[dict[str, Any]]) -> tuple[str, str]:
+    """The per-lane on-push re-review commands for request-review.yml: (code, security).
+
+    Each is the `post_codex '@codex …'` command when a codex-backed stage of that kind runs on
+    pushes, else a comment explaining the omission — so, e.g., the `minimal` profile (code review
+    only) never fires a paid security review it did not configure. request-review.yml is emitted
+    only when at least one such stage exists (select_templates), so at least one line is always
+    active.
+    """
+    def requests(stage_type: str) -> bool:
+        return any(
+            stage.get("type") == stage_type
+            and _stage_backend(stage) == BACKEND_CODEX
+            and _wants_push_review(stage)
+            for stage in stages
+        )
+
+    code = ("post_codex '@codex review'" if requests("review")
+            else "# no code-review stage configured; not requesting a Codex code review")
+    security = ("post_codex '@codex security review'" if requests("security")
+                else "# no security stage configured; not requesting a Codex security review")
+    return code, security
+
+
 def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     """Choose which workflow templates to emit for this config.
 
@@ -457,9 +550,15 @@ def select_templates(stages: list[dict[str, Any]]) -> list[str]:
     auto_merge config still renders its core pipeline without a half-decided security gate.)
     """
     names = list(CORE_TEMPLATES)
+    # The implementer workflow is emitted only when the graph actually has an implement stage;
+    # without one it would render with an empty model and a provider key the pipeline never uses.
+    if any(stage.get("type") == "implement" for stage in stages):
+        names.append(IMPLEMENTOR_TEMPLATE)
     if any(
-        s.get("type") in {"review", "security"} and _stage_backend(s) == "codex" and _wants_push_review(s)
-        for s in stages
+        stage.get("type") in REVIEW_LANE_TYPES
+        and _stage_backend(stage) == BACKEND_CODEX
+        and _wants_push_review(stage)
+        for stage in stages
     ):
         names += REVIEW_TEMPLATES
     return names
@@ -476,7 +575,7 @@ def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
         tpl = tpl_dir / name
         if not tpl.is_file():
             raise RenderError(f"selected template '{name}' not found in {tpl_dir}")
-        out[name[: -len(".tmpl")]] = render_template(tpl.read_text(), context)
+        out[name[: -len(".tmpl")]] = render_template(tpl.read_text(encoding="utf-8"), context)
     if not out:
         raise RenderError(f"no templates selected for platform '{platform}'")
     return out
@@ -486,15 +585,15 @@ def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Render the agentic-foundation pipeline.")
-    ap.add_argument("--config", default=".agentic/config.yml", type=Path)
-    ap.add_argument("--out", type=Path, help="output dir (e.g. .github/workflows)")
-    ap.add_argument("--print", action="store_true", help="print to stdout, write nothing")
-    ap.add_argument("--platform", default=None, help="override platform.type")
-    args = ap.parse_args(argv)
+    parser = argparse.ArgumentParser(description="Render the agentic-foundation pipeline.")
+    parser.add_argument("--config", default=".agentic/config.yml", type=Path)
+    parser.add_argument("--out", type=Path, help="output dir (e.g. .github/workflows)")
+    parser.add_argument("--print", action="store_true", help="print to stdout, write nothing")
+    parser.add_argument("--platform", default=None, help="override platform.type")
+    args = parser.parse_args(argv)
 
     try:
-        cfg = load_config(args.config)
+        cfg = load_config(confine_config_path(args.config))
         validate_config(cfg)
         platform = args.platform or (cfg.get("platform", {}) or {}).get("type", "github")
         rendered = render_all(cfg, platform)
@@ -510,7 +609,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
     for name, content in rendered.items():
-        (args.out / name).write_text(content)
+        (args.out / name).write_text(content, encoding="utf-8")
         print(f"wrote {args.out / name}")
     return 0
 

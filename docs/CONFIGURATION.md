@@ -28,7 +28,7 @@ defaults the workflows read; keep them unless you also update the rendered workf
 |---|---|---|---|---|
 | Claude model access | `ANTHROPIC_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: claude` | Never a personal key. Rotate independently. |
 | OpenAI/Codex model access | `OPENAI_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: openai` | Never a personal key. |
-| Codex comment-trigger / PR publication | `CODEX_REMEDIATION_TOKEN` | **Fine-grained PAT (real user)** | reviewer or dispatch uses Codex's `@codex` comment flow | Least scope: **Contents: R/W** + **Pull requests: R/W**. **No** admin/merge. Must be a real, attributable user — bot/App tokens do not reliably trigger `@codex`. |
+| Codex comment-trigger / PR publication | `REMEDIATION_TOKEN` | **Fine-grained PAT (real user)** | reviewer or dispatch uses Codex's `@codex` comment flow | Least scope: **Contents: R/W** + **Pull requests: R/W**. **No** admin/merge. Must be a real, attributable user — bot/App tokens do not reliably trigger `@codex`. |
 | SonarQube/SonarCloud token | `SONAR_TOKEN` | **Service account** | `modules.sonar: true` | Read/analysis scope for the project. |
 | Sonar host (SonarQube only) | `SONAR_HOST_URL` | Variable | `modules.sonar: true` on self-hosted | Omit for SonarCloud. |
 | GitHub API (statuses, PR reads) | `GITHUB_TOKEN` | Provided by Actions | always | No action needed; least-privilege per-workflow permissions are set in each workflow. |
@@ -37,7 +37,7 @@ defaults the workflows read; keep them unless you also update the rendered workf
 - **Model API keys** (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are machine credentials for paid model
   usage — use dedicated **service-account** keys so cost and access are isolated from any person and
   can be rotated without touching a human account.
-- **`CODEX_REMEDIATION_TOKEN`** must be a **real-user PAT** because Codex acts on `@codex` commands
+- **`REMEDIATION_TOKEN`** must be a **real-user PAT** because Codex acts on `@codex` commands
   only from an attributable user, and PR publication needs an attributable repository member. Grant
   it the minimum (Contents + Pull requests, R/W) — it needs no permission to merge or administer.
 
@@ -50,14 +50,23 @@ defaults the workflows read; keep them unless you also update the rendered workf
 
 ## 3. `.agentic/config.yml` — field reference
 
-Create `.agentic/config.yml` from the annotated template. The template ships inside the installed
-package, so download it rather than copying from the install:
+The easiest way to create `.agentic/config.yml` is **`stagr init`**, which writes a commented starter
+config for you — no hand-editing from a reference required:
+
+- `stagr init` — a short guided wizard (scope, platform, model/secrets, build checks, governance),
+  each prompt showing its options and default; press Enter to accept.
+- `stagr init --profile <minimal|standard|full|custom>` — generate the file non-interactively (for
+  CI or when you already know what you want). Add `--print` to preview, `--force` to overwrite.
+
+Every generated file validates and renders. See [CLI.md](CLI.md) for the full `init` reference and the
+**init → doctor → plan → apply** flow.
+
+Prefer to write it by hand? The annotated template ships inside the installed package; download it
+rather than copying from the install:
 [`agentic.config.yml.tmpl`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/templates/config/agentic.config.yml.tmpl)
-(e.g. `curl -o .agentic/config.yml <that URL>`), or start from the minimal example in section 5. It is
-validated against
+(e.g. `curl -o .agentic/config.yml <that URL>`), or start from the minimal example in section 5. Either
+way the file is validated against
 [`stagr/config.schema.json`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/config.schema.json).
-(A `stagr init` command that writes a starter config for you is on the roadmap — see
-[CHARTER.md](CHARTER.md) §7.)
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version`, a `profile`
 (default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub). A stage
@@ -82,7 +91,7 @@ defaults:
 ### `extends` (optional — config inheritance)
 | Field | Meaning |
 |---|---|
-| `extends` | A path/URI, or ordered list of them, to base configs merged **before** this file. Local values win. Layer an org base → team base → this repo. Maps deep-merge; scalars and arrays are replaced by the later (more specific) layer. |
+| `extends` | A path, or ordered list of paths, to base configs merged **before** this file. Local values win. Layer an org base → team base → this repo. Maps deep-merge; scalars and arrays are replaced by the later (more specific) layer. **Every base must live inside the repository checkout** (the project root): stagr operates on the current repo and treats config content as untrusted, so a base resolving outside the checkout (an absolute path, a `../` escape, or a symlink out) is **rejected at load time**. To share an org base, **vendor it into the repo** — commit it, add it as a submodule, or fetch it at checkout so it lands inside the tree — rather than pointing at a path outside the repo. (`uri:` remote bases are not fetched offline; vendor them locally.) |
 
 ### `profile`
 | Field | Meaning |
@@ -354,9 +363,21 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 > For a reproducible install, pin the URL to a commit SHA or release tag instead of `main`. See
 > [CLI.md](CLI.md) for full options.
 
-1. Add `.agentic/config.yml`. Start with a `profile`, a `platform`, and a model binding for any
-   model-consuming stage; add `stages` only for finer control. (A drafting skill that proposes this
-   for you is roadmap — M4.)
+> **Prerequisite — the Codex GitHub App (only for the `codex` backend).** A stage using the
+> **`codex`** backend (the default reviewer) requires the **Codex GitHub App** to be installed on the
+> repo/org and configured to review pull requests — that app is what performs the review on PR open
+> and acts on the `@codex` comments the rendered `request-review.yml` posts on each push. Without it,
+> a PR can open with no review despite a `pr_opened` trigger in the config, so install/enable it
+> **before** relying on the pipeline and confirm on a test PR that the review runs. Other backends do
+> **not** need a GitHub App: the `claude-code-action` implementer runs the pinned action from
+> `workflow_dispatch` and authenticates directly with the `ANTHROPIC_API_KEY` secret (`doctor` lists
+> the exact secret NAMES your config needs).
+
+1. Add `.agentic/config.yml`. The quickest way is `stagr init` (guided wizard) or
+   `stagr init --profile <minimal|standard|full|custom>` (non-interactive), which writes a commented,
+   valid starter for you; or write it by hand starting from a `profile`, a `platform`, and a model
+   binding for any model-consuming stage, adding `stages` only for finer control. (An AI drafting
+   *skill* that proposes a tailored config is a separate, roadmap item — M4.)
 2. Run `stagr doctor` — it validates the config and lists the exact secret NAMES to create.
 3. Create those secrets in your CI/SCM secret store (section 2), then run `stagr plan` to preview and
    `stagr apply` to render the pipeline for your `platform` into `.github/workflows/`.
@@ -376,7 +397,7 @@ A preset only pre-fills `build.commands`. Example shapes (set your real commands
 
 | Symptom | Likely cause |
 |---|---|
-| Reviewer never runs on Codex | `CODEX_REMEDIATION_TOKEN` missing or not a real-user PAT. |
+| Reviewer never runs on Codex | `REMEDIATION_TOKEN` missing or not a real-user PAT. |
 | Endpoints/agents fail auth | Model API key secret missing or wrong name. |
 | Fast path never triggers | Change exceeds `routing.fast_path` size, or path is in `exclude`. |
 | Wrong model tier chosen | Review `tiering.thresholds`; deterministic tiering keys off files/lines/paths only. |

@@ -60,8 +60,31 @@ From the root of the repository you want to add the pipeline to (the folder hold
 hold — `.agentic/config.yml`):
 
 ```bash
-stagr <doctor|plan|apply> [--config .agentic/config.yml] [--platform github]
+stagr <init|doctor|plan|apply> [options]
 ```
+
+The usual order is **init → doctor → plan → apply**.
+
+### `stagr init`
+
+Create a starter `.agentic/config.yml` so you never hand-write YAML from scratch. Two ways:
+
+- **Guided (default):** `stagr init` runs a short wizard — grouped questions (platform, model, build
+  checks, governance), each showing the **available options and the default**; press **Enter** to
+  accept a default and complete onboarding without looking anything up.
+- **Generate from a profile:** `stagr init --profile <minimal|standard|full|custom>` writes a
+  **commented** config directly (no prompts) — every section explains its purpose, default, and use.
+  This is also the non-interactive / CI path.
+
+```bash
+stagr init                      # guided wizard
+stagr init --profile standard   # generate a commented standard config
+stagr init --profile minimal --print   # preview to stdout, write nothing
+```
+
+Profiles size the file: **minimal** (implement + review), **standard** (+ security review),
+**full** (+ the roadmap stages, commented), **custom** (a skeleton you fill in). It is
+non-destructive — it won't overwrite an existing config without `--force`.
 
 ### `stagr doctor`
 
@@ -111,6 +134,15 @@ target that this config does not render is kept and reported. Pass `--prune` to 
 ```bash
 stagr apply                # write/update the rendered pipeline
 stagr apply --prune        # also remove workflows this config no longer renders
+```
+
+### `stagr help`
+
+Discover commands without leaving the terminal:
+
+```bash
+stagr help          # list every command with its purpose
+stagr help init     # detail for one command (also: `stagr init help`)
 ```
 
 ## Safety model

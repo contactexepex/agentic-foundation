@@ -434,7 +434,7 @@ jobs:
         if: steps.commit.outputs.sha != ''
         working-directory: publisher
         env:
-          PUSH_TOKEN: ${{ secrets.CODEX_REMEDIATION_TOKEN }}
+          PUSH_TOKEN: ${{ secrets.REMEDIATION_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -449,7 +449,7 @@ jobs:
       - name: Create or validate PR
         if: needs.plan.outputs.mode == 'recover_pr' || steps.commit.outputs.sha != ''
         env:
-          GH_TOKEN: ${{ secrets.CODEX_REMEDIATION_TOKEN }}
+          GH_TOKEN: ${{ secrets.REMEDIATION_TOKEN }}
           ISSUE_COMMENT_TOKEN: ${{ github.token }}
           PUBLISHED_SHA: ${{ steps.commit.outputs.sha || needs.plan.outputs.head_sha }}
         shell: bash

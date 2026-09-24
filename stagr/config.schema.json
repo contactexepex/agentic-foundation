@@ -10,7 +10,7 @@
     "version": { "const": 2 },
 
     "extends": {
-      "description": "Base config(s) to inherit from, merged before this file (local values win). Layer an org base -> team base -> repo. A string or an ordered list; each item is a path or URI the installer can read.",
+      "description": "Base config(s) to inherit from, merged before this file (local values win). Layer an org base -> team base -> repo. A string or an ordered list of paths. Every base must resolve INSIDE the repository checkout (the project root) - vendor a shared org base into the repo (commit it, or fetch it at checkout) rather than pointing at an absolute or `../` path outside it; an out-of-repo base is rejected at load time. (`uri:` remote bases are not fetched offline.)",
       "oneOf": [
         { "type": "string", "minLength": 1 },
         { "type": "array", "items": { "type": "string", "minLength": 1 } }
