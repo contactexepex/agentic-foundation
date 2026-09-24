@@ -2,13 +2,15 @@ name: Request Codex review on push
 
 # Rendered by the stagr CLI (from stagr/templates/workflows/github/). Do not edit by hand;
 # edit the template and re-render. Emitted only when the pipeline has a codex-backed
-# review or security stage (the app-driven reviewer). It keeps Codex's review bound to
-# the CURRENT head of a substantive PR.
+# review stage (the app-driven reviewer). It keeps Codex's CODE review bound to the CURRENT
+# head of a substantive PR, so the review iterates as the PR is updated.
 #
-# Codex re-reviews a PR on open / ready-for-review / an "@codex review" (code) or
-# "@codex security review" (security) comment — but NOT on a plain push. The foundation
-# auto-merge gate requires a Codex review of the current head, so after every push to an
-# open, non-draft, substantive PR this workflow asks Codex to re-review that new head.
+# Codex re-reviews a PR on open / ready-for-review / an "@codex review" comment — but NOT on
+# a plain push. The foundation auto-merge gate requires a Codex code review of the current
+# head, so after every push to an open, non-draft, substantive PR this workflow asks Codex to
+# re-review that new head. It requests the CODE review only; the SECURITY review runs once, as
+# the final pre-merge step, from final-security-review.yml — the two never run concurrently
+# (Codex errors on a concurrent pair).
 #
 # It runs as pull_request_target so the trusted workflow definition comes from the base
 # branch, and it performs only GitHub API work (reads the PR + the router status, posts one
@@ -111,11 +113,9 @@ jobs:
             exit 0
           fi
 
-          # Ask Codex to re-review the new head. Which reviews are requested depends on the
-          # configured stages: a code-review request only when a codex code-review stage runs on
-          # pushes, a security-review request only when a codex security stage does (so a pipeline
-          # that omits one lane never triggers its paid review). Codex acts on only one "@codex"
-          # command per comment, so each request is a separate comment.
+          # Ask Codex to re-review the new head — CODE review only. The security review runs once, as
+          # the final pre-merge step, from final-security-review.yml — never alongside the code review
+          # (Codex's cloud backend errors when two reviews run concurrently on one PR).
           post_codex() {
             local command="$1"
             {
@@ -128,6 +128,5 @@ jobs:
             } > "$RUNNER_TEMP/comment.md"
             GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           }
-          {{ code_review_request }}
-          {{ security_review_request }}
-          echo "Requested Codex re-review for ${EVENT_HEAD_SHA} on PR #${PR_NUMBER}."
+          post_codex '@codex review'
+          echo "Requested Codex code re-review for ${EVENT_HEAD_SHA} on PR #${PR_NUMBER}."

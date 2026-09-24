@@ -372,10 +372,13 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 
 > **Prerequisite — the Codex GitHub App (only for `openai` review/security stages).** A stage with
 > `provider: openai` (the reviewer, which runs **Codex**) requires the **Codex GitHub App** to be
-> installed on the repo/org and configured to review pull requests — that app is what performs the
-> review on PR open and acts on the `@codex` comments the rendered `request-review.yml` posts on each
-> push. Without it, a PR can open with no review despite a `pr_opened` trigger in the config, so
-> install/enable it **before** relying on the pipeline and confirm on a test PR that the review runs.
+> installed on the repo/org and configured to review pull requests — that app performs the review and
+> acts on the `@codex` comments the rendered workflows post. The two reviews run in sequence, never
+> concurrently: `request-review.yml` re-requests the **code** review on each push (so it iterates as
+> the PR changes), and once the code review has converged (completed + clean on the head)
+> `final-security-review.yml` requests a **single security** review as the last step before merge.
+> Without the app installed a PR can open with no review, so install/enable it **before** relying on
+> the pipeline and confirm on a test PR that the reviews run.
 > The `anthropic` implementer needs no GitHub App: it runs the pinned Claude Code action from
 > `workflow_dispatch` and authenticates directly with the `ANTHROPIC_API_KEY` secret (`doctor` lists
 > the exact secret NAMES your config needs).

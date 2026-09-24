@@ -265,11 +265,12 @@ jobs:
             # OR security — is posted as a review thread, so any real issue leaves an unresolved thread
             # and blocks the merge.
             #
-            # The gate deliberately does NOT parse Codex's `codex-security-review` marker. Codex runs
-            # the security review only on open/ready (not on push), it does not always post the marker,
-            # and matching a marker to the current head races the review that a ready event triggers —
-            # so the marker is an unreliable gate signal. The security review still runs and its
-            # findings still block as threads; we simply do not require its completion marker.
+            # The security review is the FINAL pre-merge gate. request-final-security-review.yml
+            # requests exactly one Codex security review once the code review has converged, and it is
+            # the SOLE trigger of that review — so the "Security Review = Completed" row in Codex's
+            # summary is a reliable, head-bound signal (no open/ready race). The gate REQUIRES that row
+            # for the current head (below), so a PR merges only after a head-bound security review has
+            # completed. Any finding — code or security — is also an unresolved thread, blocked above.
             #
             # Codex's CODE review must have completed for the current head. Codex posts a formal
             # review OBJECT only when it has suggestions; a CLEAN review posts no review object and
@@ -321,6 +322,29 @@ jobs:
             fi
 
             [[ "$codex_head_reviewed" == true ]] || { skip "$pr" "no completed Codex code review for current head $head_sha (no head-matching review object or summary row)"; echo '::endgroup::'; return 0; }
+
+            # --- Final security review must have completed for the current head ---
+            # request-final-security-review.yml requests one security review once the code review is
+            # clean, so this becomes true shortly after; until then the gate waits (retried each event
+            # / scheduled sweep). Detect it from the summary comment's Security Review row = "Completed"
+            # with a commit that is a prefix of the current head. Fetch the summary if the code-review
+            # path above did not already (it only reads it on its fallback branch).
+            local sec_row sec_row_sha sec_head_reviewed=false
+            if [[ -z "${summary_body:-}" ]]; then
+              local sec_pr_comments
+              sec_pr_comments="$(gh api --paginate "repos/$REPO/issues/$pr/comments?per_page=100" --slurp \
+                | jq 'add // []')" || { skip "$pr" "cannot read PR comments for Codex security-review summary"; echo '::endgroup::'; return 0; }
+              summary_body="$(jq -r --arg bot "$CODEX_BOT_LOGIN" \
+                '[ .[] | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$sec_pr_comments")"
+            fi
+            sec_row="$(grep -i 'Security Review' <<<"$summary_body" | head -1 || true)"
+            if grep -qi 'Completed' <<<"$sec_row"; then
+              sec_row_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$sec_row" | head -1 | tr -d '`' || true)"
+              if [[ -n "$sec_row_sha" && "$head_sha" == "$sec_row_sha"* ]]; then
+                sec_head_reviewed=true
+              fi
+            fi
+            [[ "$sec_head_reviewed" == true ]] || { skip "$pr" "no completed Codex security review for current head $head_sha (final pre-merge security review pending)"; echo '::endgroup::'; return 0; }
 
             # SonarCloud gate — applies to BOTH lanes (fast-path and substantive), so a fast-path PR
             # cannot bypass a present-but-failing Sonar analysis. SonarCloud is the security-analysis

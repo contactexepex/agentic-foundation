@@ -531,8 +531,6 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
     fast_path_enabled = routing.get("enabled", True)
     fast_path_globs = list(routing.get("globs", ["**/*.md"])) if fast_path_enabled else []
 
-    code_review_request, security_review_request = _review_request_lines(list(stages.values()))
-
     return {
         "default_branch": default_branch,
         "human_merge_label": labels.get("human_merge", "human-merge"),
@@ -548,8 +546,6 @@ def build_context(cfg: dict[str, Any]) -> dict[str, str]:
         "build_steps": _build_steps(cfg),
         "review_status_context": "Publish fast review result",
         "codex_review_secret": codex_review_secret,
-        "code_review_request": code_review_request,
-        "security_review_request": security_review_request,
     }
 
 
@@ -571,9 +567,15 @@ def render_template(text: str, context: dict[str, str]) -> str:
 # (otherwise implementor.yml would carry an empty model and reference a key the graph never needs).
 CORE_TEMPLATES = ["validate.yml.tmpl", "review-router.yml.tmpl"]
 IMPLEMENTOR_TEMPLATE = "implementor.yml.tmpl"
-# The codex review lane: request a re-review of each pushed head, and auto-resolve outdated
-# Codex threads. Emitted only when a codex-backed review/security stage is configured.
-REVIEW_TEMPLATES = ["request-review.yml.tmpl", "resolve-threads.yml.tmpl"]
+# The codex code-review lane: re-request a code review of each pushed head, so review iterates as the
+# PR is updated. Emitted when a codex-backed review stage runs on pushed heads.
+CODE_REVIEW_TEMPLATE = "request-review.yml.tmpl"
+# The codex security-review lane: request ONE security review as the final pre-merge step, once the
+# code review has converged — never concurrent with the code review (Codex errors on a concurrent
+# pair). Emitted when a codex-backed security stage runs on pushed heads.
+SECURITY_REVIEW_TEMPLATE = "final-security-review.yml.tmpl"
+# Auto-resolve outdated Codex threads. Emitted whenever any codex review/security lane runs.
+RESOLVE_THREADS_TEMPLATE = "resolve-threads.yml.tmpl"
 
 
 def _wants_push_review(stage: dict[str, Any]) -> bool:
@@ -590,44 +592,34 @@ def _wants_push_review(stage: dict[str, Any]) -> bool:
     return "pr_updated" in trig
 
 
-def _review_request_lines(stages: list[dict[str, Any]]) -> tuple[str, str]:
-    """The per-lane on-push re-review commands for request-review.yml: (code, security).
-
-    Each is the `post_codex '@codex …'` command when a codex-backed stage of that kind runs on
-    pushes, else a comment explaining the omission — so, e.g., the `minimal` profile (code review
-    only) never fires a paid security review it did not configure. request-review.yml is emitted
-    only when at least one such stage exists (select_templates), so at least one line is always
-    active.
-    """
-    def requests(stage_type: str) -> bool:
-        return any(
-            stage.get("type") == stage_type
-            and _stage_backend(stage) == BACKEND_CODEX
-            and _wants_push_review(stage)
-            for stage in stages
-        )
-
-    code = ("post_codex '@codex review'" if requests("review")
-            else "# no code-review stage configured; not requesting a Codex code review")
-    security = ("post_codex '@codex security review'" if requests("security")
-                else "# no security stage configured; not requesting a Codex security review")
-    return code, security
-
-
 def _has_implement_stage(stages: list[dict[str, Any]]) -> bool:
     # The implementer workflow is emitted only when the graph actually has an implement stage;
     # without one it would render with an empty model and a provider key the pipeline never uses.
     return any(stage.get("type") == "implement" for stage in stages)
 
 
-def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
-    # The codex review lane renders only when a codex review/security stage runs on pushed heads.
+def _has_codex_stage_of(stages: list[dict[str, Any]], stage_type: str) -> bool:
     return any(
-        stage.get("type") in REVIEW_LANE_TYPES
+        stage.get("type") == stage_type
         and _stage_backend(stage) == BACKEND_CODEX
         and _wants_push_review(stage)
         for stage in stages
     )
+
+
+def _has_codex_code_review(stages: list[dict[str, Any]]) -> bool:
+    # request-review.yml renders when a codex CODE review stage runs on pushed heads.
+    return _has_codex_stage_of(stages, "review")
+
+
+def _has_codex_security_review(stages: list[dict[str, Any]]) -> bool:
+    # final-security-review.yml renders when a codex SECURITY stage runs on pushed heads.
+    return _has_codex_stage_of(stages, "security")
+
+
+def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
+    # resolve-threads.yml renders whenever any codex review/security lane runs.
+    return _has_codex_code_review(stages) or _has_codex_security_review(stages)
 
 
 @dataclass(frozen=True)
@@ -649,7 +641,9 @@ class Lane:
 LANES: tuple[Lane, ...] = (
     Lane("core", lambda stages: True, tuple(CORE_TEMPLATES)),
     Lane("implementor", _has_implement_stage, (IMPLEMENTOR_TEMPLATE,)),
-    Lane("codex-review", _has_codex_push_review, tuple(REVIEW_TEMPLATES)),
+    Lane("codex-code-review", _has_codex_code_review, (CODE_REVIEW_TEMPLATE,)),
+    Lane("codex-security-review", _has_codex_security_review, (SECURITY_REVIEW_TEMPLATE,)),
+    Lane("codex-threads", _has_codex_push_review, (RESOLVE_THREADS_TEMPLATE,)),
 )
 
 

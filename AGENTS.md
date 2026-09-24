@@ -63,11 +63,12 @@ clarification, treat the answer as evidence and re-run the affected validation.
 - **Every PR is sent to Codex for code + security review — no exceptions.** The fast-path lane is
   disabled for this repository (`.agentic/config.yml` → `routing.fast_path.enabled: false`), so every
   change, documentation included, is routed to Codex. This is a shared toolkit whose docs other people
-  rely on, so nothing merges without review. The merge gate requires a head-bound Codex *code* review
-  and zero unresolved review threads; it does **not** wait for security-review completion, so a
-  security finding blocks only via a review thread present at merge time. (Gating on a head-bound
-  security-review completion signal is roadmap — see `docs/CHARTER.md` §7.) Self-review never
-  substitutes for a required review.
+  rely on, so nothing merges without review. Code review and security review run in sequence, never
+  concurrently: the code review iterates per push (`request-codex-review-on-push.yml`), and once it has
+  converged (completed + clean on the head) a single security review runs as the final pre-merge step
+  (`request-final-security-review.yml`). The merge gate requires a head-bound Codex *code* review AND a
+  head-bound *security* review to have completed, plus zero unresolved review threads; a finding — code
+  or security — blocks via its thread. Self-review never substitutes for a required review.
 - Keep changes scoped to the requested task; read existing code before replacing it.
 - Do not overwrite unrelated human changes; do not force-push over concurrent work.
 - Do not merge a PR while mandatory CI, tests, or security checks are red or pending.
@@ -86,12 +87,15 @@ needing human judgment stays human-gated.
   which is fail-closed: the PR must be open, non-draft, same-repo (no forks), target the default
   branch, come from a trusted author, carry no `human-merge` label, have no merge conflict, have
   every commit status and check-run green (including the `Publish fast review result` router status),
-  have zero unresolved review threads and no reviewer requesting changes, and carry a Codex code
-  review of the current head. The fast-path lane is disabled in this repository (see Git rules above),
-  so the gate requires that head-bound Codex code review for **every** PR — it never waives it on a
-  router-status description, which any `statuses: write` actor could forge. Every Codex finding (code
-  or security) posts as a review thread, so it is caught by the zero-unresolved-threads requirement.
-  Any missing or unknown signal skips the merge; it is retried on the next event or scheduled sweep.
+  have zero unresolved review threads and no reviewer requesting changes, and carry a head-bound Codex
+  **code** review *and* a head-bound Codex **security** review that have completed for the current head.
+  Code and security review run in sequence, never concurrently: the code review iterates per push, then
+  the single security review runs as the final step once the code review has converged
+  (`request-final-security-review.yml`). The fast-path lane is disabled in this repository (see Git
+  rules above), so the gate requires both head-bound reviews for **every** PR — it never waives them on
+  a router-status description, which any `statuses: write` actor could forge. Every Codex finding (code
+  or security) also posts as a review thread, caught by the zero-unresolved-threads requirement. Any
+  missing or unknown signal skips the merge; it is retried on the next event or scheduled sweep.
 - **Human-gated lane.** Any PR that needs human judgment carries the `human-merge` label, which the
   foundation gate treats as a hard stop. When in doubt, apply `human-merge`.
 
