@@ -96,8 +96,11 @@ assume a language.
 
 - **core** (always): renders the enabled stage graph + deterministic routing/tiering + review-thread
   hygiene. Humans merge.
-- **+auto_merge** (opt-in, off by default): the fail-closed foundation auto-merge gate.
-- **+sonar** (opt-in): SonarQube/SonarCloud quality gate as a required check.
+- **+auto_merge** (opt-in, off by default): the fail-closed auto-merge gate (`auto-merge.yml`) that
+  merges a provably-ready PR; a `human-merge` label pauses any PR for a human.
+- **external quality/security gates** (Sonar, Checkmarx, …): wired tool-agnostically via
+  `merge.required_status_checks` — stagr requires the tool's check by name, it never runs the tool. See
+  [docs/CONFIGURATION.md](docs/CONFIGURATION.md). (`modules.sonar` is reserved and not rendered.)
 
 ## Quickstart
 
@@ -131,10 +134,11 @@ assume a language.
 5. Commit and merge the rendered workflows.
 
 > **What renders today:** the core lane — the `Validate` check, the review router, the Claude
-> implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
-> lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`,
-> and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) — these are declared
-> and validated but do not yet emit workflows; that rendering is on the roadmap
+> implementer, (when a Codex review/security stage is configured) the Codex review + thread-cleanup
+> lane, and (when `modules.auto_merge` is on) the fail-closed `auto-merge.yml` gate. **Not yet
+> rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
+> reviewers) and the `modules.sonar` toggle (superseded by `merge.required_status_checks`) — these are
+> declared and validated but do not yet emit workflows; that rendering is on the roadmap
 > ([docs/CHARTER.md](docs/CHARTER.md) §7). `stagr plan` always shows the exact set of files that will
 > be written, so review it before committing.
 

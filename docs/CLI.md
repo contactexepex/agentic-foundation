@@ -137,10 +137,11 @@ files whose content changed are written. By default it never deletes: a workflow
 target that this config does not render is kept and reported. Pass `--prune` to remove such orphans.
 
 > **What renders today:** the core lane — the `Validate` check, the review router, the Claude
-> implementer, and (when a Codex review/security stage is configured) the Codex review + thread-cleanup
-> lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`,
-> and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) — declared and
-> validated but they do not yet emit workflows; multi-stage rendering is roadmap
+> implementer, (when a Codex review/security stage is configured) the Codex review + thread-cleanup
+> lane, and (when `modules.auto_merge` is on) the fail-closed `auto-merge.yml` gate. **Not yet
+> rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
+> reviewers) and the `modules.sonar` toggle (superseded by `merge.required_status_checks`) — declared
+> and validated but they do not yet emit workflows; multi-stage rendering is roadmap
 > ([CHARTER.md](CHARTER.md) §7). Run `plan` first: it lists the exact files `apply` will write, so a
 > declared stage or module that does not yet render is visible before you commit.
 

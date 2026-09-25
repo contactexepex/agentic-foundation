@@ -12,7 +12,12 @@ credentials must be a **service account** vs a **personal access token (PAT)**, 
   follow) that you can add pipelines and secrets to.
 - Provider access for each provider your stages use (e.g. Claude, OpenAI, Gemini, or a self-hosted
   gateway).
-- Optional: a SonarQube/SonarCloud project (only if you enable the `sonar` module).
+- Optional: an external code-quality/security tool (SonarCloud, SonarQube, Checkmarx, …) if you want
+  its check required before auto-merge. Install the tool's **GitHub App** so it publishes its own
+  check-run on the PR, then list that check's `name` and the App's numeric `app_id` in
+  `merge.required_status_checks`; stagr never runs the tool. (A scan you instead run inside your build is
+  covered by the `Validate` check — do **not** list it, since the gate requires a check-run from that
+  specific App id, not a `github-actions` run.)
 
 The toolkit never creates credentials. The installer only **checks** that the required secrets exist
 and fails loudly if one is missing.
@@ -29,9 +34,15 @@ defaults the workflows read; keep them unless you also update the rendered workf
 | Claude model access | `ANTHROPIC_API_KEY` | **Service account** (dedicated API key) | any role uses `provider: anthropic` | Never a personal key. Rotate independently. |
 | OpenAI model access (roadmap) | `OPENAI_API_KEY` | **Service account** (dedicated API key) | **Not required today** — `openai` runs Codex, which is app-backed and supplies its own model. Reserved for a future model-consuming OpenAI backend. | Never a personal key. |
 | Codex comment-trigger / PR publication | `REMEDIATION_TOKEN` | **Fine-grained PAT (real user)** | reviewer or dispatch uses Codex's `@codex` comment flow | Least scope: **Contents: R/W** + **Pull requests: R/W**. **No** admin/merge. Must be a real, attributable user — bot/App tokens do not reliably trigger `@codex`. |
-| SonarQube/SonarCloud token | `SONAR_TOKEN` | **Service account** | `modules.sonar: true` | Read/analysis scope for the project. |
-| Sonar host (SonarQube only) | `SONAR_HOST_URL` | Variable | `modules.sonar: true` on self-hosted | Omit for SonarCloud. |
 | GitHub API (statuses, PR reads) | `GITHUB_TOKEN` | Provided by Actions | always | No action needed; least-privilege per-workflow permissions are set in each workflow. |
+
+> **External quality/security tools (SonarCloud, Checkmarx, …) are configured outside stagr.** stagr
+> does not run them and needs no `SONAR_TOKEN`/etc. of its own. Install the tool's **GitHub App** (org
+> level) so it publishes its own **check-run** on the PR, and list that check's `name` + `app_id` in
+> `merge.required_status_checks` so the auto-merge gate requires it. The gate matches by exact name **and**
+> that App id — so a scan run as a step in your `build.commands` is **not** listed here; it is covered by
+> the `Validate` check
+> instead. Any credentials the tool needs live in that tool's own setup, not in stagr's contract.
 
 **Why the split (PAT vs service account):**
 - **Model API keys** (today `ANTHROPIC_API_KEY`; `OPENAI_API_KEY` is roadmap — Codex supplies its own
@@ -217,14 +228,60 @@ documentation other people depend on. This repository does exactly that.
 ### `modules`
 | Field | Meaning |
 |---|---|
-| `auto_merge` | `true` requests the fail-closed foundation auto-merge gate. Default `false`. |
-| `sonar` | `true` requests SonarQube/SonarCloud as a required check. Default `false`. |
+| `auto_merge` | `true` renders the fail-closed auto-merge gate (`auto-merge.yml`). Default `false` — the unconfigured default is human-merge. |
+| `sonar` | Reserved boolean; **not rendered** (a code-quality tool is wired tool-agnostically via `merge.required_status_checks` instead — see below). Default `false`. |
 
-> **Not yet rendered.** `apply` does not emit a workflow for either module today — the renderer
-> installs only the core lane (see §5, "What renders today"). Enable them in the contract to declare
-> intent, but the gates themselves are roadmap ([CHARTER.md](CHARTER.md) §7). This repository's own
-> auto-merge/Sonar wiring lives in hand-written `.github/workflows/`, which is the reference the
-> renderer will follow.
+When `auto_merge` is on, a PR auto-merges once it is **provably ready**. A per-PR `human-merge` label
+(`labels.human_merge`) is the hard stop that pauses that one PR for a human, and a PR that changes the
+**control plane** (`merge.protected_paths` — CI/gate workflows, toolkit config) is likewise left for a
+human. The gate requires green CI (the `Validate` check — authenticated as the trusted `validate.yml`
+run for the exact head — plus every check-run/status), a head-bound Codex **code** review and — when a
+Codex security stage is configured — a head-bound Codex **security** review, zero unresolved review
+threads, no reviewer requesting changes, a trusted same-repo non-draft head on the default branch, and
+every `merge.required_status_checks` check green. It is fail-closed: any missing/unknown signal or API
+error skips the merge, retried on the next event or the scheduled sweep. It never checks out or runs PR
+content (it runs on `pull_request_target` with API reads only).
+
+**Merge model and the residual race.** The gate evaluates every predicate, then **re-evaluates them a
+second time against freshly-fetched state immediately before merging**, and pins the merge to the
+evaluated head SHA — so a PR whose head moved, whose checks went red, or that gained a label/change-request
+between the two reads is not merged. GitHub's API is not transactional, so this **narrows but cannot fully
+eliminate** the last-read→merge window; it is honest best-effort, not an atomic guarantee. Making these
+checks **required in branch protection** is the only server-atomic closure, and also the only way to
+authenticate the *content* of `validate.yml` against substitution — the control-plane guard is what covers
+that within the gate's own authority. See `AGENTS.md`.
+
+### `merge` (optional — auto-merge-gate policy)
+| Field | Meaning |
+|---|---|
+| `required_status_checks` | External check-runs that must be present and green on the head before auto-merge, as `{name, app_id}` entries — the exact check-run **name** and the **immutable numeric GitHub App id** that must produce it, e.g. `[{name: "SonarCloud Code Analysis", app_id: 12345}]`. Identity is positive (name **and** `app.id`): a same-name check from any other App does not count. Its **latest** attempt (by check-run id) must be a clean success — a later cancelled/failed rerun is not superseded by an older green. Default `[]` (none). |
+| `protected_paths` | Globs whose modification forces human review: a PR changing any matching file is never auto-merged (same effect as the `human-merge` label). These are the security-sensitive control plane — CI/gate workflow definitions and toolkit config/contract — whose changes need human judgement and whose *content* the gate cannot authenticate. Default `[".github/workflows/**", ".agentic/**"]`; set to `[]` only if you accept auto-merging changes to your own gate. |
+| `method` | The merge method the gate uses: `squash` (default), `merge`, or `rebase`. The target repository must have that method enabled, or GitHub rejects every merge. |
+
+> The auto-merge gate requires a Codex review only for a **blocking** review/security stage (an
+> `advisory` stage stays comment-only). Because a blocking Codex review must cover pushed heads, enabling
+> `auto_merge` with a blocking Codex `review` stage requires that stage to include the `pr_updated`
+> trigger **and** `routing.fast_path.enabled: false` — otherwise a fast-path-approved or open-only head
+> would have no head-bound review and could never merge. `stagr doctor`/`plan` fail loud on these
+> incompatible combinations rather than emitting a gate that silently deadlocks.
+
+**How stagr handles external code-quality/security tools (Sonar, Checkmarx, …).** stagr is a control
+plane: it configures the *gate*, not the tool. Install the tool's **GitHub App** (org-level) so it
+publishes its own **check-run** on the PR, then list that check's `name` **and** the App's numeric
+`app_id` here. stagr never provisions or runs the tool; it simply **requires that check**. Identity is
+**positive** — the check-run must match the exact name *and* be produced by that App id — so a same-name
+check from any other App (including the repo's own `github-actions` jobs) cannot satisfy or forge it. (An
+earlier draft accepted "any App that is not `github-actions`"; that negative rule is gone — a display name
+is not an identity.) Find an App's id via the GitHub API (e.g. `GET /users/{app-slug}[bot]` → `id`, or the
+App's settings). This is tool-agnostic by construction: list whatever check names/App ids your tools
+publish. A scan you run inside your build (`build.commands`) is part of the `Validate` check instead and
+must **not** be listed here. Only meaningful when `modules.auto_merge` is on.
+
+> **`build.commands` are trusted operator shell.** They are emitted verbatim into the `Validate`
+> workflow's `run:` block, so a GitHub expression such as `${{ secrets.NPM_TOKEN }}` is **allowed** there
+> (for authenticated installs) — unlike labels, check names, globs, branches and secret names, which are
+> workflow *literals* and reject `${{ … }}` and other breakout characters. The renderer never injects any
+> untrusted PR field (title, body, branch, author) into build commands.
 
 ### `budgets` (optional — cost / token caps)
 | Field | Meaning |
@@ -401,9 +458,10 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 4. Commit and merge the rendered workflows.
 
 > **What renders today:** `apply` emits the core lane — the `Validate` check, the review router, the
-> Claude implementer, and (when a Codex review/security stage is configured) the Codex review +
-> thread-cleanup lane. **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`,
-> `docs`, `release`, and non-Codex reviewers) **and the `modules` toggles** (`auto_merge`, `sonar`) —
+> Claude implementer, (when a Codex review/security stage is configured) the Codex review +
+> thread-cleanup lane, and (when `modules.auto_merge` is on) the fail-closed `auto-merge.yml` gate.
+> **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and
+> non-Codex reviewers) and the `modules.sonar` toggle (superseded by `merge.required_status_checks`) —
 > they are declared and validated but do not yet emit workflows; that rendering is on the roadmap (see
 > [CHARTER.md](CHARTER.md) §7). Always read `stagr plan` output — it lists the exact files that will be
 > written — so a declared stage or module that does not yet render is visible before you commit.
