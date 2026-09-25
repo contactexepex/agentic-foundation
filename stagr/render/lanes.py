@@ -35,6 +35,14 @@ CODE_REVIEW_TEMPLATE = "request-review.yml.tmpl"
 SECURITY_REVIEW_TEMPLATE = "final-security-review.yml.tmpl"
 # Auto-resolve outdated Codex threads. Emitted whenever any codex review/security lane runs.
 RESOLVE_THREADS_TEMPLATE = "resolve-threads.yml.tmpl"
+# The review-complete gate check: publishes a `review-complete` check-run that is SUCCESS only when the
+# head has a confirmed approval — a trusted human's APPROVED review on the head, OR the Codex code
+# review [+ security review, when configured] completed clean for the head — with no unresolved threads
+# or requested changes. GitHub's merge button is governed by branch protection, and its native approval
+# rule cannot be satisfied by Codex (which only COMMENTs); marking this check required lets the button
+# gate on "human OR Codex". Emitted with the codex code-review lane (so the Codex path exists); it is
+# independent of `modules.auto_merge` (human-merge repos want the button gated too).
+REVIEW_COMPLETE_TEMPLATE = "review-complete.yml.tmpl"
 # The fail-closed auto-merge gate: merges a provably-ready PR (green CI + head-bound Codex review/
 # security when configured + clean review + operator-named external checks; `human-merge` label is a
 # hard stop). Emitted when `modules.auto_merge` is enabled — a MODULE toggle, not a stage, so its
@@ -278,6 +286,7 @@ LANES: tuple[Lane, ...] = (
     Lane("codex-code-review", lambda stages, cfg: _has_codex_code_review(stages), (CODE_REVIEW_TEMPLATE,)),
     Lane("codex-security-review", lambda stages, cfg: _has_codex_security_review(stages), (SECURITY_REVIEW_TEMPLATE,)),
     Lane("codex-threads", lambda stages, cfg: _has_codex_push_review(stages), (RESOLVE_THREADS_TEMPLATE,)),
+    Lane("review-complete", lambda stages, cfg: _has_codex_code_review(stages), (REVIEW_COMPLETE_TEMPLATE,)),
     Lane("auto-merge", lambda stages, cfg: _auto_merge_enabled(cfg), (AUTO_MERGE_TEMPLATE,)),
 )
 

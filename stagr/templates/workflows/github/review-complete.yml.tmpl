@@ -1,0 +1,229 @@
+name: Publish the review-complete gate check
+
+# Rendered by the stagr CLI (from stagr/templates/workflows/github/). Do not edit by hand; edit the
+# template and re-render. Emitted whenever a codex-backed code-review stage runs on pushed heads.
+#
+# WHAT IT IS FOR — GitHub's merge button is governed only by BRANCH PROTECTION, not by any workflow.
+# GitHub's native "require N approving reviews" counts only formal APPROVE reviews, and the Codex App
+# only ever posts COMMENTED reviews (never APPROVE) — so a native approval rule can be satisfied only by
+# a human, never by Codex. This workflow bridges that gap: it publishes a single check-run named
+# `review-complete`, SUCCESS only when the current head has a confirmed approval, so branch protection
+# can require `review-complete` and the merge button stays disabled until either a human OR Codex has
+# approved. See docs/CONFIGURATION.md ("Gate the merge button on review completion").
+#
+# `review-complete` is SUCCESS iff, for the PR's current head:
+#   * zero unresolved review threads (paginated), AND
+#   * no reviewer's latest decisive review is CHANGES_REQUESTED, AND
+#   * at least one confirmed approval — EITHER a trusted human's APPROVED review bound to the current
+#     head, OR (when configured) the Codex code review [+ the Codex security review] completed for the
+#     current head.
+# Otherwise it publishes `action_required` (which branch protection treats as not-passing → button
+# blocked) with a summary of what is still missing. A brand-new head has no check yet, so a required
+# `review-complete` reads as "expected/pending" and the button is blocked until this workflow runs —
+# fail-closed by construction.
+#
+# It performs only GitHub API work (reads the PR, its reviews, threads and Codex's summary comment;
+# posts one check-run via the workflow GITHUB_TOKEN's checks:write) — no PR content is checked out or
+# executed, and it needs no PAT (a check-run is not a Codex "@codex" command).
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+  issue_comment:
+    types: [created, edited]
+  check_suite:
+    types: [completed]
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: read
+
+# Serialize every run onto one global group (see final-security-review.yml.tmpl for the full rationale):
+# every run performs a FULL sweep of all open PRs and republishes each head's check-run, so a burst that
+# drops queued runs (GitHub keeps only the latest pending per group) never starves the whole-repo
+# recovery — whichever run wins the slot refreshes every open PR. `cancel-in-progress: false` lets an
+# in-flight sweep finish. Republishing a check-run keyed by (name, head_sha) is idempotent.
+concurrency:
+  group: review-complete-check
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish review-complete for every open PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate and publish the review-complete check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODEX_BOT_LOGIN: chatgpt-codex-connector[bot]
+          TRUSTED_ROLES: '{{ trusted_roles_json }}'
+          DEFAULT_BRANCH: "{{ default_branch }}"
+          REQUIRE_CODEX_CODE_REVIEW: "{{ require_codex_code_review }}"
+          REQUIRE_CODEX_SECURITY_REVIEW: "{{ require_codex_security_review }}"
+          CHECK_NAME: "review-complete"
+        run: |
+          set -euo pipefail
+
+          REPO="$GITHUB_REPOSITORY"
+          OWNER="${REPO%/*}"
+          NAME="${REPO#*/}"
+
+          # count_unresolved_threads <pr>: unresolved review threads (any author), PAGINATED. Returns
+          # non-zero on API error (fail-closed: the caller then leaves the check not-passing).
+          count_unresolved_threads() {
+            local pr="$1" q cursor="null" resp total=0 page has_next
+            q='query($owner:String!,$repo:String!,$number:Int!,$cursor:String){
+                 repository(owner:$owner,name:$repo){
+                   pullRequest(number:$number){
+                     reviewThreads(first:100,after:$cursor){
+                       nodes{ isResolved }
+                       pageInfo{ hasNextPage endCursor }
+                     }}}}'
+            while :; do
+              if [[ "$cursor" == "null" ]]; then
+                resp="$(gh api graphql -f query="$q" -f owner="$OWNER" -f repo="$NAME" -F number="$pr")" || return 1
+              else
+                resp="$(gh api graphql -f query="$q" -f owner="$OWNER" -f repo="$NAME" -F number="$pr" -f cursor="$cursor")" || return 1
+              fi
+              page="$(jq -r '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' <<<"$resp")" || return 1
+              total=$((total + page))
+              has_next="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"$resp")"
+              [[ "$has_next" == "true" ]] || break
+              cursor="$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor' <<<"$resp")"
+            done
+            echo "$total"
+          }
+
+          # publish_check <head_sha> <conclusion> <summary>: create a check-run bound to the head. A check
+          # run keyed by (name, head_sha) is updated in place on republish. Returns non-zero on API error.
+          publish_check() {
+            gh api "repos/${REPO}/check-runs" -X POST \
+              -f name="$CHECK_NAME" -f head_sha="$1" -f status="completed" -f conclusion="$2" \
+              -f output.title="$CHECK_NAME" -f output.summary="$3" >/dev/null
+          }
+
+          # evaluate_pr <pr>: compute the review-complete state for one PR and publish its check-run.
+          # Returns non-zero only if the check could not be published (so the sweep records the failure);
+          # a PR that is simply not-ready publishes action_required and returns 0.
+          evaluate_pr() {
+            local pr="$1"
+            local pr_json state draft base_ref head_sha reviews_json blocking human_ok summary_body
+            local codex_code_ok codex_sec_ok reason conclusion
+
+            pr_json="$(gh api "repos/${REPO}/pulls/${pr}")" || { echo "PR #${pr}: cannot read; skipping."; return 0; }
+            state="$(jq -r '.state' <<<"$pr_json")"
+            draft="$(jq -r '.draft' <<<"$pr_json")"
+            base_ref="$(jq -r '.base.ref' <<<"$pr_json")"
+            head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+            # Only open, non-draft PRs targeting the default branch get a check. (Fork PRs are included:
+            # they simply won't have a Codex path, so they require a trusted human approval — correct.)
+            [[ "$state" == "open" && "$draft" == "false" && "$base_ref" == "$DEFAULT_BRANCH" ]] \
+              || { echo "PR #${pr}: not an open non-draft PR to ${DEFAULT_BRANCH}; skipping."; return 0; }
+
+            reason=""; conclusion="action_required"
+
+            # (1) Unresolved review threads must be zero.
+            local unresolved
+            unresolved="$(count_unresolved_threads "$pr")" || { echo "PR #${pr}: cannot read threads; leaving not-passing."; publish_check "$head_sha" "action_required" "Could not read review threads; treating as not ready." || return 1; return 0; }
+
+            # (2) Reviews: no reviewer's latest decisive review is CHANGES_REQUESTED; and a trusted human
+            # APPROVED review bound to the CURRENT head counts as a confirmed human approval. Group by
+            # numeric user.id (stable across renames), latest by numeric review id (monotonic).
+            reviews_json="$(gh api --paginate "repos/${REPO}/pulls/${pr}/reviews?per_page=100" --slurp | jq 'add // []')" \
+              || { echo "PR #${pr}: cannot read reviews; leaving not-passing."; publish_check "$head_sha" "action_required" "Could not read reviews; treating as not ready." || return 1; return 0; }
+            blocking="$(jq -r '[ .[] | select(.state=="APPROVED" or .state=="CHANGES_REQUESTED" or .state=="DISMISSED") ]
+                              | group_by(.user.id) | map(sort_by(.id) | last)
+                              | map(select(.state=="CHANGES_REQUESTED")) | length' <<<"$reviews_json")"
+            human_ok="$(jq -r --arg bot "$CODEX_BOT_LOGIN" --arg head "$head_sha" --argjson roles "$TRUSTED_ROLES" \
+                '[ .[] | select(.user.login!=$bot and (.state=="APPROVED" or .state=="CHANGES_REQUESTED" or .state=="DISMISSED")) ]
+                 | group_by(.user.id) | map(sort_by(.id) | last)
+                 | map(select(.state=="APPROVED" and .commit_id==$head and (.author_association as $a | $roles | index($a)))) | length' <<<"$reviews_json")"
+
+            # (3) Codex path (when configured): a head-bound Codex CODE review object (exact actor, full
+            # commit_id == head, body carrying the "Codex Review" marker, not DISMISSED), else the summary
+            # comment's "Code Review … Completed" row (abbreviated SHA — documented residual). Plus, when a
+            # security stage is configured, the Codex security review completed for the head (full-SHA
+            # hidden marker preferred, visible row as fallback). Mirrors the auto-merge gate's predicates.
+            codex_code_ok=false; codex_sec_ok=true; summary_body=""
+            if [[ "$REQUIRE_CODEX_CODE_REVIEW" == "true" ]]; then
+              local codex_latest codex_state
+              codex_latest="$(jq -c --arg bot "$CODEX_BOT_LOGIN" --arg head "$head_sha" \
+                '[ .[] | select(.user.login==$bot and .commit_id==$head and ((.body // "")|test("Codex Review"))) ] | sort_by(.id) | last // {}' <<<"$reviews_json")"
+              codex_state="$(jq -r '.state // ""' <<<"$codex_latest")"
+              if [[ -n "$codex_state" ]]; then
+                [[ "$codex_state" != "DISMISSED" ]] && codex_code_ok=true
+              else
+                local pr_comments code_row row_sha
+                pr_comments="$(gh api --paginate "repos/${REPO}/issues/${pr}/comments?per_page=100" --slurp | jq 'add // []')" \
+                  || { echo "PR #${pr}: cannot read comments; leaving not-passing."; publish_check "$head_sha" "action_required" "Could not read Codex review summary; treating as not ready." || return 1; return 0; }
+                summary_body="$(jq -r --arg bot "$CODEX_BOT_LOGIN" \
+                  '[ .[] | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$pr_comments")"
+                code_row="$(grep -i 'Code Review' <<<"$summary_body" | head -1 || true)"
+                if grep -qi 'Completed' <<<"$code_row"; then
+                  row_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$code_row" | head -1 | tr -d '`' || true)"
+                  [[ -n "$row_sha" && "$head_sha" == "$row_sha"* ]] && codex_code_ok=true
+                fi
+              fi
+              if [[ "$REQUIRE_CODEX_SECURITY_REVIEW" == "true" ]]; then
+                codex_sec_ok=false
+                if [[ -z "$summary_body" ]]; then
+                  local sec_comments
+                  sec_comments="$(gh api --paginate "repos/${REPO}/issues/${pr}/comments?per_page=100" --slurp | jq 'add // []')" \
+                    || { echo "PR #${pr}: cannot read comments; leaving not-passing."; publish_check "$head_sha" "action_required" "Could not read Codex security summary; treating as not ready." || return 1; return 0; }
+                  summary_body="$(jq -r --arg bot "$CODEX_BOT_LOGIN" \
+                    '[ .[] | select(.user.login==$bot) | .body | select(contains("codex-pull-request-review-summary")) ] | last // ""' <<<"$sec_comments")"
+                fi
+                if grep -q 'codex-security-review' <<<"$summary_body" \
+                   && grep -qE "\"headSha\":\"${head_sha}\"" <<<"$summary_body" \
+                   && grep -qE '"status":"completed"' <<<"$summary_body"; then
+                  codex_sec_ok=true
+                else
+                  local sec_row sec_row_sha
+                  sec_row="$(grep -i 'Security Review' <<<"$summary_body" | head -1 || true)"
+                  if grep -qi 'Completed' <<<"$sec_row"; then
+                    sec_row_sha="$(grep -oE '`[0-9a-f]{7,40}`' <<<"$sec_row" | head -1 | tr -d '`' || true)"
+                    [[ -n "$sec_row_sha" && "$head_sha" == "$sec_row_sha"* ]] && codex_sec_ok=true
+                  fi
+                fi
+              fi
+            fi
+
+            # Decide. An approval is a trusted human APPROVED-on-head, OR the configured Codex review(s)
+            # completed for the head. The head must also be free of unresolved threads and changes-requested.
+            local codex_ok=false approval_ok=false
+            [[ "$REQUIRE_CODEX_CODE_REVIEW" == "true" && "$codex_code_ok" == true && "$codex_sec_ok" == true ]] && codex_ok=true
+            [[ "$human_ok" -ge 1 || "$codex_ok" == true ]] && approval_ok=true
+
+            if [[ "$unresolved" != "0" ]]; then
+              reason="${unresolved} unresolved review thread(s)."
+            elif [[ "$blocking" != "0" ]]; then
+              reason="${blocking} reviewer(s) requested changes."
+            elif [[ "$approval_ok" != true ]]; then
+              reason="No confirmed approval for head ${head_sha}: needs a trusted human's approval on this head, or a completed clean Codex review."
+            else
+              conclusion="success"
+              reason="Head ${head_sha} approved (trusted human approval on head, or completed clean Codex review) with no unresolved threads or requested changes."
+            fi
+
+            if ! publish_check "$head_sha" "$conclusion" "$reason"; then
+              echo "PR #${pr}: failed to publish the review-complete check for head ${head_sha}."
+              return 1
+            fi
+            echo "PR #${pr}: review-complete=${conclusion} for head ${head_sha} (${reason})"
+          }
+
+          # Always sweep every open PR targeting the default branch (see the concurrency note): every run
+          # refreshes every head's check-run, so no head is starved of an update.
+          prs="$(gh api --paginate "repos/${REPO}/pulls?state=open&base=${DEFAULT_BRANCH}&per_page=100" --jq '.[].number')" \
+            || { echo "Cannot list open PRs; skipping this run (a later run retries)."; exit 0; }
+          sweep_status=0
+          for pr in $prs; do
+            evaluate_pr "$pr" || { echo "PR #${pr}: could not publish review-complete; will retry on the next run."; sweep_status=1; }
+          done
+          exit "$sweep_status"

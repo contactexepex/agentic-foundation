@@ -251,6 +251,40 @@ checks **required in branch protection** is the only server-atomic closure, and 
 authenticate the *content* of `validate.yml` against substitution — the control-plane guard is what covers
 that within the gate's own authority. See `AGENTS.md`.
 
+### Gate the merge button on review completion (branch protection)
+
+GitHub's **merge button** is governed only by **branch protection on the default branch — not by any
+workflow.** The auto-merge gate is fail-closed for *auto*-merge, but it cannot stop a human clicking
+**Merge**; only branch protection can. So a repo with no branch protection lets anyone merge a PR whose
+review has not finished. Two things close that:
+
+1. **A required `review-complete` check.** GitHub's native *"require N approving reviews"* counts only
+   formal **APPROVE** reviews, and the Codex App only ever posts **COMMENTED** reviews — so a native
+   approval rule can be satisfied by a human but **never by Codex**. To let the button gate on *"human
+   **or** Codex"*, the toolkit renders `review-complete.yml` (emitted whenever a codex code-review stage
+   runs). It publishes a check-run named **`review-complete`** that is **success only when the current
+   head has a confirmed approval** — *either* a trusted human's **APPROVED** review bound to that head,
+   *or* the Codex code review (and the Codex security review, when a blocking security stage is
+   configured) **completed** for that head — with **zero unresolved threads** and **no requested
+   changes**. Otherwise it publishes `action_required`, which branch protection treats as not-passing, so
+   the button stays disabled. A brand-new head has no check yet, so a required `review-complete` reads as
+   pending and the button is blocked until the workflow runs — fail-closed by construction.
+
+2. **Branch-protection settings you apply** (Settings → Branches → the default branch). stagr is a
+   control plane and does not change your repo settings for you; configure the rule to require, at
+   minimum:
+   - **Require status checks to pass**, and mark **required**: `review-complete`, `Validate`, your test
+     checks, the review router status (`Publish fast review result`), and any external check you listed
+     in `merge.required_status_checks` (e.g. `SonarCloud Code Analysis`).
+   - **Require conversation resolution before merging** (backs up the review-complete thread check).
+   - **Do not allow bypassing the above settings** (so admins are held to the same gate).
+
+   With `review-complete` required, the merge button is disabled until a human approves **or** Codex's
+   review completes clean on the head — exactly the *"one confirmed approval"* policy — and this same
+   required-check set is the server-atomic closure that backs up the auto-merge gate's residual race
+   above. (`review-complete` gates on human approval even without `modules.auto_merge`, so a human-merge
+   repo gets the same enforcement.)
+
 ### `merge` (optional — auto-merge-gate policy)
 | Field | Meaning |
 |---|---|
