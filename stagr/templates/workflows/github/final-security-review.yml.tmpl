@@ -19,15 +19,16 @@ name: Request Codex security review (final pre-merge)
 # is clean. See docs/CONFIGURATION.md ("Configure the App to auto-run the code review only on open").
 #
 # It runs on: comment activity (Codex edits its "Review Summary" comment to "Completed" when the code
-# review finishes), completed check suites, and a periodic schedule. The schedule is what re-evaluates
-# a head after its last review thread is resolved: GitHub emits NO workflow-triggering event for a
-# thread resolve/unresolve (`pull_request_review_thread` is a webhook event but not a valid Actions
-# trigger — declaring it fails the whole workflow at startup), so without the scheduled sweep a head
-# whose last finding was just resolved would never be re-evaluated and the merge gate would deadlock.
-# It performs only GitHub API work (reads the PR, its review threads, and Codex's summary comment; posts
-# one comment) — no PR content is checked out or executed. The comment is posted with the
-# narrowly-scoped remediation PAT so it is authored by a trusted user (Codex honours "@codex" commands
-# from a real user).
+# review finishes), completed check suites, and a periodic schedule. EVERY run performs a full sweep of
+# all open PRs (not just the triggering event's PR) — see the dispatch at the end for why. The schedule
+# guarantees a head is re-evaluated after its last review thread is resolved: GitHub emits NO
+# workflow-triggering event for a thread resolve/unresolve (`pull_request_review_thread` is a webhook
+# event but not a valid Actions trigger — declaring it fails the whole workflow at startup), so without
+# the scheduled sweep a head whose last finding was just resolved would never be re-evaluated and the
+# merge gate would deadlock. It performs only GitHub API work (reads the PR, its review threads, and
+# Codex's summary comment; posts one comment) — no PR content is checked out or executed. The comment is
+# posted with the narrowly-scoped remediation PAT so it is authored by a trusted user (Codex honours
+# "@codex" commands from a real user).
 on:
   issue_comment:
     types: [created, edited]
@@ -48,9 +49,10 @@ permissions:
 # a per-PR group cannot, because a sweep evaluates many PRs in one run and so must fall back to the run
 # id, landing in a different group from a same-PR event run. `cancel-in-progress: false` lets an
 # in-flight sweep finish instead of being killed by a new event: runs queue and execute one after
-# another, each reading the previous run's freshly-posted marker, so the marker check is reliable. If a
-# burst drops a queued event-driven run (GitHub keeps only the latest pending per group), the */15 sweep
-# re-evaluates it — bounded latency, never a lost or duplicated review.
+# another, each reading the previous run's freshly-posted marker, so the marker check is reliable.
+# Because EVERY run does a full sweep (see the dispatch), a burst that drops queued runs (GitHub keeps
+# only the latest pending run per group) never loses coverage: whichever run wins the slot evaluates all
+# open PRs — bounded latency, never a lost or duplicated review.
 concurrency:
   group: request-codex-security
   cancel-in-progress: false
@@ -70,9 +72,6 @@ jobs:
           CODEX_BOT_LOGIN: chatgpt-codex-connector[bot]
           TRUSTED_ROLES: '{{ trusted_roles_json }}'
           DEFAULT_BRANCH: "{{ default_branch }}"
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          IS_PR_COMMENT: ${{ github.event.issue.pull_request.url != '' }}
-          CHECK_SUITE_SHA: ${{ github.event.check_suite.head_sha }}
         run: |
           set -euo pipefail
 
@@ -85,13 +84,12 @@ jobs:
           OWNER="${REPO%/*}"
           NAME="${REPO#*/}"
 
-          # Resolve the PAT account's own login ONCE (shared by every PR the sweep evaluates) so the
-          # idempotency marker is honoured ONLY on a comment authored by that exact account. Matching by
-          # author_association alone is too weak (any other trusted-role commenter could paste the marker)
-          # and too brittle (if the PAT account's association is outside platform.trusted_roles, the
-          # workflow would ignore its own marker and re-post on every issue_comment).
-          PAT_LOGIN="$(GH_TOKEN="$CODEX_PAT" gh api user --jq '.login' 2>/dev/null || echo "")"
-          [[ -n "$PAT_LOGIN" ]] || { echo "Cannot resolve the PAT account login; skipping to avoid an unauthenticated marker check."; exit 0; }
+          # The PAT account login is resolved LAZILY (inside evaluate_pr, only after a PR is confirmed
+          # eligible + trusted) and memoized here, so untrusted comment/check activity on ineligible or
+          # non-PR items never drives a PAT-authenticated request that could exhaust the remediation
+          # principal's rate limit. The marker below is honoured ONLY on a comment authored by this
+          # account, so a head SHA pasted by anyone else cannot suppress the mandatory security review.
+          PAT_LOGIN=""
 
           # count_unresolved_threads <pr>: number of unresolved review threads (any author), PAGINATED.
           # A single first:100 page can miss unresolved findings on a heavily reviewed PR and spend the
@@ -123,8 +121,8 @@ jobs:
 
           # evaluate_pr <pr>: evaluate ONE PR and, if the code review has converged clean on its current
           # head, request exactly one final security review. Every skip path returns 0 (a skip is not an
-          # error) so a whole-repo sweep continues to the next PR; only an unexpected failure of the final
-          # post surfaces as a non-zero return.
+          # error) so a whole-repo sweep continues to the next PR; only a failed POST returns non-zero,
+          # so a review that could not be requested is never silently reported as success.
           evaluate_pr() {
             local PR_NUMBER="$1"
             local PR_JSON state draft head_repo base_ref author_assoc head_sha MARKER COMMENTS_JSON
@@ -138,23 +136,25 @@ jobs:
             author_assoc="$(jq -r '.author_association' <<<"$PR_JSON")"
             head_sha="$(jq -r '.head.sha' <<<"$PR_JSON")"
 
-            # Same eligibility guard as the on-push lane: open, non-draft, same-repo head, default base,
+            # Eligibility (GitHub token only — no PAT yet): open, non-draft, same-repo head, default base,
             # trusted author. Fork PRs and untrusted authors never drive an automated review request.
             [[ "$state" == "open" && "$draft" == "false" && "$head_repo" == "$REPO" && "$base_ref" == "$DEFAULT_BRANCH" ]] \
               || { echo "PR #${PR_NUMBER} not eligible (state/draft/fork/base); skipping."; return 0; }
             printf '%s' "$TRUSTED_ROLES" | jq -e --arg a "$author_assoc" 'index($a) != null' >/dev/null 2>&1 \
               || { echo "PR #${PR_NUMBER}: author association '$author_assoc' is not trusted; skipping."; return 0; }
 
+            # Only now — for a confirmed eligible, trusted, same-repo PR — resolve the PAT identity (once,
+            # memoized in PAT_LOGIN), so untrusted activity on ineligible items never reaches this call.
+            if [[ -z "$PAT_LOGIN" ]]; then
+              PAT_LOGIN="$(GH_TOKEN="$CODEX_PAT" gh api user --jq '.login' 2>/dev/null || echo "")"
+              [[ -n "$PAT_LOGIN" ]] || { echo "PR #${PR_NUMBER}: cannot resolve the PAT account login; skipping to avoid an unauthenticated marker check."; return 0; }
+            fi
+
             # Durable, per-head idempotency marker. Our own request comment carries it (invisible HTML
-            # comment), so once a request has been posted for this head, every later run — including the
-            # issue_comment:created event fired by our own comment, rapid unrelated comments, and every
-            # scheduled sweep — detects it and does nothing. This is what guarantees "exactly one security
-            # review per head"; the concurrency group only serializes/cancels runs and gives no durable
-            # idempotency.
-            #
-            # The marker is honoured ONLY on a comment authored by the PAT account resolved above, so a
-            # public head SHA pasted by anyone else — trusted-role or not — cannot suppress the mandatory
-            # security review, and the check is independent of platform.trusted_roles.
+            # comment), so once a request has been posted for this head, every later run detects it and
+            # does nothing. This is what guarantees "exactly one security review per head"; the
+            # concurrency group only serializes runs and gives no durable idempotency. The marker is
+            # honoured ONLY on a comment authored by the PAT account resolved above.
             MARKER="<!-- agentic-foundation:final-security-review-requested:${head_sha} -->"
 
             # Read PR issue comments once (paginated) for both the idempotency marker and the Codex summary.
@@ -200,7 +200,8 @@ jobs:
             [[ "$current_head" == "$head_sha" ]] || { echo "PR #${PR_NUMBER}: head moved to ${current_head} after evaluation; a later event will re-evaluate. Skipping."; return 0; }
 
             # Ready: request the single final security review, authored by the trusted PAT user. The
-            # invisible marker makes this head's request idempotent for every subsequent run.
+            # invisible marker makes this head's request idempotent for every subsequent run. A failed
+            # post returns non-zero (below) so the sweep records the failure instead of reporting success.
             {
               echo '@codex security review'
               echo
@@ -211,24 +212,24 @@ jobs:
               echo '---'
               echo '_Generated by [Claude Code](https://claude.ai/code)_'
             } > "$RUNNER_TEMP/comment.md"
-            GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
+            if ! GH_TOKEN="$CODEX_PAT" gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"; then
+              echo "PR #${PR_NUMBER}: failed to post the security review request (marker not written; will retry on the next run)."
+              return 1
+            fi
             echo "Requested the final Codex security review for head ${head_sha} on PR #${PR_NUMBER}."
           }
 
-          # Resolve the target PR(s) from whichever event fired, then evaluate.
-          if [[ -n "${ISSUE_NUMBER:-}" ]]; then
-            [[ "${IS_PR_COMMENT}" == "true" ]] || { echo "Comment is not on a pull request; nothing to do."; exit 0; }
-            evaluate_pr "${ISSUE_NUMBER}"
-          elif [[ -n "${CHECK_SUITE_SHA:-}" ]]; then
-            pr="$(gh api "repos/${REPO}/commits/${CHECK_SUITE_SHA}/pulls" \
-                  --jq '[.[] | select(.state=="open")] | (first // {}) | .number // ""' 2>/dev/null || echo "")"
-            if [[ -n "$pr" ]]; then evaluate_pr "$pr"; else echo "No open PR for check_suite head ${CHECK_SUITE_SHA}; nothing to do."; fi
-          else
-            # Scheduled sweep (no event-specific PR): walk every open PR targeting the default branch and
-            # evaluate each. This is what re-evaluates a head after its last review thread is resolved,
-            # for which GitHub emits no workflow-triggering event. The per-head marker keeps it idempotent,
-            # and evaluate_pr never errors on a skip, so one problematic PR cannot abort the sweep.
-            prs="$(gh api --paginate "repos/${REPO}/pulls?state=open&base=${DEFAULT_BRANCH}&per_page=100" --jq '.[].number')" \
-              || { echo "Cannot list open PRs for the scheduled sweep; skipping."; exit 0; }
-            for pr in $prs; do evaluate_pr "$pr" || echo "PR #${pr}: evaluation returned non-zero; continuing the sweep."; done
-          fi
+          # Always sweep EVERY open PR targeting the default branch, whatever event triggered this run
+          # (comment, check-suite, or schedule). A per-event single-PR path would let a comment or
+          # check-suite run evict the pending scheduled sweep — with one global concurrency group GitHub
+          # keeps only the latest pending run — and a single-PR run does NOT cover the PR whose last
+          # thread just resolved (GitHub emits no event for a thread resolve), starving it indefinitely.
+          # Making every run a full sweep guarantees whole-repo coverage regardless of which run wins the
+          # slot; the per-head marker keeps it idempotent.
+          prs="$(gh api --paginate "repos/${REPO}/pulls?state=open&base=${DEFAULT_BRANCH}&per_page=100" --jq '.[].number')" \
+            || { echo "Cannot list open PRs; skipping this run (a later run retries)."; exit 0; }
+          sweep_status=0
+          for pr in $prs; do
+            evaluate_pr "$pr" || { echo "PR #${pr}: security-review request failed; will retry on the next run."; sweep_status=1; }
+          done
+          exit "$sweep_status"
