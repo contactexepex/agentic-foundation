@@ -221,12 +221,15 @@ jobs:
             local files_json f
             files_json="$(gh api --paginate "repos/$REPO/pulls/$pr/files?per_page=100" --slurp | jq 'add // []')" \
               || { skip "$pr" "cannot read changed files"; return 1; }
+            # Check BOTH the current filename AND, for a rename, the previous_filename: a PR can rename a
+            # protected file (e.g. .github/workflows/auto-merge.yml) to an unprotected path, moving the
+            # protected path into .previous_filename — checking only .filename would let that removal through.
             while IFS= read -r f; do
               [[ -n "$f" ]] || continue
               if path_is_protected "$f"; then
                 skip "$pr" "changes control-plane path '$f' (human-gated; see merge.protected_paths)"; return 1
               fi
-            done < <(jq -r '.[].filename' <<<"$files_json")
+            done < <(jq -r '.[] | (.filename, (.previous_filename // empty))' <<<"$files_json")
 
             # --- CI must be green ---
             local status_json status_state

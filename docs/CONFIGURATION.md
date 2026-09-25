@@ -272,9 +272,12 @@ publishes its own **check-run** on the PR, then list that check's `name` **and**
 **positive** — the check-run must match the exact name *and* be produced by that App id — so a same-name
 check from any other App (including the repo's own `github-actions` jobs) cannot satisfy or forge it. (An
 earlier draft accepted "any App that is not `github-actions`"; that negative rule is gone — a display name
-is not an identity.) Find an App's id via the GitHub API (e.g. `GET /users/{app-slug}[bot]` → `id`, or the
-App's settings). This is tool-agnostic by construction: list whatever check names/App ids your tools
-publish. A scan you run inside your build (`build.commands`) is part of the `Validate` check instead and
+is not an identity.) The `app_id` is the **GitHub App registration id** exposed as a check-run's
+`.app.id` — **not** the App's bot-user id. Read it directly from a check-run the tool already posted, e.g.
+`gh api "repos/OWNER/REPO/commits/SHA/check-runs" --jq '.check_runs[] | {name, app_id: .app.id, slug: .app.slug}'`,
+or from the App's registration page. (The bot-user id from `GET /users/{app-slug}[bot]` is a different
+number and will make the check read as permanently "absent".) This is tool-agnostic by construction: list
+whatever check names/App ids your tools publish. A scan you run inside your build (`build.commands`) is part of the `Validate` check instead and
 must **not** be listed here. Only meaningful when `modules.auto_merge` is on.
 
 > **`build.commands` are trusted operator shell.** They are emitted verbatim into the `Validate`

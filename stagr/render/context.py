@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .constants import (
     BACKEND_CLAUDE_ACTION,
@@ -54,26 +55,32 @@ class RenderedValue:
 
 
 @dataclass(frozen=True)
-class RenderContext:
-    """The rendered token set with provenance. `substitutions()` is the plain {token: value} mapping the
-    renderer consumes; it rejects a duplicate token so two values can never collide silently."""
+class RenderContext(Mapping):
+    """The rendered token set with provenance. It IS a read-only mapping of {token: value} (so every
+    ordinary mapping operation — `[]`, `in`, `.get`, `.keys`, `.items`, `.values`, iteration, `len` —
+    works, preserving the old dict-returning `build_context` contract), while `.entries` exposes the
+    per-value provenance and `.substitutions()` returns a plain dict. The provenance field is named
+    `entries` (not `values`) so it does not collide with the mapping's own `.values()` method. A duplicate
+    token is rejected so two values can never collide silently."""
 
-    values: tuple[RenderedValue, ...]
+    entries: tuple[RenderedValue, ...]
 
     def substitutions(self) -> dict[str, str]:
         out: dict[str, str] = {}
-        for rv in self.values:
+        for rv in self.entries:
             if rv.token in out:
                 raise RenderError(f"duplicate context token '{rv.token}'")
             out[rv.token] = rv.value
         return out
 
-    # Read-only mapping convenience so `ctx["token"]` / `"token" in ctx` work like the old dict context.
     def __getitem__(self, token: str) -> str:
         return self.substitutions()[token]
 
-    def __contains__(self, token: object) -> bool:
-        return any(rv.token == token for rv in self.values)
+    def __iter__(self):
+        return iter(self.substitutions())
+
+    def __len__(self) -> int:
+        return len(self.entries)
 
 
 # Single classification source of truth (the render_tests closure asserts these against real provenance
@@ -231,6 +238,17 @@ def _validated_protected_paths(cfg: dict[str, Any]) -> list[str]:
     paths = [str(p) for p in raw]
     for path in paths:
         assert_safe_glob(path, "merge.protected_paths[]")
+        # Protected paths are matched at runtime by a LITERAL bash `[[ == ]]` glob (no brace expansion) and
+        # templated into a single-quoted env scalar — so a brace would silently fail to match (weakening the
+        # guard) and a single quote would break the workflow. Reject both here (stricter than a fast-path
+        # glob, which is matched by jq/GitHub and may use braces). List each extension separately instead.
+        if "{" in path or "}" in path or "'" in path:
+            raise RenderError(
+                f"merge.protected_paths[] '{path}' contains a brace or single quote. Protected paths are "
+                "matched by a literal bash glob (no brace-expansion) and rendered into a single-quoted "
+                "env value; use a plain path glob with '*'/'**' and list each extension separately "
+                "(e.g. '**/*.yml' and '**/*.yaml', not '**/*.{yml,yaml}')."
+            )
     return paths
 
 
@@ -314,7 +332,7 @@ def build_context(cfg: dict[str, Any]) -> RenderContext:
         RenderedValue("require_codex_security_review", "true" if require_codex_security_review else "false", "<derived>", False),
         RenderedValue("merge_method", merge_method, "merge.method (enum)", False),
     )
-    return RenderContext(values=values)
+    return RenderContext(entries=values)
 
 
 _TOKEN = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")

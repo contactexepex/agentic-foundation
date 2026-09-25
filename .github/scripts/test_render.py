@@ -25,6 +25,7 @@ from render_tests.behaviors import (
 )
 from render_tests.selection import test_pipeline_selection
 from render_tests.auto_merge import (
+    test_auto_merge_config_hardening,
     test_auto_merge_injection_matrix,
     test_auto_merge_p0_invariants,
     test_auto_merge_templating_closure,
@@ -44,6 +45,7 @@ def main() -> int:
     test_round4_fixes()
     test_auto_merge_templating_closure()
     test_auto_merge_injection_matrix()
+    test_auto_merge_config_hardening()
     test_auto_merge_p0_invariants()
     test_build_command_trust_boundary()
     test_gate_behavior()

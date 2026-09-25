@@ -226,7 +226,7 @@
             "required": ["name", "app_id"],
             "properties": {
               "name": { "type": "string", "minLength": 1, "description": "Exact check-run name the external tool publishes (e.g. \"SonarCloud Code Analysis\")." },
-              "app_id": { "type": "integer", "minimum": 1, "description": "Immutable numeric GitHub App id that must be the check-run's producer (matched against check-run app.id). Required because App slugs are mutable and a display name alone is not an identity; find it via the GitHub API for the App. A same-name check from any other App (including github-actions) does not satisfy the requirement." }
+              "app_id": { "type": "integer", "minimum": 1, "description": "Immutable numeric GitHub App REGISTRATION id that must be the check-run's producer (matched against the check-run's .app.id — NOT the App's bot-user id). Required because App slugs are mutable and a display name alone is not an identity. Read it from a check-run the tool posted (e.g. repos/OWNER/REPO/commits/SHA/check-runs -> .check_runs[].app.id) or the App's registration page. A same-name check from any other App (including github-actions) does not satisfy the requirement." }
             }
           },
           "default": [],

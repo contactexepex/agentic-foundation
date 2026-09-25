@@ -155,6 +155,11 @@ def test_gate_behavior() -> None:
           "gate: a PR changing a control-plane path is human-gated")
     check(_merges({"FILES_JSON": json.dumps([[{"filename": "docs/x.md"}, {"filename": "src/y.py"}]])}),
           "gate: a PR touching only non-protected paths is not blocked by the guard")
+    # A rename that moves a protected file OUT of the protected dir puts the protected path in
+    # previous_filename — the guard must check both names.
+    check(not _merges({"FILES_JSON": json.dumps([[
+        {"filename": "tools/auto-merge.yml", "previous_filename": ".github/workflows/auto-merge.yml"}]])}),
+          "gate: a rename of a protected file (previous_filename) is human-gated")
 
     # CI gates.
     check(not _merges({"STATUS_JSON": json.dumps([{"state": "failure", "statuses": [

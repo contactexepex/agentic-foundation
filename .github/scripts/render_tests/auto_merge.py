@@ -64,8 +64,8 @@ def _closure_report(emitted: set[str], produced: set[str], operator: set[str],
 
 def test_auto_merge_templating_closure() -> None:
     ctx = render.build_context(_BASE)
-    produced = {rv.token for rv in ctx.values}
-    operator = {rv.token for rv in ctx.values if rv.operator_controlled}
+    produced = {rv.token for rv in ctx.entries}
+    operator = {rv.token for rv in ctx.entries if rv.operator_controlled}
     safe = set(render.SAFE_LITERAL_TOKENS)
     nonop = set(render.NON_OPERATOR_TOKENS)
     emitted: set[str] = set()
@@ -108,6 +108,31 @@ def test_auto_merge_injection_matrix() -> None:
     modcfg = _with(_IMPL_BASE, defaults={"provider": "anthropic", "models": {"anthropic": {"default": expr}}})
     expect_raises(lambda: render.render_all(modcfg, "github"),
                   "injection: implementer model ${{}} expression rejected at render")
+
+
+def test_auto_merge_config_hardening() -> None:
+    # protected_paths are matched by a literal bash glob and single-quoted in YAML: a brace (silently
+    # unmatched -> weakened guard) or single quote (breaks the scalar) must be rejected (render + front door).
+    for bad in ("**/*.{yml,yaml}", "docs/team's/**"):
+        cfg = _with(_IMPL_BASE, merge={"protected_paths": [bad]})
+        expect_raises(lambda c=cfg: render.render_all(c, "github"),
+                      f"protected_paths: {bad!r} rejected at render")
+        expect_raises(lambda c=cfg: render.validate_config(c),
+                      f"protected_paths: {bad!r} rejected at front door")
+    # A plain path glob is accepted and rendered.
+    ok = render.render_all(_with(_IMPL_BASE, merge={"protected_paths": ["config/**", "**/*.tf"]}), "github")["auto-merge.yml"]
+    check('"config/**"' in ok and '"**/*.tf"' in ok, "protected_paths: plain globs render")
+
+    # RenderContext is a full read-only Mapping (Codex: keep the exported build_context mapping API).
+    ctx = render.build_context(_IMPL_BASE)
+    subs = ctx.substitutions()
+    check(ctx["human_merge_label"] == subs["human_merge_label"], "RenderContext: indexing works")
+    check("human_merge_label" in ctx and ctx.get("nope") is None, "RenderContext: membership + .get() work")
+    check(dict(ctx.items()) == subs and set(ctx.keys()) == set(subs) and len(ctx) == len(subs),
+          "RenderContext: .items()/.keys()/len() match substitutions()")
+    check(sorted(ctx.values()) == sorted(subs.values()), "RenderContext: .values() returns the value strings")
+    check(any(rv.token == "human_merge_label" and rv.operator_controlled for rv in ctx.entries),
+          "RenderContext: .entries exposes per-value provenance")
 
 
 def test_auto_merge_p0_invariants() -> None:
