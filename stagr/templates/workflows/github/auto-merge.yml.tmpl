@@ -209,7 +209,10 @@ jobs:
             [[ "$base_ref" == "$DEFAULT_BRANCH" ]] || { skip "$pr" "base=$base_ref not $DEFAULT_BRANCH"; return 1; }
             printf '%s' "$TRUSTED_ROLES" | jq -e --arg a "$author_assoc" 'index($a) != null' >/dev/null 2>&1 \
               || { skip "$pr" "untrusted author_association=$author_assoc"; return 1; }
-            if jq -e --arg L "$HUMAN_MERGE_LABEL" 'any(.labels[]?; .name==$L)' <<<"$pr_json" >/dev/null; then
+            # Case-INSENSITIVE label match: GitHub label names are unique case-insensitively, but the PR
+            # payload preserves the label's display casing — so an exact compare could miss a `Human-Merge`
+            # label when the config says `human-merge` and merge a PR a human explicitly stopped.
+            if jq -e --arg L "$HUMAN_MERGE_LABEL" 'any(.labels[]?; (.name|ascii_downcase)==($L|ascii_downcase))' <<<"$pr_json" >/dev/null; then
               skip "$pr" "labelled '$HUMAN_MERGE_LABEL' (human-gated)"; return 1
             fi
             [[ "$mergeable" == "true" ]] || { skip "$pr" "mergeable=$mergeable (conflict or still computing)"; return 1; }
@@ -218,9 +221,16 @@ jobs:
             [[ "$mergeable_state" == "clean" ]] || { skip "$pr" "mergeable_state=$mergeable_state (not clean)"; return 1; }
 
             # --- Control-plane guard: a PR touching a protected path is human-gated ---
-            local files_json f
+            local files_json f changed_files fetched_files
             files_json="$(gh api --paginate "repos/$REPO/pulls/$pr/files?per_page=100" --slurp | jq 'add // []')" \
               || { skip "$pr" "cannot read changed files"; return 1; }
+            # The list-files endpoint returns at most 3000 files even with --paginate. A truncated list
+            # could omit a protected file, so FAIL CLOSED if fewer files came back than the PR reports
+            # changed — never evaluate the control-plane guard against a partial file list.
+            changed_files="$(jq -r '.changed_files // 0' <<<"$pr_json")"
+            fetched_files="$(jq -r 'length' <<<"$files_json")"
+            [[ "$fetched_files" -ge "$changed_files" ]] \
+              || { skip "$pr" "changed-file list truncated ($fetched_files of $changed_files); cannot verify the control-plane guard"; return 1; }
             # Check BOTH the current filename AND, for a rename, the previous_filename: a PR can rename a
             # protected file (e.g. .github/workflows/auto-merge.yml) to an unprotected path, moving the
             # protected path into .previous_filename — checking only .filename would let that removal through.

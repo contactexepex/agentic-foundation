@@ -67,7 +67,7 @@ def _defaults() -> dict:
     pr = {"state": "open", "merged": False, "draft": False,
           "head": {"sha": HEAD, "repo": {"full_name": "o/r"}},
           "base": {"ref": "main"}, "author_association": "OWNER",
-          "mergeable": True, "mergeable_state": "clean", "labels": []}
+          "mergeable": True, "mergeable_state": "clean", "labels": [], "changed_files": 1}
     checks = [{"check_runs": [
         {"id": 1, "name": "Validate", "app": {"id": 15368, "slug": "github-actions"},
          "status": "completed", "conclusion": "success"},
@@ -142,6 +142,12 @@ def test_gate_behavior() -> None:
     # Eligibility hard stops.
     check(not _merges({"PR_JSON": _defaults()["PR_JSON"].replace('"labels": []', '"labels": [{"name": "human-merge"}]')}),
           "gate: human-merge label blocks (hard stop)")
+    # Label match is case-insensitive: a "Human-Merge" label with config "human-merge" must still block.
+    check(not _merges({"PR_JSON": _defaults()["PR_JSON"].replace('"labels": []', '"labels": [{"name": "Human-Merge"}]')}),
+          "gate: human-merge label blocks case-insensitively")
+    # Truncated changed-file list (API cap) -> fail closed (can't verify the control-plane guard).
+    check(not _merges({"PR_JSON": _defaults()["PR_JSON"].replace('"changed_files": 1', '"changed_files": 5000')}),
+          "gate: a truncated changed-file list (fetched < changed_files) fails closed")
     def pr(**o):
         base = json.loads(_defaults()["PR_JSON"]); base.update(o); return {"PR_JSON": json.dumps(base)}
     check(not _merges(pr(draft=True)), "gate: draft blocks")
