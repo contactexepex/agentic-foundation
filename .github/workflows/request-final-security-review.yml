@@ -34,14 +34,20 @@ permissions:
   contents: read
   pull-requests: read
 
-# One in-flight evaluation per PR; a newer trigger supersedes it. Idempotency does NOT rely on this:
-# the per-head request marker check below is durable, so a duplicate security review is never posted
-# even if runs interleave or the concurrency group differs across event types. The scheduled sweep has
-# no event-specific PR, so it falls back to the run id (one group per sweep) — sweeps never cancel each
-# other, and the marker keeps concurrent sweeps from double-posting.
+# Serialize EVERY run of this workflow repo-wide onto one concurrency group so no two runs — a scheduled
+# sweep and an event-driven run, or two sweeps — ever execute at the same time. The per-head idempotency
+# marker below is a check-then-post, NOT an atomic lock: two runs executing concurrently could both read
+# "marker absent" and both post `@codex security review`, starting duplicate paid reviews and the very
+# concurrent code/security run this workflow exists to prevent. A single global group closes that race;
+# a per-PR group cannot, because a sweep evaluates many PRs in one run and so must fall back to the run
+# id, landing in a different group from a same-PR event run. `cancel-in-progress: false` lets an
+# in-flight sweep finish instead of being killed by a new event: runs queue and execute one after
+# another, each reading the previous run's freshly-posted marker, so the marker check is reliable. If a
+# burst drops a queued event-driven run (GitHub keeps only the latest pending per group), the */15 sweep
+# re-evaluates it — bounded latency, never a lost or duplicated review.
 concurrency:
-  group: request-codex-security-${{ github.event.issue.number || github.event.check_suite.pull_requests[0].number || github.run_id }}
-  cancel-in-progress: true
+  group: request-codex-security
+  cancel-in-progress: false
 
 jobs:
   request-security:
