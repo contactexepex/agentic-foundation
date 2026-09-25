@@ -27,6 +27,24 @@ def test_pipeline_selection() -> None:
           and "code-review-requested:" in _rev,
           "select: request-review carries the stranded-head re-trigger + marker (#15)")
 
+    # Regression (#25/#26): the final-security-review lane must (a) never declare the invalid
+    # `pull_request_review_thread` webhook event as a trigger — it fails the whole workflow at startup,
+    # so the security review never runs — (b) carry a schedule sweep to re-evaluate a head after its
+    # last thread resolves (no GitHub event fires for that), (c) serialize globally so concurrent
+    # sweep/event runs can't double-post `@codex security review`, and (d) trigger the ONE security
+    # review only AFTER the code review is Completed on the head with zero unresolved threads.
+    _sec = rendered["final-security-review.yml"]
+    _sec_on = _sec.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+    check("pull_request_review_thread" not in _sec_on,
+          "select: final-security-review declares no invalid pull_request_review_thread trigger (#25)")
+    check("issue_comment" in _sec_on and "check_suite" in _sec_on and "schedule" in _sec_on,
+          "select: final-security-review triggers on issue_comment + check_suite + schedule")
+    check("group: request-codex-security\n" in _sec and "cancel-in-progress: false" in _sec,
+          "select: final-security-review serializes on one global concurrency group (#26 race)")
+    check("@codex security review" in _sec and "Code Review" in _sec
+          and "unresolved" in _sec and 'code review has completed clean' in _sec,
+          "select: security review is gated on a Completed code review + zero unresolved threads")
+
     # No codex review stage -> the review lane is NOT emitted (module-aware, not glob-all).
     minimal = {"version": 2, "profile": "custom",
                "platform": {"type": "github", "default_branch": "main"},
