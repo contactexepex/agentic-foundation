@@ -33,6 +33,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SKILL_REQUIRED_KEYS = {"id", "name", "stage_type", "version"}
 errors: list[str] = []
 
+# Reuse the toolkit's OWN canonical validator (schema + semantic coherence + templating safety) rather
+# than reimplementing those checks here — so CI exercises the same front door `stagr validate` uses.
+sys.path.insert(0, str(ROOT))
+from stagr import render  # noqa: E402
+
 
 def fail(msg: str) -> None:
     errors.append(msg)
@@ -184,6 +189,16 @@ def main() -> int:
             continue
         validate(cfg, rel)
         check_stage_graph(cfg, rel)
+        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) + templating
+        # safety (no ${{ }} / breakout char in any operator literal). Same code path as `stagr validate`.
+        # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g. a
+        # <anthropic-default-model>) that a real config replaces and that resolution would reject.
+        if rel == ".agentic/config.yml":
+            try:
+                render.validate_config(cfg)
+                print(f"OK  {rel} passes canonical validation (schema + semantics + templating)")
+            except render.RenderError as exc:
+                fail(f"{rel}: canonical validation failed: {exc}")
 
     # 4. Minimal config.
     validate(
