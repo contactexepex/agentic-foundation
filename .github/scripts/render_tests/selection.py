@@ -41,9 +41,10 @@ def test_pipeline_selection() -> None:
           "select: final-security-review triggers on issue_comment + check_suite + schedule")
     check("group: request-codex-security\n" in _sec and "cancel-in-progress: false" in _sec,
           "select: final-security-review serializes on one global concurrency group (#26 race)")
-    check("@codex security review" in _sec and "Code Review" in _sec
-          and "unresolved" in _sec and 'code review has completed clean' in _sec,
-          "select: security review is gated on a Completed code review + zero unresolved threads")
+    check("@codex security review" in _sec and "code review has completed clean" in _sec,
+          "select: security review posts @codex security review only after the code review is clean")
+    check("Code Review" in _sec and "unresolved" in _sec,
+          "select: security review gate reads the Code Review row + unresolved-thread count")
 
     # No codex review stage -> the review lane is NOT emitted (module-aware, not glob-all).
     minimal = {"version": 2, "profile": "custom",
