@@ -205,5 +205,18 @@ routing:
 
 # --- Optional add-on modules -------------------------------------------------
 modules:
-  auto_merge: false                # fail-closed foundation auto-merge gate
-  sonar: false                     # SonarCloud/SonarQube quality gate
+  auto_merge: false                # render the fail-closed auto-merge gate (default: humans merge)
+  sonar: false                     # reserved / not rendered — wire code-quality tools tool-agnostically
+                                   # via merge.required_status_checks below, not this toggle.
+
+# --- Auto-merge gate policy (only used when modules.auto_merge is true) -------
+# merge:
+#   method: squash                 # squash | merge | rebase (the repo must have that method enabled)
+#   required_status_checks:        # external checks that must be GREEN before auto-merge, identified by
+#     - name: "SonarCloud Code Analysis"  #   exact check-run NAME *and* the producing GitHub App's
+#       app_id: 12345                     #   immutable numeric id (a same-name check from another App
+#     - name: "Checkmarx One"             #   does NOT count). stagr requires the result, never runs the
+#       app_id: 67890                     #   tool. Find an App's id via the GitHub API.
+#   protected_paths:               # a PR changing any of these is left for a human (never auto-merged) —
+#     - ".github/workflows/**"     #   the CI/gate control plane and toolkit config. Defaults to these
+#     - ".agentic/**"              #   two; set to [] only if you accept auto-merging changes to your gate.

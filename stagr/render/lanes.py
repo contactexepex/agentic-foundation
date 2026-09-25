@@ -5,9 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .constants import BACKEND_CODEX
+from .constants import BACKEND_CODEX, GATE_ADVISORY, GATE_BLOCKING
 from .errors import RenderError
 from .models import _stage_backend
+
+# A stage's `gate` defaults from its type when omitted (schema: review/security/test default to
+# blocking; everything else to advisory). Only a BLOCKING stage becomes a merge requirement.
+_BLOCKING_DEFAULT_TYPES = frozenset({"review", "security", "test", "integration-test"})
+
+
+def _effective_gate(stage: dict[str, Any]) -> str:
+    gate = stage.get("gate")
+    if gate in (GATE_ADVISORY, GATE_BLOCKING):
+        return gate
+    return GATE_BLOCKING if stage.get("type") in _BLOCKING_DEFAULT_TYPES else GATE_ADVISORY
 
 
 # The always-emitted core: the repo's "green" check and the review router that classifies each
@@ -24,6 +35,11 @@ CODE_REVIEW_TEMPLATE = "request-review.yml.tmpl"
 SECURITY_REVIEW_TEMPLATE = "final-security-review.yml.tmpl"
 # Auto-resolve outdated Codex threads. Emitted whenever any codex review/security lane runs.
 RESOLVE_THREADS_TEMPLATE = "resolve-threads.yml.tmpl"
+# The fail-closed auto-merge gate: merges a provably-ready PR (green CI + head-bound Codex review/
+# security when configured + clean review + operator-named external checks; `human-merge` label is a
+# hard stop). Emitted when `modules.auto_merge` is enabled — a MODULE toggle, not a stage, so its
+# lane predicate reads the config, not just the stage graph.
+AUTO_MERGE_TEMPLATE = "auto-merge.yml.tmpl"
 
 
 def _wants_push_review(stage: dict[str, Any]) -> bool:
@@ -95,6 +111,101 @@ def _has_codex_push_review(stages: list[dict[str, Any]]) -> bool:
     return _has_codex_code_review(stages)
 
 
+def _auto_merge_enabled(cfg: dict[str, Any]) -> bool:
+    # The auto-merge gate renders when the `auto_merge` module is on (opt-in; off by default so the
+    # unconfigured default stays human-merge). It is a config toggle, independent of the stage graph.
+    return bool((cfg.get("modules") or {}).get("auto_merge"))
+
+
+def _requires_codex_code_review(stages: list[dict[str, Any]]) -> bool:
+    # The auto-merge gate demands a head-bound Codex CODE review only for a BLOCKING codex review stage
+    # that runs on pushed heads. An advisory review is comment-only (never a merge blocker), and a
+    # pr_opened-only review does not cover pushed heads (rejected by _ensure_auto_merge_coherent).
+    return any(_effective_gate(s) == GATE_BLOCKING and _wants_push_review(s)
+               for s in _codex_stages(stages, "review"))
+
+
+def _requires_codex_security_review(stages: list[dict[str, Any]]) -> bool:
+    # The gate demands the head-bound final security review only for a BLOCKING codex security stage
+    # that takes part in PR review (advisory security is comment-only, never a merge blocker).
+    return any(_effective_gate(s) == GATE_BLOCKING and _runs_on_pr_review(s)
+               for s in _codex_stages(stages, "security"))
+
+
+def _ensure_auto_merge_coherent(stages: list[dict[str, Any]], cfg: dict[str, Any]) -> None:
+    """Reject auto-merge configs whose gate requirement could never be satisfied (a silent deadlock).
+
+    Only checked when `modules.auto_merge` is on. Both cases arise because auto-merge merges PUSHED
+    heads and the gate requires a head-bound Codex review for a blocking review stage:
+
+    * A BLOCKING codex `review` stage that runs only on `pr_opened` cannot review a pushed head, yet
+      auto-merge would merge one — so it would merge un-reviewed code. Require `pr_updated`.
+    * With the fast path enabled, a trivial PR is fast-path-approved with NO Codex review, but the gate
+      still requires one — so that PR could never merge. Require `routing.fast_path.enabled: false`
+      whenever the gate requires a Codex review (this is why the toolkit's own repo disables it).
+    """
+    if not _auto_merge_enabled(cfg):
+        return
+    # (a) Every BLOCKING stage must yield a gate signal the auto-merge gate actually verifies. Today
+    # that is only the Codex code review and Codex security review (alongside CI/Validate and
+    # merge.required_status_checks). A blocking stage of any other type — test, integration-test, docs,
+    # a non-Codex review, an explicitly-blocking implement, ... — renders no merge signal yet, so
+    # auto-merging would silently bypass a declared blocking gate. Reject it.
+    for stage in stages:
+        if _effective_gate(stage) != GATE_BLOCKING:
+            continue
+        stage_type = stage.get("type")
+        covered = (stage_type in ("review", "security")
+                   and _stage_backend(stage) == BACKEND_CODEX
+                   and _runs_on_pr_review(stage))
+        if not covered:
+            raise RenderError(
+                f"modules.auto_merge cannot enforce the blocking stage '{stage.get('id')}' (type "
+                f"'{stage_type}'): the auto-merge gate verifies only Codex code/security reviews that "
+                "take part in PR review (pr_opened / pr_updated) — plus CI/Validate and "
+                "merge.required_status_checks. A stage of another type, a non-Codex backend, or one whose "
+                "triggers omit a PR-review event renders no merge signal, so it would be silently "
+                "dropped. Make it advisory, give it a PR-review trigger, or disable auto_merge."
+            )
+    # (b) A blocking Codex 'review' OR 'security' stage must cover PUSHED heads (auto-merge merges pushed
+    # heads and the gate requires a head-bound Codex review/security for it). A pr_opened-only stage can't:
+    #   - 'review': a pushed head would merge un-reviewed.
+    #   - 'security': the final security review runs only AFTER the code review converges on the SAME head
+    #     (final-security-review.yml waits for the code review's "Completed" row), so on a pushed head it
+    #     is head-bound only if the code review re-runs there — which needs a pr_updated code-review stage.
+    #     Requiring pr_updated on the blocking security stage forces the code-review stage onto pushed
+    #     heads too, via the trigger-equality rule in _ensure_supported_review_graph.
+    # Require pr_updated either way. (_runs_on_pr_review excludes non-PR stages already caught by (a), so
+    # a manual/comment-only stage raises the clearer (a) error, not this one.)
+    _pushed_head_rationale = {
+        "review": "a review that runs only on 'pr_opened' would let an un-reviewed pushed head merge",
+        "security": ("the final security review runs only after the code review converges on the same "
+                     "head, so a security stage that runs only on 'pr_opened' can never yield a "
+                     "head-bound security review for the pushed head auto-merge would merge"),
+    }
+    for stage_type, why in _pushed_head_rationale.items():
+        for stage in _codex_stages(stages, stage_type):
+            if _effective_gate(stage) == GATE_BLOCKING and _runs_on_pr_review(stage) and not _wants_push_review(stage):
+                raise RenderError(
+                    f"modules.auto_merge with a blocking Codex '{stage_type}' stage requires that stage "
+                    "to run on pushed heads: add 'pr_updated' to its triggers. auto-merge merges pushed "
+                    f"heads and the gate requires a head-bound Codex {stage_type} review, but {why}."
+                )
+    # (c) When the gate requires ANY Codex review — code OR security is blocking — the fast path must be
+    # off. A fast-path-approved trivial PR gets no Codex review (and the security review runs only after
+    # the code review converges), so the gate could never merge it. Applies to a blocking security stage
+    # even with an advisory code-review stage.
+    fast_path_enabled = ((cfg.get("routing", {}) or {}).get("fast_path", {}) or {}).get("enabled", True)
+    if (_requires_codex_code_review(stages) or _requires_codex_security_review(stages)) and fast_path_enabled:
+        raise RenderError(
+            "modules.auto_merge with a blocking Codex review or security stage requires "
+            "routing.fast_path.enabled: false. With the fast path on, a trivial PR is fast-path-"
+            "approved with no Codex review, yet the auto-merge gate requires a head-bound Codex review "
+            "— so that PR could never merge. Disable the fast path (every PR is reviewed) when "
+            "auto-merging with a Codex review or security stage."
+        )
+
+
 def _needs_codex_pat(stages: list[dict[str, Any]]) -> bool:
     # The real-user PAT authors every rendered Codex request/cleanup workflow — request-review.yml
     # (code on-push), final-security-review.yml (the security lane), and resolve-threads.yml — so it is
@@ -153,28 +264,35 @@ class Lane:
     """
 
     name: str
-    applies: Callable[[list[dict[str, Any]]], bool]
+    applies: Callable[[list[dict[str, Any]], dict[str, Any]], bool]
     templates: tuple[str, ...]
 
 
-# The lane registry, in emit order. `core` (the repo's "green" check + review router) always
-# applies; each other lane is module-aware and renders only when a matching stage exists. (The
-# `modules.auto_merge` gate is intentionally not a lane yet — its trust model is under review; see
-# PR #2 — so an auto_merge config still renders its core pipeline.)
+# The lane registry, in emit order. `core` (the repo's "green" check + review router) always applies;
+# each other lane renders only when its condition holds. A lane predicate receives BOTH the expanded
+# stage graph and the full config, so a stage-driven lane reads `stages` and a module-driven lane (e.g.
+# auto-merge) reads `cfg` — `LANES` stays the single place a lane is wired in (CHARTER §7).
 LANES: tuple[Lane, ...] = (
-    Lane("core", lambda stages: True, tuple(CORE_TEMPLATES)),
-    Lane("implementor", _has_implement_stage, (IMPLEMENTOR_TEMPLATE,)),
-    Lane("codex-code-review", _has_codex_code_review, (CODE_REVIEW_TEMPLATE,)),
-    Lane("codex-security-review", _has_codex_security_review, (SECURITY_REVIEW_TEMPLATE,)),
-    Lane("codex-threads", _has_codex_push_review, (RESOLVE_THREADS_TEMPLATE,)),
+    Lane("core", lambda stages, cfg: True, tuple(CORE_TEMPLATES)),
+    Lane("implementor", lambda stages, cfg: _has_implement_stage(stages), (IMPLEMENTOR_TEMPLATE,)),
+    Lane("codex-code-review", lambda stages, cfg: _has_codex_code_review(stages), (CODE_REVIEW_TEMPLATE,)),
+    Lane("codex-security-review", lambda stages, cfg: _has_codex_security_review(stages), (SECURITY_REVIEW_TEMPLATE,)),
+    Lane("codex-threads", lambda stages, cfg: _has_codex_push_review(stages), (RESOLVE_THREADS_TEMPLATE,)),
+    Lane("auto-merge", lambda stages, cfg: _auto_merge_enabled(cfg), (AUTO_MERGE_TEMPLATE,)),
 )
 
 
-def select_templates(stages: list[dict[str, Any]]) -> list[str]:
-    """Choose which workflow templates to emit, driven by the `LANES` registry (emit order)."""
+def select_templates(stages: list[dict[str, Any]], cfg: dict[str, Any] | None = None) -> list[str]:
+    """Choose which workflow templates to emit, driven by the `LANES` registry (emit order).
+
+    `cfg` is optional for backward compatibility (a caller passing only `stages` gets the stage-driven
+    lanes; module-driven lanes such as auto-merge need `cfg`).
+    """
+    cfg = cfg or {}
     _ensure_supported_review_graph(stages)
+    _ensure_auto_merge_coherent(stages, cfg)
     names: list[str] = []
     for lane in LANES:
-        if lane.applies(stages):
+        if lane.applies(stages, cfg):
             names.extend(lane.templates)
     return names

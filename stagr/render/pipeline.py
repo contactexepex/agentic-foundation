@@ -20,8 +20,8 @@ def render_all(cfg: dict[str, Any], platform: str = "github") -> dict[str, str]:
     tpl_dir = TEMPLATE_ROOT / platform
     if not tpl_dir.is_dir():
         raise RenderError(f"no templates for platform '{platform}' ({tpl_dir})")
-    context = build_context(cfg)
-    selected = select_templates(list(expand_stages(cfg)))
+    context = build_context(cfg).substitutions()
+    selected = select_templates(list(expand_stages(cfg)), cfg)
     out: dict[str, str] = {}
     for name in selected:
         tpl = tpl_dir / name

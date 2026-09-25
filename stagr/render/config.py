@@ -10,7 +10,7 @@ from jsonschema import Draft202012Validator
 
 from .constants import PROVIDER_ANTHROPIC, RENAMED_ANTHROPIC_PROVIDER, SCHEMA_PATH
 from .errors import RenderError
-from .lanes import _ensure_supported_review_graph
+from .lanes import _ensure_auto_merge_coherent, _ensure_supported_review_graph
 from .stages import expand_stages
 from .util import _confine_to_project_root, _deep_merge, _is_uri, _read_yaml
 
@@ -99,4 +99,16 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
 
     # A Codex security lane that no event can ever satisfy (security stage without a code-review
     # stage) is rejected here at the front door, not left to render a dead workflow.
-    _ensure_supported_review_graph(expand_stages(cfg))
+    expanded = expand_stages(cfg)
+    _ensure_supported_review_graph(expanded)
+    # An auto-merge gate whose Codex-review requirement could never be met (fast path on, or a blocking
+    # review that skips pushed heads) would deadlock silently — reject it at the front door too.
+    _ensure_auto_merge_coherent(expanded, cfg)
+
+    # Templating safety: building the context runs every safe-literal validator (rejecting a ${{ }}
+    # expression / breakout char in a label, external-check name, glob, branch, secret name, or model,
+    # and an invalid app_id / protected path). Run it here so `stagr validate` — the front door — catches
+    # these, not only `render`. We only want the validation side effect.
+    from .context import build_context
+
+    build_context(cfg)

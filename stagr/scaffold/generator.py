@@ -64,7 +64,8 @@ build:
 
 # Optional blocks (delete any to accept its default):
 #   routing.fast_path      — skip paid review for trivial docs/text changes
-#   modules.auto_merge     — request the fail-closed auto-merge gate (roadmap)
+#   modules.auto_merge     — render the fail-closed auto-merge gate (default off = humans merge)
+#   merge.required_status_checks — external checks (Sonar/Checkmarx/…) the gate requires, by name
 #   budgets                — cap cost/tokens per run
 #   skills:                — register your own review/security skills (source: path), bind via stages[].skill
 # See {_DOCS_CONFIG} for the full, annotated surface.

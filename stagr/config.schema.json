@@ -49,8 +49,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "human_merge": { "type": "string", "default": "human-merge" },
-            "dispatch": { "type": "string", "default": "agentic-task" }
+            "human_merge": { "type": "string", "minLength": 1, "default": "human-merge" },
+            "dispatch": { "type": "string", "minLength": 1, "default": "agentic-task" }
           }
         }
       }
@@ -195,10 +195,10 @@
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean", "default": true, "description": "Set false to disable the fast-path lane so every PR (docs included) is routed to the reviewer." },
-            "globs": { "type": "array", "items": { "type": "string" } },
+            "globs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
             "max_files": { "type": "integer", "minimum": 0 },
             "max_lines": { "type": "integer", "minimum": 0 },
-            "exclude": { "type": "array", "items": { "type": "string" } }
+            "exclude": { "type": "array", "items": { "type": "string", "minLength": 1 } }
           }
         }
       }
@@ -210,6 +210,39 @@
       "properties": {
         "auto_merge": { "type": "boolean", "default": false },
         "sonar": { "type": "boolean", "default": false }
+      }
+    },
+
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Merge-gate policy for the auto-merge lane (only meaningful when modules.auto_merge is true).",
+      "properties": {
+        "required_status_checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "app_id"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "description": "Exact check-run name the external tool publishes (e.g. \"SonarCloud Code Analysis\")." },
+              "app_id": { "type": "integer", "minimum": 1, "description": "Immutable numeric GitHub App id that must be the check-run's producer (matched against check-run app.id). Required because App slugs are mutable and a display name alone is not an identity; find it via the GitHub API for the App. A same-name check from any other App (including github-actions) does not satisfy the requirement." }
+            }
+          },
+          "default": [],
+          "description": "External status check-runs (e.g. a SonarCloud / SonarQube / Checkmarx check) that must be present and green on the PR head before auto-merge, identified by exact name AND producing App id. stagr does not run these tools; it only requires their result. Default: none."
+        },
+        "protected_paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [".github/workflows/**", ".agentic/**"],
+          "description": "Glob paths whose modification forces human review: if a PR changes any matching file, the auto-merge gate refuses to auto-merge and leaves the PR for a human (same effect as the human-merge label). These are the security-sensitive control plane — CI/gate workflow definitions and the toolkit config/contract — whose changes need human judgment and which the gate cannot authenticate by content. Default: the workflows and .agentic directories. Set to [] only if you accept auto-merging changes to your own gate."
+        },
+        "method": {
+          "enum": ["squash", "merge", "rebase"],
+          "default": "squash",
+          "description": "The merge method the auto-merge gate uses. The target repository must have this method enabled or GitHub rejects every merge. Default: squash."
+        }
       }
     }
   },
