@@ -67,6 +67,12 @@ jobs:
           REQUIRE_CODEX_CODE_REVIEW: "{{ require_codex_code_review }}"
           REQUIRE_CODEX_SECURITY_REVIEW: "{{ require_codex_security_review }}"
           CHECK_NAME: "review-complete"
+          # The PR the triggering event is about (empty for schedule), evaluated FIRST so it is always
+          # covered promptly even if the whole-repo sweep hits the job timeout.
+          EVENT_ISSUE_PR: ${{ github.event.issue.number }}
+          EVENT_ISSUE_IS_PR: ${{ github.event.issue.pull_request.url != '' }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_CHECK_SUITE_SHA: ${{ github.event.check_suite.head_sha }}
         run: |
           set -euo pipefail
 
@@ -218,12 +224,32 @@ jobs:
             echo "PR #${pr}: review-complete=${conclusion} for head ${head_sha} (${reason})"
           }
 
-          # Always sweep every open PR targeting the default branch (see the concurrency note): every run
-          # refreshes every head's check-run, so no head is starved of an update.
-          prs="$(gh api --paginate "repos/${REPO}/pulls?state=open&base=${DEFAULT_BRANCH}&per_page=100" --jq '.[].number')" \
-            || { echo "Cannot list open PRs; skipping this run (a later run retries)."; exit 0; }
+          # Evaluate the triggering event's PR FIRST (target-first), so the PR that triggered this run is
+          # always refreshed promptly — even if the whole-repo sweep below is cut off by the job timeout.
+          # schedule and other event-less runs have no target and rely on the sweep alone.
+          TARGET_PR=""
+          if [[ -n "${EVENT_ISSUE_PR:-}" && "${EVENT_ISSUE_IS_PR:-}" == "true" ]]; then
+            TARGET_PR="$EVENT_ISSUE_PR"
+          elif [[ -n "${EVENT_PR_NUMBER:-}" && "${EVENT_PR_NUMBER}" != "null" ]]; then
+            TARGET_PR="$EVENT_PR_NUMBER"
+          elif [[ -n "${EVENT_CHECK_SUITE_SHA:-}" ]]; then
+            TARGET_PR="$(gh api "repos/${REPO}/commits/${EVENT_CHECK_SUITE_SHA}/pulls" --jq '[.[] | select(.state=="open")] | (first // {}) | .number // ""' 2>/dev/null || echo "")"
+          fi
+
           sweep_status=0
+          if [[ -n "$TARGET_PR" ]]; then
+            evaluate_pr "$TARGET_PR" || { echo "PR #${TARGET_PR}: could not publish review-complete; will retry."; sweep_status=1; }
+          fi
+
+          # Then sweep every OTHER open PR targeting the default branch, oldest-updated first so idle PRs
+          # (whose last thread may have resolved with no event to catch it) get priority in the time budget.
+          # `base` is passed as a GET field so gh URL-encodes it — a query-significant character in the
+          # branch name cannot corrupt the query and silently drop PRs from the sweep.
+          prs="$(gh api --method GET repos/${REPO}/pulls -f state=open -f base="$DEFAULT_BRANCH" \
+                   -f sort=updated -f direction=asc -f per_page=100 --paginate --jq '.[].number')" \
+            || { echo "Cannot list open PRs; a later run retries."; exit "$sweep_status"; }
           for pr in $prs; do
+            [[ "$pr" == "$TARGET_PR" ]] && continue
             evaluate_pr "$pr" || { echo "PR #${pr}: could not publish review-complete; will retry on the next run."; sweep_status=1; }
           done
           exit "$sweep_status"

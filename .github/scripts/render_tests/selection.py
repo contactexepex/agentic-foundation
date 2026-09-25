@@ -380,9 +380,9 @@ def test_pipeline_selection() -> None:
     # The review-complete gate check renders with the codex code-review lane (independent of auto_merge),
     # publishes a `review-complete` check-run, and is SUCCESS only on a confirmed approval — a trusted
     # human APPROVED on the head OR the configured Codex review(s) completed for the head.
-    check("review-complete.yml" in rendered,
-          "select: review-complete lane emitted with a codex code-review stage")
-    _rc = rendered["review-complete.yml"]
+    _rc_file = "review-complete.yml"
+    check(_rc_file in rendered, "select: review-complete lane emitted with a codex code-review stage")
+    _rc = rendered[_rc_file]
     check('name="$CHECK_NAME"' in _rc and 'CHECK_NAME: "review-complete"' in _rc,
           "select: review-complete publishes the review-complete check-run")
     check('conclusion="success"' in _rc and '"action_required"' in _rc,
@@ -391,14 +391,10 @@ def test_pipeline_selection() -> None:
           "select: review-complete counts a trusted human APPROVED review bound to the head")
     check('REQUIRE_CODEX_CODE_REVIEW' in _rc and 'REQUIRE_CODEX_SECURITY_REVIEW' in _rc,
           "select: review-complete honours the Codex code + security review path when configured")
-    # It renders WITHOUT auto_merge too (human-merge repos want the button gated).
-    _rc_only = render.render_all(
-        {"version": 2, "profile": "custom",
-         "platform": {"type": "github", "default_branch": "main", "auth": {"token_secret": "GH"},
-                      "codex_review": {"secret": "REMEDIATION_TOKEN"}},
-         "defaults": {"provider": "openai", "models": {}},
-         "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"},
-                     "gate": "blocking", "triggers": ["pr_opened", "pr_updated"]}]},
-        "github")
-    check("review-complete.yml" in _rc_only and "auto-merge.yml" not in _rc_only,
-          "select: review-complete renders without modules.auto_merge (human-merge gating)")
+    # It selects WITHOUT auto_merge too (human-merge repos want the button gated). select_templates needs
+    # no secrets, so this asserts lane selection directly (a codex review stage, no auto_merge module).
+    _codex_only = render.select_templates(
+        [{"id": "review", "type": "review", "backend": {"name": "codex"},
+          "gate": "blocking", "triggers": ["pr_opened", "pr_updated"]}], {})
+    check("review-complete.yml.tmpl" in _codex_only and "auto-merge.yml.tmpl" not in _codex_only,
+          "select: review-complete selected without modules.auto_merge (human-merge gating)")
