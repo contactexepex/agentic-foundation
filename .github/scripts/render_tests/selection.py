@@ -5,6 +5,10 @@ import re
 
 from .harness import REPO_ROOT, check, expect_raises, render
 
+# The final security review is requested with this exact slash command; referenced in several
+# assertions, so name it once (avoids a duplicated-literal smell and keeps the command in one place).
+_SEC_REVIEW_CMD = "@codex security review"
+
 
 def test_pipeline_selection() -> None:
     # A codex-backed review/security stage -> the review lane is emitted.
@@ -26,6 +30,29 @@ def test_pipeline_selection() -> None:
     check("issue_comment" in _rev and "check_suite" in _rev
           and "code-review-requested:" in _rev,
           "select: request-review carries the stranded-head re-trigger + marker (#15)")
+
+    # Regression (#25/#26): the final-security-review lane must (a) never declare the invalid
+    # `pull_request_review_thread` webhook event as a trigger — it fails the whole workflow at startup,
+    # so the security review never runs — (b) carry a schedule sweep to re-evaluate a head after its
+    # last thread resolves (no GitHub event fires for that), (c) serialize globally so concurrent
+    # sweep/event runs can't double-post `@codex security review`, and (d) trigger the ONE security
+    # review only AFTER the code review is Completed on the head with zero unresolved threads.
+    _sec = rendered["final-security-review.yml"]
+    _sec_on = _sec.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+    # (a) EXACTLY the three supported triggers: no invalid pull_request_review_thread (declaring it
+    # fails the whole workflow at startup, so the security review never runs) and no other stray trigger.
+    _triggers = set(re.findall(r"^ {2}([a-z_]+):", _sec_on, re.M))
+    check(_triggers == {"issue_comment", "check_suite", "schedule"},
+          f"select: final-security-review triggers are exactly issue_comment/check_suite/schedule (got {sorted(_triggers)})")
+    # (b) global serialization so a scheduled sweep and an event run can't both pass the check-then-post
+    # marker and double-post `@codex security review` (#26 race).
+    check("group: request-codex-security\n" in _sec and "cancel-in-progress: false" in _sec,
+          "select: final-security-review serializes on one global concurrency group (#26 race)")
+    # (c) the security review is gated by the EXECUTABLE logic, not descriptive text: the code-review row
+    # must be Completed for the head AND unresolved threads must be exactly zero before it is requested.
+    check(_SEC_REVIEW_CMD in _sec, "select: final-security-review requests the security review")
+    check("grep -qi 'Completed'" in _sec, "select: gate requires the code-review row Completed on the head")
+    check('[[ "$unresolved" == "0" ]]' in _sec, "select: gate requires zero unresolved threads before security")
 
     # No codex review stage -> the review lane is NOT emitted (module-aware, not glob-all).
     minimal = {"version": 2, "profile": "custom",
@@ -298,7 +325,7 @@ def test_pipeline_selection() -> None:
                              "backend": {"name": "codex"}, "triggers": ["pr_opened", "pr_updated"]}]}
     r_code = render.render_all(code_only, "github")
     check("post_codex '@codex review'" in r_code["request-review.yml"]
-          and "@codex security review" not in r_code["request-review.yml"],
+          and _SEC_REVIEW_CMD not in r_code["request-review.yml"],
           "request-review: posts only the code review, never security")
     check("final-security-review.yml" not in r_code,
           "select: no security lane without a codex security stage")
@@ -366,9 +393,9 @@ def test_pipeline_selection() -> None:
 
     # The dogfood config has a codex security stage -> the security review is requested ONLY from the
     # final-security-review lane (never alongside the code review), so the two never run concurrently.
-    check("@codex security review" in rendered["final-security-review.yml"],
+    check(_SEC_REVIEW_CMD in rendered["final-security-review.yml"],
           "final-security-review: requests the security review")
-    check("@codex security review" not in rendered["request-review.yml"],
+    check(_SEC_REVIEW_CMD not in rendered["request-review.yml"],
           "request-review: never requests the security review (moved to the final lane)")
 
     # The lane registry is the single selection seam (names, in emit order).
