@@ -237,17 +237,21 @@ def _validated_protected_paths(cfg: dict[str, Any]) -> list[str]:
         raw = [".github/workflows/**", ".agentic/**"]
     paths = [str(p) for p in raw]
     for path in paths:
-        assert_safe_glob(path, "merge.protected_paths[]")
-        # Protected paths are matched at runtime by a LITERAL bash `[[ == ]]` glob (no brace expansion) and
-        # templated into a single-quoted env scalar — so a brace would silently fail to match (weakening the
-        # guard) and a single quote would break the workflow. Reject both here (stricter than a fast-path
-        # glob, which is matched by jq/GitHub and may use braces). List each extension separately instead.
-        if "{" in path or "}" in path or "'" in path:
+        assert_safe_glob(path, "merge.protected_paths[]")  # rejects ${{ and control chars
+        # Protected paths are matched at runtime by DETERMINISTIC prefix/equality in the gate's shell —
+        # NOT general globbing. bash `[[ == ]]` cannot do reliable globstar (a `**/*.yml` misses a
+        # root-level file; braces don't expand), so instead of a fragile glob matcher we support exactly
+        # two safe forms and reject anything else:
+        #   * an EXACT file path (no glob metacharacters), matched by equality; or
+        #   * a directory prefix ending in `/**` (e.g. `.github/workflows/**`), matched by literal prefix.
+        core = path[:-3] if path.endswith("/**") else path
+        if any(ch in core for ch in "*?{}'[]"):
             raise RenderError(
-                f"merge.protected_paths[] '{path}' contains a brace or single quote. Protected paths are "
-                "matched by a literal bash glob (no brace-expansion) and rendered into a single-quoted "
-                "env value; use a plain path glob with '*'/'**' and list each extension separately "
-                "(e.g. '**/*.yml' and '**/*.yaml', not '**/*.{yml,yaml}')."
+                f"merge.protected_paths[] '{path}' is not an exact path or a 'dir/**' directory prefix. "
+                "Protected paths are matched by literal prefix/equality in the gate's shell (no general "
+                "globbing — bash cannot reliably match '**'), so use an exact path "
+                "(e.g. '.github/workflows/validate.yml') or a directory prefix ending in '/**' "
+                "(e.g. '.github/workflows/**'). Patterns like '**/*.yml', braces, '*', '?' are unsupported."
             )
     return paths
 

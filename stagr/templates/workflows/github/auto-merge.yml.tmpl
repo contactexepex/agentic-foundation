@@ -141,13 +141,19 @@ jobs:
           # skip <pr> <reason>: record a fail-closed decision (a skip is not an error).
           skip() { echo "SKIP #$1: $2"; }
 
-          # path_is_protected <file>: 0 if the file matches any control-plane glob. `[[ == ]]` glob match
-          # (not pathname expansion), so `*`/`**` match across '/', which is what the dir globs want.
+          # path_is_protected <file>: 0 if the file is protected. Protected paths are validated (at render)
+          # to be either an EXACT path or a `dir/**` directory prefix — matched here DETERMINISTICALLY by
+          # equality / literal prefix, never by bash glob (bash cannot reliably match '**', which would
+          # silently weaken the guard). A `dir/**` entry matches any file at or below `dir/`.
           path_is_protected() {
-            local f="$1" p
+            local f="$1" p prefix
             for p in "${PROTECTED[@]}"; do
-              # shellcheck disable=SC2053
-              [[ "$f" == $p ]] && return 0
+              if [[ "$p" == *"/**" ]]; then
+                prefix="${p%'**'}"          # keep the trailing slash: "dir/**" -> "dir/"
+                [[ "$f" == "$prefix"* ]] && return 0
+              else
+                [[ "$f" == "$p" ]] && return 0
+              fi
             done
             return 1
           }

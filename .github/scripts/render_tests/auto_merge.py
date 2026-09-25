@@ -119,9 +119,16 @@ def test_auto_merge_config_hardening() -> None:
                       f"protected_paths: {bad!r} rejected at render")
         expect_raises(lambda c=cfg: render.validate_config(c),
                       f"protected_paths: {bad!r} rejected at front door")
-    # A plain path glob is accepted and rendered.
-    ok = render.render_all(_with(_IMPL_BASE, merge={"protected_paths": ["config/**", "**/*.tf"]}), "github")["auto-merge.yml"]
-    check('"config/**"' in ok and '"**/*.tf"' in ok, "protected_paths: plain globs render")
+    # Protected paths support ONLY exact paths and 'dir/**' prefixes (matched deterministically); general
+    # globs are rejected because bash cannot reliably match '**' (a '**/*.yml' would miss a root-level file).
+    ok = render.render_all(_with(_IMPL_BASE, merge={"protected_paths": ["config/**", "infra/main.tf"]}), "github")["auto-merge.yml"]
+    check('"config/**"' in ok and '"infra/main.tf"' in ok, "protected_paths: dir/** prefix + exact path render")
+    for bad in ("**/*.yml", "src/*", "a/**/b", "?.yml"):
+        cfg = _with(_IMPL_BASE, merge={"protected_paths": [bad]})
+        expect_raises(lambda c=cfg: render.render_all(c, "github"),
+                      f"protected_paths: general glob {bad!r} rejected at render")
+        expect_raises(lambda c=cfg: render.validate_config(c),
+                      f"protected_paths: general glob {bad!r} rejected at front door")
 
     # RenderContext is a full read-only Mapping (Codex: keep the exported build_context mapping API).
     ctx = render.build_context(_IMPL_BASE)
