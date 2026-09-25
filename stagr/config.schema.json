@@ -236,7 +236,7 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "default": [".github/workflows/**", ".agentic/**"],
-          "description": "Glob paths whose modification forces human review: if a PR changes any matching file, the auto-merge gate refuses to auto-merge and leaves the PR for a human (same effect as the human-merge label). These are the security-sensitive control plane — CI/gate workflow definitions and the toolkit config/contract — whose changes need human judgment and which the gate cannot authenticate by content. Default: the workflows and .agentic directories. Set to [] only if you accept auto-merging changes to your own gate."
+          "description": "Paths whose modification forces human review: if a PR changes any matching file, the auto-merge gate refuses to auto-merge and leaves the PR for a human (same effect as the human-merge label). These are the security-sensitive control plane — CI/gate workflow definitions and the toolkit config/contract — whose changes need human judgment and which the gate cannot authenticate by content. Each entry is EITHER an exact file path (e.g. '.github/workflows/validate.yml') OR a directory prefix ending in '/**' (e.g. '.github/workflows/**', which matches any file at or below that directory), matched deterministically by equality/prefix. General globs ('**/*.yml', '*', '?', mid-pattern '**', braces) are NOT supported (the gate's shell cannot match them reliably) and are rejected at validation. Default: ['.github/workflows/**', '.agentic/**']. Set to [] only if you accept auto-merging changes to your own gate."
         },
         "method": {
           "enum": ["squash", "merge", "rebase"],

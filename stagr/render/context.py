@@ -54,7 +54,10 @@ class RenderedValue:
     operator_controlled: bool
 
 
-@dataclass(frozen=True)
+# eq=False so the dataclass does NOT synthesize __eq__ (which would compare by the `entries` field and
+# shadow Mapping.__eq__): we want `ctx == some_dict` to compare BY MAPPING VALUE, preserving the old
+# dict-returning build_context contract.
+@dataclass(frozen=True, eq=False)
 class RenderContext(Mapping):
     """The rendered token set with provenance. It IS a read-only mapping of {token: value} (so every
     ordinary mapping operation — `[]`, `in`, `.get`, `.keys`, `.items`, `.values`, iteration, `len` —

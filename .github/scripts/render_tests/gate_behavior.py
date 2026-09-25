@@ -86,6 +86,7 @@ def _defaults() -> dict:
         "THREADS_JSON": json.dumps(threads), "VALIDATE_RUN_OK": "1",
         "REQUIRED_STATUS_CHECKS": "[]", "REQUIRE_CODEX_CODE_REVIEW": "true",
         "REQUIRE_CODEX_SECURITY_REVIEW": "true", "FAIL_PULL": "0", "FAIL_FILES": "0",
+        "CURRENT_DEFAULT": "main",
     }
 
 
@@ -106,6 +107,7 @@ gh() {
   if [[ "$args" == *"--method PUT"*"/merge"* ]]; then return 0; fi
   if [[ "$args" == *"actions/workflows/validate.yml/runs"* ]]; then printf '%s' "$VALIDATE_RUN_OK"; return 0; fi
   if [[ "$args" == *graphql* ]]; then printf '%s' "$THREADS_JSON"; return 0; fi
+  if [[ "$args" == *default_branch* ]]; then printf '%s' "$CURRENT_DEFAULT"; return 0; fi
   case "$args" in
     *"/pulls/1/files"*)   [[ "$FAIL_FILES" == 1 ]] && return 1; printf '%s' "$FILES_JSON" ;;
     *"/pulls/1/reviews"*) printf '%s' "$REVIEWS_JSON" ;;
@@ -155,6 +157,9 @@ def test_gate_behavior() -> None:
     check(not _merges(pr(mergeable_state="behind")), "gate: mergeable_state != clean blocks")
     check(not _merges(pr(author_association="CONTRIBUTOR")), "gate: untrusted author blocks")
     check(not _merges(pr(head={"sha": HEAD, "repo": {"full_name": "fork/r"}})), "gate: fork head blocks")
+    # Default branch re-read fresh: if the repo default changed to something other than the PR's base, block.
+    check(not _merges({"CURRENT_DEFAULT": "develop"}),
+          "gate: base != the CURRENT (freshly-read) default branch blocks")
 
     # Control-plane guard.
     check(not _merges({"FILES_JSON": json.dumps([[{"filename": ".github/workflows/validate.yml"}]])}),

@@ -212,7 +212,14 @@ jobs:
             [[ "$merged" == "false" ]]             || { skip "$pr" "already merged"; return 1; }
             [[ "$draft" == "false" ]]              || { skip "$pr" "draft"; return 1; }
             [[ "$head_repo" == "$REPO" ]]          || { skip "$pr" "head is a fork ($head_repo)"; return 1; }
-            [[ "$base_ref" == "$DEFAULT_BRANCH" ]] || { skip "$pr" "base=$base_ref not $DEFAULT_BRANCH"; return 1; }
+            # Re-read the CURRENT default branch (not the value cached at workflow start): an admin can
+            # change it after this run began — including while a concurrency-delayed run is queued — and the
+            # SHA-pinned merge does not prevent merging into a former default branch. Each gates_pass call
+            # re-reads it, so the final pass compares against fresh state.
+            local current_default
+            current_default="$(gh api "repos/$REPO" --jq '.default_branch')" \
+              || { skip "$pr" "cannot read current default branch"; return 1; }
+            [[ "$base_ref" == "$current_default" ]] || { skip "$pr" "base=$base_ref not the current default branch ($current_default)"; return 1; }
             printf '%s' "$TRUSTED_ROLES" | jq -e --arg a "$author_assoc" 'index($a) != null' >/dev/null 2>&1 \
               || { skip "$pr" "untrusted author_association=$author_assoc"; return 1; }
             # Case-INSENSITIVE label match: GitHub label names are unique case-insensitively, but the PR

@@ -138,6 +138,8 @@ def test_auto_merge_config_hardening() -> None:
     check(dict(ctx.items()) == subs and set(ctx.keys()) == set(subs) and len(ctx) == len(subs),
           "RenderContext: .items()/.keys()/len() match substitutions()")
     check(sorted(ctx.values()) == sorted(subs.values()), "RenderContext: .values() returns the value strings")
+    check(ctx == subs and ctx == render.build_context(_IMPL_BASE),
+          "RenderContext: == compares by mapping value (dataclass eq disabled)")
     check(any(rv.token == "human_merge_label" and rv.operator_controlled for rv in ctx.entries),
           "RenderContext: .entries exposes per-value provenance")
 
