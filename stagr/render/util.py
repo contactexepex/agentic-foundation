@@ -36,6 +36,73 @@ _SECRET_NAME = re.compile(r"^[A-Za-z_]\w*$", re.ASCII)
 # A model id safe to embed in a GitHub expression string literal (no quotes/metacharacters).
 _MODEL_SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
 
+# ----------------------------------------------------------------------------- safe workflow literals
+# GitHub Actions evaluates `${{ ... }}` expressions inside workflow-level `env:` and `if:` values before
+# the shell runs. Any operator-controlled string templated into such a position must therefore never
+# carry the expression opener, or a config value like "${{ secrets.X }}" would be evaluated by the
+# runner (e.g. blanking the human-merge label so no PR can match it, or interpolating a secret). GitHub
+# has exactly ONE expression syntax, so rejecting the literal opener is complete for this class — and it
+# does NOT ban braces on their own, because globs legitimately use `{a,b}` brace-expansion. These are the
+# single source of truth for "an operator string that becomes a workflow literal"; every such value in
+# `build_context` passes through one of them (see the render_tests closure check).
+_GHA_EXPRESSION = "${{"
+
+
+def _has_gha_expression(value: str) -> bool:
+    return _GHA_EXPRESSION in value
+
+
+def _has_control_char(value: str) -> bool:
+    return any(ord(ch) < 0x20 for ch in value)
+
+
+def assert_safe_label(value: str, field: str) -> str:
+    """A GitHub label templated into a double-quoted YAML scalar and a jq `--arg`. Reject an empty label
+    (it could match no PR, silently disabling a hard stop) and any value that could break the scalar
+    (`"`, backslash), inject a GitHub expression (`${{`), or carry a control character."""
+    if not value:
+        raise RenderError(
+            f"{field} must not be empty — no GitHub label could match, so the human-merge hard stop "
+            "could never pause a PR for human review."
+        )
+    if '"' in value or "\\" in value or _has_control_char(value) or _has_gha_expression(value):
+        raise RenderError(
+            f"{field} {value!r} contains a double quote, backslash, control character, or the GitHub "
+            f"expression opener {_GHA_EXPRESSION!r}, and cannot be safely templated into the workflow; "
+            "use a plain label name."
+        )
+    return value
+
+
+def assert_safe_check_name(value: str, field: str) -> str:
+    """An external check name templated into a single-quoted JSON env value and matched with jq. Reject
+    empty, a single quote (breaks the JSON env scalar), a control character, or a GitHub expression."""
+    if not value:
+        raise RenderError(
+            f"{field} contains an empty check name; remove it or use the exact check name your quality "
+            "tool publishes (an empty entry would silently gate nothing)."
+        )
+    if "'" in value or _has_control_char(value) or _has_gha_expression(value):
+        raise RenderError(
+            f"{field} {value!r} contains a single quote, control character, or the GitHub expression "
+            f"opener {_GHA_EXPRESSION!r}, and cannot be safely templated into the workflow; use the exact "
+            "check name your quality tool publishes."
+        )
+    return value
+
+
+def assert_safe_glob(value: str, field: str) -> str:
+    """A fast-path glob templated (JSON-encoded) into a workflow env value parsed by jq. Reject empty, a
+    control character, or a GitHub expression — but allow braces so `**/*.{js,ts}` brace-expansion works."""
+    if not value:
+        raise RenderError(f"{field} contains an empty glob; remove it or use a real pattern.")
+    if _has_control_char(value) or _has_gha_expression(value):
+        raise RenderError(
+            f"{field} {value!r} contains a control character or the GitHub expression opener "
+            f"{_GHA_EXPRESSION!r}; use a plain glob pattern (brace-expansion like '**/*.{{js,ts}}' is fine)."
+        )
+    return value
+
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """Deep-merge overlay onto base (overlay wins). Lists/scalars are replaced."""

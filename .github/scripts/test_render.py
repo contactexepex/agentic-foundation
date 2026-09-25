@@ -24,6 +24,14 @@ from render_tests.behaviors import (
     test_round4_fixes,
 )
 from render_tests.selection import test_pipeline_selection
+from render_tests.auto_merge import (
+    test_auto_merge_config_hardening,
+    test_auto_merge_injection_matrix,
+    test_auto_merge_p0_invariants,
+    test_auto_merge_templating_closure,
+    test_build_command_trust_boundary,
+)
+from render_tests.gate_behavior import test_gate_behavior
 
 
 def main() -> int:
@@ -35,6 +43,12 @@ def main() -> int:
     test_round3_fixes()
     test_pipeline_selection()
     test_round4_fixes()
+    test_auto_merge_templating_closure()
+    test_auto_merge_injection_matrix()
+    test_auto_merge_config_hardening()
+    test_auto_merge_p0_invariants()
+    test_build_command_trust_boundary()
+    test_gate_behavior()
     test_render_structural()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
