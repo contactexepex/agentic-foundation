@@ -36,14 +36,17 @@ scoped to the stage:
 - The **Claude implementer job** runs `claude-code-action` **with `contents: write` and
   `pull-requests: write`** on the same job — no buffered-output / separately-scoped apply step.
 - The **Codex review and security lanes** carry the **remediation PAT** (`CODEX_PAT`, a real-user
-  credential with **Contents R/W + Pull Requests R/W**) in their shell steps, used to author review
-  comments as a trusted user. So the review/security lane is **not read-scoped** and holds a
-  publisher-class credential (used only in the controlled comment-post step, not handed to the model).
+  credential with **Contents R/W + Pull Requests R/W**) to author review comments as a trusted user.
+  The PAT is exposed **step-wide**: it is set in the environment of the **whole orchestration shell
+  step** (which also runs an authenticated `/user` lookup before posting), so **every command in that
+  step can read it** — it is **not** confined to a single isolated post step. So the review/security
+  lane is **not read-scoped** and holds a publisher-class credential.
 
-So the least-privilege, buffered-apply, and minimal-commenting-identity goals above are **[target]
-hardening items** ([roadmap.md](roadmap.md)), not enforced guarantees today. What *does* hold: the
-implementer's `GITHUB_TOKEN` carries no **merge** scope, the PAT is confined to the comment-post step
-(never exposed to model output), and **fork PRs drive nothing**.
+So the least-privilege, buffered-apply, and minimal-commenting-identity goals above (including
+splitting PAT login/post into separately-scoped steps) are **[target] hardening items**
+([roadmap.md](roadmap.md)), not enforced guarantees today. What *does* hold: the implementer's
+`GITHUB_TOKEN` carries no **merge** scope, the PAT is used by the workflow's shell and **never handed
+to the model**, and **fork PRs drive nothing**.
 
 ## Secrets model
 

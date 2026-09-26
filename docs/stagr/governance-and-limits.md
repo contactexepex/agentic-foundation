@@ -48,8 +48,14 @@ reaches the default branch through exactly one lane:
 
 ### Human lane — the default
 
-Human approval is **required** to merge. A PR cannot merge without it. This is the default for
-every repo and every profile; stagr's job is to make the PR *provably ready* and then stop.
+Human approval is **required** to merge, and stagr's job is to make the PR *provably ready* and then
+stop. **Important dependency, stated plainly:** with `modules.auto_merge` disabled, **stagr renders
+no merge-gate workflow and provisions no branch protection** — so "cannot merge without approval /
+bypass is impossible" is **only true if an external ruleset enforces it** (required checks + required
+approvals on the default branch). On a repo without that ruleset, an authorized user could merge
+without satisfying predicates 1–7. Provisioning and verifying that ruleset is therefore an
+**onboarding invariant** ([onboarding-and-config.md](onboarding-and-config.md)), not something the
+shipped human lane guarantees on its own.
 
 ### Auto-merge lane — opt-in module only
 

@@ -3,6 +3,23 @@
 This is stagr's heart: the ordered stage graph from an approved story to a merged PR, and the
 gate that decides when the PR is **provably ready**.
 
+> **Shipped vs. target for this lane (read first).** What renders today is narrower than the full
+> flow below:
+> - **implement** is triggered by `workflow_dispatch` only; the **review→fix loop is not
+>   auto-driven** — after a finding, an **external actor** (a human, or an orchestrator) pushes the
+>   fix, and the review lane only *re-requests* Codex on the new commit. An automatic
+>   finding→remediation trigger with a bounded loop is **[target]**.
+> - **code review** does **not** re-run on every push under the shipped default: `routing.fast_path`
+>   defaults **on**, so the router can classify a trivial head and **skip** the review. (This repo
+>   disables fast-path, so every PR is reviewed; that is a config choice, not the default.)
+> - **SAST/quality, integration-test, performance, custom** stages are **[target]** — no workflow
+>   renders them today, and the auto-merge gate *rejects* a blocking `test`/`integration-test` stage
+>   (it renders no merge signal). Their rows and ordering below describe the intended graph.
+> - **security review** "never concurrent" is **best-effort** (separate concurrency groups leave a
+>   residual window — see [trust-and-correctness.md](trust-and-correctness.md)).
+> - the **human-lane merge gate is not rendered by stagr** — it depends on an externally-enforced
+>   ruleset ([governance-and-limits.md](governance-and-limits.md), [onboarding-and-config.md](onboarding-and-config.md)).
+
 ## The flow
 
 ```
@@ -12,8 +29,8 @@ approved story issue
 [implement]  Claude opens a PR
       │  (trigger: PR opened/updated)
       ▼
-[code-review]  Codex reviews ──► Claude fixes ──► new commits re-trigger review
-      │        (loop until ZERO open review threads on the current head)
+[code-review]  Codex reviews ──► fix pushed by an external actor ──► new commit re-triggers review
+      │        (loop until ZERO open review threads; the fix push is NOT auto-driven today — see note)
       ▼  (only after code review has converged: completed + clean on head)
 [security-review]  Codex security review  ── runs ONCE, never concurrent with code review
       +  [sast/quality integrations]  Sonar / Checkmarx (if configured) ── must be clean
@@ -38,12 +55,12 @@ which defines "green" for the repo and is itself a blocking check.
 |---|---|---|---|
 | **implement** | manual `workflow_dispatch` **[shipped]**; approved-story **issue label** **[target]** | n/a (produces the PR) | one PR per story |
 | **validate / CI** | PR opened/updated, push | blocking | build + unit tests must pass on the head |
-| **code-review** (Codex) | PR opened/updated (`synchronize`) | advisory or blocking | **re-runs on every push**; converges only when **zero open review threads** on the current head |
-| **security-review** (Codex) | code review completed + clean on head | blocking | **runs once, after** code review converges; **never concurrent** with code review |
-| **sast / quality** (Sonar, Checkmarx) | PR opened/updated | blocking (if configured) | grouped with security; must be clean **before** integration/perf/custom |
-| **integration-test** | after security clean (or as configured) | blocking (if configured) | default: **after** the security group |
-| **performance-test** | after integration (or as configured) | blocking (if configured) | default: after integration |
-| **custom** | as configured (`depends_on`) | advisory or blocking | placed anywhere via `depends_on` |
+| **code-review** (Codex) | PR opened/updated (`synchronize`) | advisory or blocking | re-runs on each push **unless fast-path skips a trivial head** (shipped default `fast_path: on`); converges only when **zero open review threads** on the current head |
+| **security-review** (Codex) | code review completed + clean on head | blocking | **runs once, after** code review converges; **never concurrent** with code review (**best-effort** — see [trust-and-correctness.md](trust-and-correctness.md)) |
+| **sast / quality** (Sonar, Checkmarx) **[target]** | PR opened/updated | blocking (if configured) | grouped with security; clean **before** integration/perf/custom — *not rendered today* |
+| **integration-test** **[target]** | after security clean (or as configured) | blocking (if configured) | default: **after** the security group — *not rendered; auto-merge rejects a blocking one* |
+| **performance-test** (a `test`/`custom` stage) **[target]** | after integration (or as configured) | blocking (if configured) | default: after integration — *not rendered today* |
+| **custom** **[target]** | as configured (`depends_on`) | advisory or blocking | placed anywhere via `depends_on` — *not rendered today* |
 
 ### Why security runs before integration/performance by default
 
@@ -70,10 +87,12 @@ auto-merge gate unless marked:
    GitHub reports `mergeable == true` and `mergeable_state == clean` (no conflict, not behind,
    not still computing).
 2. **CI green** — the combined commit status is `success`, **and** every latest check-run on the
-   head is a clean success. The gate **scans check-runs separately** — GitHub's combined commit
-   status does **not** include Checks-API runs (ordinary Actions jobs), so the check-run scan is what
-   catches an unrelated failing job. The mandatory `validate` check (build + unit tests) is a
-   completed success **and** backed by a trusted `validate.yml` workflow run for this exact head.
+   head is **terminal with an accepted conclusion**. The gate **scans check-runs separately** (the
+   combined status omits Checks-API runs), selecting the **latest attempt by id** per `(app.id, name)`.
+   The **general** scan accepts `success`, **`neutral`, or `skipped`**; the **mandatory `validate`
+   check and any operator-listed required checks must be exact `success`** — `validate` both as a
+   completed-success check from the `github-actions` app **and** backed by a trusted `validate.yml`
+   workflow run for this exact head.
 3. **Every configured check green** — each required check-run/status is a clean success on the head
    (SAST/quality, integration, test, custom). The configured list is **not** an allowlist that
    hides an unrelated failing check-run (that is caught by #2).

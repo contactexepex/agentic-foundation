@@ -88,7 +88,7 @@ behavioural fixture with a stubbed platform API).
 
 | Case | Behaviour |
 |---|---|
-| State changes between last read and merge | Re-read + re-check mutable predicates + head-move check before the SHA-pinned merge. SHA-pinning prevents merging a *different* commit, but the predicates are **not atomic**: a `human-merge` add / thread reopen / review turning blocking on the **same** SHA can admit a now-unready commit. Only **server-side branch protection** closes these atomically (see [trust-and-correctness.md](trust-and-correctness.md)) |
+| State changes between last read and merge | Re-read + re-check mutable predicates + head-move check before the SHA-pinned merge. SHA-pinning prevents merging a *different* commit, but the predicates are **not atomic**: a `human-merge` add / thread reopen / review turning blocking on the **same** SHA can admit a now-unready commit. Branch protection closes **checks and conversation-resolution** atomically, but **not** the toolkit `human-merge` label — that race is **irreducible** without a server-enforced signal (see [trust-and-correctness.md](trust-and-correctness.md)) |
 | Event run and scheduled sweep overlap on one PR | **Not** globally serialized (per-PR group for events, separate group for the sweep); safeguards are **idempotent re-evaluation**, the final re-read + head-move check, and the gate's own in-progress check-run making an event run **defer** so a later sweep completes |
 | Two events for the same PR | Idempotent; duplicate/echo events are skipped |
 | A signal has no webhook at all | The scheduled sweep is the backstop |

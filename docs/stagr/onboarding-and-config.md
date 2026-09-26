@@ -54,12 +54,21 @@ on remote `extends`.
 
 ## The onboarding CLI
 
-- **`stagr init` / `doctor --init`** — detect language/build/platform and propose a starting
-  `.agentic/config.yml` (or confirm the org default already covers the repo).
-- **`doctor`** — validate config + environment (schema, resolvable models, required secrets present
-  by name, gate/ruleset in place) and report gaps precisely. `doctor` runs locally and read-only.
-- **`plan` / `apply`** — render the contract for the target platform and open the bootstrap PR;
-  `apply` never hand-merges.
+See [`../CLI.md`](../CLI.md) for the authoritative command reference; in summary:
+
+- **`stagr init`** — autodetect the build toolchain and propose a starting `.agentic/config.yml`
+  (guided wizard or `--profile`).
+- **`stagr doctor`** — a **local, read-only, secret-free** health report: it resolves the config,
+  reports **resolvable models** and the **secret NAMES** the pipeline needs, and renders the
+  workflows. It does **not** probe the environment — it does **not** check whether those secrets
+  actually exist, or whether the merge gate/ruleset is installed. Verifying secrets and rulesets is a
+  **manual** onboarding step today; automated environment probes are **[target]**.
+- **`stagr plan`** — dry run: show exactly what `apply` **would** write to `.github/workflows/`
+  (with `--diff`), marking each workflow.
+- **`stagr apply`** — **writes the rendered workflow files into `.github/workflows/` in the working
+  tree** (removing orphaned ones); the operator then commits and opens their own PR. It performs
+  **no Git or GitHub action itself** — there is **no auto-opened bootstrap PR** — and never
+  hand-merges.
 
 ## Config versioning & migration
 
@@ -67,13 +76,14 @@ stagr is a contract, and contracts evolve (the `required_status_checks` shape al
 once). With an org-default config feeding many repos, an unversioned schema would break everyone on
 upgrade. Therefore:
 
-- **The schema is versioned**, and a config declares the version it targets.
-- **Compatibility is explicit** — a stagr release states which schema versions it accepts.
-- **Migrations are provided** — a breaking schema change ships a migration path (and `doctor`
-  reports "your config targets vN; this release wants vN+1: run the migration").
-- **Render-time validation is the front door** — `stagr.render.validate_config()` (schema →
-  coherence → templating safety) is the single validator; CI's `validate_config.py` calls it, not a
-  second implementation.
+- **[shipped]** The schema is **versioned** and a config declares its version; today the schema
+  accepts **only version 2**, and any other version fails validation with the generic schema error.
+- **[target]** An explicit **compatibility range**, a **migration command/path** for breaking
+  changes, and **`doctor` migration guidance** ("your config targets vN; this release wants vN+1")
+  are **not implemented yet** ([roadmap.md](roadmap.md)).
+- **[shipped]** Render-time validation is the single front door — `stagr.render.validate_config()`
+  (schema → coherence → templating safety); CI's `validate_config.py` calls it, not a second
+  implementation.
 
 ## Language & platform agnosticism
 

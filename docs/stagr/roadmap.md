@@ -64,6 +64,15 @@ behaviour and the stated design:
 - **Server-enforced `human-merge`.** Represent the `human-merge` hard stop as a server-enforced gate
   signal (e.g. a required status the label toggles) to close the label race branch protection cannot.
   ([trust-and-correctness.md](trust-and-correctness.md))
+- **Automatic remediation loop.** A finding→remediation trigger (invoke the implementer on an open
+  Codex finding / unresolved thread) with a bounded loop — today the fix push is external/manual.
+  ([dev-lane.md](dev-lane.md))
+- **Human-lane gate provisioning + verification.** Provision and verify the branch-protection ruleset
+  (required checks + approvals) so the human lane's "no bypass" holds without relying on a
+  separately-configured ruleset. ([governance-and-limits.md](governance-and-limits.md))
+- **`doctor` environment probes.** Check that required secrets actually exist and the gate/ruleset is
+  installed — today `doctor` only resolves config, lists secret names, and renders.
+  ([onboarding-and-config.md](onboarding-and-config.md))
 
 ## Phase 2 — Org-scale onboarding & the stage catalogue
 
