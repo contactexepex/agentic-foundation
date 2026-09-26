@@ -67,14 +67,18 @@ intended design writes to a **durable outbox** and treats remote emission as **b
 **Caveat [target]:** the platform's native run log is only a *fallback*, and it is **retention-bound
 and deletable** — it is **not** a truly durable record. So the "nothing is lost / always auditable"
 guarantee holds **only once a durable outbox (or a sink delivery-acknowledgement) is implemented**;
-until then it is best-effort. With that outbox in place:
+until then it is best-effort. With that outbox in place, **every** record — including the no-sink and
+failing-sink cases — is committed to the **durable outbox before merge** (never only to the native run
+log):
 
-- **No sink configured** → the record lives in the native run log; nothing is lost.
-- **Configured sink unavailable** (webhook down, OTLP collector unreachable, bus rejects) → the
-  durable run-log record is already written, so the merge is **not blocked** by a remote outage; the
-  failed delivery is **flagged and retried** (best-effort), never silently dropped.
-- The merge is **never** gated on a remote sink's availability — only on the local record existing.
-  This keeps "a merge always has a record" true without letting an external outage stall the gate.
+- **No sink configured** → the record is committed to the **durable outbox**; the native run log is
+  only a convenience copy.
+- **Configured sink unavailable** (webhook down, OTLP collector unreachable, bus rejects) → the record
+  is already in the **durable outbox**, so the merge is **not blocked** by a remote outage; remote
+  delivery is **retried from the outbox**, never silently dropped.
+- The merge is gated on the **durable-outbox commit** (not on any remote sink's availability), which is
+  what keeps "a merge always has a record" true. **Until the durable outbox is implemented this is
+  best-effort** (native run log only) — see the caveat above.
 
 ## What "auditable" means here
 
