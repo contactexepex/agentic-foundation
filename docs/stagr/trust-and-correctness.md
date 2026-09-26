@@ -162,15 +162,14 @@ The reference template configures the following settings:
 | `pull_request` rule | (present) | Prevents direct pushes to the default branch; requires a pull request so the gate has something to evaluate. |
 | `dismiss_stale_reviews_on_push` | `true` | A commit pushed after a human approval invalidates that approval, so a human-lane re-approval on the new head is real. Without this, an approval on an old head survives a force-push or additional commit. |
 | `required_review_thread_resolution` | `true` | Prevents a race where a review thread is reopened after the gate's final read but before the merge PUT. |
-| `required_status_checks` rule | (present) | Forces at least the `Validate` check and the `Publish fast review result` router status to pass before merge, server-side — preventing the "delete or rename validate.yml" bypass. Note: this prevents bypassing the gate via deletion or rename; it does **not** prevent a trusted author from replacing the workflow body with a trivially passing job (see the anti-tamper note above). |
+| `required_status_checks` rule | (present) | Forces at least the `Validate` check and the `Publish fast review result` router status to pass before merge, server-side — preventing the "delete or rename validate.yml" bypass. Note: this prevents bypassing the gate via deletion or rename; it does **not** prevent a trusted author from replacing the workflow body with a trivially passing job (see the anti-tamper note above). **Scope:** requiring `Publish fast review result` enforces that the routing workflow ran, but does **not** enforce Codex-review completion — that enforcement comes from the rendered auto-merge gate (`auto_merge: true`). Repos without auto-merge rely on convention, not this ruleset, for Codex-review completion. |
 | `strict_required_status_checks_policy` | `true` | PRs must be up-to-date with the base branch before merging, preventing a merge against a stale base. |
 | `do_not_enforce_on_create` | `true` | Newly created repositories can push their initial default branch without required status checks blocking the bootstrap push. |
 
-> **Foundation-lane note.** The reference template does **not** include
-> `required_approving_review_count`. The foundation lane's auto-merge does not create a human
-> approval, so requiring one would block automated merges. Repos that use the human-gated lane may
-> add `"required_approving_review_count": 1` to the `pull_request` parameters when applying this
-> template.
+> **Foundation-lane note.** The reference template sets `"required_approving_review_count": 0`
+> (no approvals required). The foundation lane's auto-merge does not create a human approval, so
+> requiring one would block automated merges. Repos that use the human-gated lane should set this
+> to `"required_approving_review_count": 1` when applying this template.
 
 A reference template is at
 [`rulesets/org-branch-protection.json`](rulesets/org-branch-protection.json). It is a **reference
@@ -180,7 +179,11 @@ only** — not executable as-is. Before applying it:
    App id** of the app that posts each check (the Validate runner and the router status poster).
    Using the app id prevents a same-named check from a different app from satisfying the requirement
    (see invariant 5 above).
-2. Scope `repository_name.include` to the repos you want covered (or keep `~ALL` for the whole org).
+2. Scope `repository_name.include` to the repos you want covered. **Caution with `~ALL`:** applying
+   the ruleset org-wide means every repo must produce both the `Validate` and
+   `Publish fast review result` checks on every PR. A repo that has not yet run `stagr apply`
+   cannot produce those checks, and every PR on it will be permanently blocked. Scope to only
+   onboarded repos (by an explicit list or a naming convention) until the whole org is onboarded.
 3. Apply via the GitHub API (`POST /orgs/{org}/rulesets`) or the org's **Rules → Rulesets** UI, as
    an org owner.
 
