@@ -21,16 +21,15 @@ genuinely its own.
 
 ### App installation at the org level
 
-Both agent apps — the **Codex App** and the **Claude Code App** — must be installed once at the org
-level. Installing them at the org grants access to all current and future repos in the org; you can
-restrict the grant to selected repos instead, but any unselected repo will not be covered.
+The **Codex App** must be installed once at the org level. Installing it at the org grants access to
+all current and future repos in the org; you can restrict the grant to selected repos instead, but
+any unselected repo will not be covered. The Claude Code integration uses
+`anthropics/claude-code-action` with `ANTHROPIC_API_KEY` — no GitHub App install is needed for it.
 
 **Where to install:**
 
 - **Codex App** — install from the GitHub Marketplace listing for Codex. During installation,
   under "Repository access", choose "All repositories" or select the repos stagr will manage.
-- **Claude Code App** — install from the GitHub Marketplace listing for Claude Code. Apply the same
-  repository scope you chose for the Codex App.
 
 Install once at the org, not per repository. If a new repo needs coverage later, expand the
 installation's repository access list — no other per-repo step is needed for app access.
@@ -45,30 +44,33 @@ Enable the setting that triggers Codex to start a code review automatically when
 
 - *Where:* Codex App settings → code review behaviour → enable "Run automatically on pull request
   open".
-- *Why it is required:* the rendered `request-codex-review-on-push.yml` workflow listens to
-  `push` events on a PR branch; it does not fire on the initial `pull_request: opened` event. A
-  freshly opened PR therefore relies on the Codex App's own trigger to start the first code review.
+- *Why it is required:* the rendered `request-review.yml` workflow listens to
+  `pull_request_target: synchronize` events; it does not fire on the initial `pull_request: opened`
+  event. A freshly opened PR therefore relies on the Codex App's own trigger to start the first code
+  review.
 - *Failure mode if missing:* a brand-new PR receives no code-review pass until someone pushes a
-  follow-up commit. The auto-merge gate requires a head-bound Codex code review before it merges, so
-  the PR will stall at the gate and never auto-merge, even if all CI is green.
+  follow-up commit. When `modules.auto_merge: true` and the Codex review stage is blocking, the
+  auto-merge gate requires a head-bound Codex code review before it merges, so the PR will stall at
+  the gate and never auto-merge, even if all CI is green.
 
 **2. Native security auto-review disabled**
 
 Disable the Codex App's built-in security auto-review feature.
 
-- *Where:* Codex App settings → security review → disable "Run security review automatically".
+- *Where:* ChatGPT/Codex cloud settings → navigate to
+  `https://chatgpt.com/codex/cloud/settings/general` → security review → disable "Run security
+  review automatically".
 - *Why it is required:* stagr serializes code review and security review through dedicated
-  workflows: `request-codex-review-on-push.yml` handles code review per push, and
-  `request-final-security-review.yml` fires the security review only after code review has converged
+  workflows: `request-review.yml` handles code review per push, and
+  `final-security-review.yml` fires the security review only after code review has converged
   on the head commit. The Codex App's native security auto-review runs independently and
   concurrently with that sequencing.
 - *Failure mode if missing:* the Codex App fires a security review at the same time as — or before —
   the code-review loop has finished. This produces concurrent code and security reviews, which
-  violates the ordered-gate invariant and can leave conflicting review threads that block the merge
-  gate.
+  violates the ordered-gate invariant; the Codex backend errors on concurrent reviews, resulting in
+  a missing or failed head-bound review signal that strands the merge gate.
 
-Neither the Claude Code App nor any other app requires post-install settings changes for stagr's
-default configuration.
+No other app requires post-install settings changes for stagr's default configuration.
 
 ### Irreducibly per-repo (stated honestly)
 
