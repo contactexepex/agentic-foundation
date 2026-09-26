@@ -4,7 +4,8 @@
 Checks that the JSON at docs/stagr/rulesets/org-branch-protection.json:
   - is valid JSON;
   - is an org-level ruleset (target == "branch", enforcement == "active");
-  - includes a pull_request rule with dismiss_stale_reviews_on_push == true;
+  - includes a pull_request rule with dismiss_stale_reviews_on_push == true
+    and required_approving_review_count == 0;
   - includes a required_status_checks rule whose contexts are exactly
     "Validate" and "Publish fast review result".
 
@@ -63,9 +64,8 @@ def test_ruleset_json() -> None:
         return
     ok(f"rules list present with {len(rules)} rule(s)")
 
-    rule_types = {r.get("type") for r in rules if isinstance(r, dict)}
-
-    # 4. pull_request rule with dismiss_stale_reviews_on_push == true.
+    # 4. pull_request rule with dismiss_stale_reviews_on_push == true
+    #    and required_approving_review_count == 0.
     pr_rules = [r for r in rules if isinstance(r, dict) and r.get("type") == "pull_request"]
     if not pr_rules:
         fail("no 'pull_request' rule found — branch protection missing")
@@ -77,6 +77,14 @@ def test_ruleset_json() -> None:
             fail(
                 "pull_request rule must have parameters.dismiss_stale_reviews_on_push == true; "
                 f"got {pr_params.get('dismiss_stale_reviews_on_push')!r}"
+            )
+        if pr_params.get("required_approving_review_count") == 0:
+            ok("required_approving_review_count == 0")
+        else:
+            fail(
+                "pull_request rule must have parameters.required_approving_review_count == 0 "
+                "so the payload is API-valid and foundation-lane auto-merge is not blocked; "
+                f"got {pr_params.get('required_approving_review_count')!r}"
             )
 
     # 5. required_status_checks rule with exactly the required context names.
@@ -92,15 +100,18 @@ def test_ruleset_json() -> None:
             contexts = {c.get("context") for c in checks if isinstance(c, dict)}
             required_contexts = {"Validate", "Publish fast review result"}
             missing_contexts = required_contexts - contexts
-            if missing_contexts:
-                fail(
-                    f"required_status_checks missing required context(s): "
-                    f"{', '.join(sorted(missing_contexts))}; "
-                    f"got contexts {sorted(contexts)}"
-                )
+            extra_contexts = contexts - required_contexts
+            if missing_contexts or extra_contexts:
+                parts = ["required_status_checks must contain exactly the required contexts"]
+                if missing_contexts:
+                    parts.append(f"missing: {sorted(missing_contexts)}")
+                if extra_contexts:
+                    parts.append(f"unexpected: {sorted(extra_contexts)}")
+                parts.append(f"got: {sorted(contexts)}")
+                fail("; ".join(parts))
             else:
                 ok(
-                    f"required_status_checks contains required contexts: "
+                    f"required_status_checks contains exactly required contexts: "
                     f"{sorted(required_contexts)}"
                 )
 
