@@ -20,7 +20,9 @@ foundation gate, weaken required checks, or invent toolkit design decisions.
 3. Inspect `git status`, the branch, and recent history. Never edit or commit on `main`; create or
    resume a task-specific feature branch first.
 4. Read the smallest authoritative set of files needed (schema, template, docs) before changing them.
-5. If a design decision is absent, ambiguous, or contradictory, stop and ask the smallest precise
+5. Verify whether the requested behavior already exists and matches the story; implement only the
+   genuine gap, never re-implement what is already present and correct.
+6. If a design decision is absent, ambiguous, or contradictory, stop and ask the smallest precise
    human question (see `AGENTS.md`). Do not guess.
 
 Before editing, check whether the branch or PR already contains equivalent work; resume it rather
