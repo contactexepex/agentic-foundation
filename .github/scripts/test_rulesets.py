@@ -4,8 +4,8 @@
 Checks that the JSON at docs/stagr/rulesets/org-branch-protection.json:
   - is valid JSON;
   - is an org-level ruleset (target == "branch", enforcement == "active");
-  - includes a pull_request rule with dismiss_stale_reviews_on_push == true
-    and required_approving_review_count == 0;
+  - includes a pull_request rule with dismiss_stale_reviews_on_push == true,
+    required_review_thread_resolution == true, and required_approving_review_count == 0;
   - includes a required_status_checks rule with strict_required_status_checks_policy == true,
     do_not_enforce_on_create == true, and contexts exactly {"Validate", "Publish fast review result"}.
 
@@ -64,8 +64,7 @@ def test_ruleset_json() -> None:
         return
     ok(f"rules list present with {len(rules)} rule(s)")
 
-    # 4. pull_request rule with dismiss_stale_reviews_on_push == true
-    #    and required_approving_review_count == 0.
+    # 4. pull_request rule with the required parameter values.
     pr_rules = [r for r in rules if isinstance(r, dict) and r.get("type") == "pull_request"]
     if not pr_rules:
         fail("no 'pull_request' rule found — branch protection missing")
@@ -77,6 +76,14 @@ def test_ruleset_json() -> None:
             fail(
                 "pull_request rule must have parameters.dismiss_stale_reviews_on_push == true; "
                 f"got {pr_params.get('dismiss_stale_reviews_on_push')!r}"
+            )
+        if pr_params.get("required_review_thread_resolution") is True:
+            ok("required_review_thread_resolution == true")
+        else:
+            fail(
+                "pull_request rule must have parameters.required_review_thread_resolution == true "
+                "so unresolved review threads cannot slip through the gate's read-to-merge window; "
+                f"got {pr_params.get('required_review_thread_resolution')!r}"
             )
         if pr_params.get("required_approving_review_count") == 0:
             ok("required_approving_review_count == 0")
