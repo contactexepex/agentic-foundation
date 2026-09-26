@@ -61,11 +61,34 @@ human for the merge; just drive it to provably-ready. A PR needing human judgmen
 ## Codex review handoff
 
 After opening the PR, hand it to Codex for an independent code and security review. Evaluate each
-finding: fix accepted ones, add/adjust checks, rerun affected validation, commit, and push. If
-rejecting a finding, record a concise evidence-based reason in the PR. Request a delta review covering
-only changed code and unresolved findings. Limit the remediation → delta-review loop to two
-iterations; if material findings remain or a decision needs a human, escalate. If Codex review is
-unavailable, report the PR as awaiting independent review — never substitute self-review for it.
+finding — review comments require judgment, not blind acceptance.
+
+**Accept** a finding when it identifies a real problem in the actual change:
+- A genuine correctness or logic error reproducible with normal inputs.
+- A concrete security risk with a plausible exploit path under realistic operator config.
+- A broken API/schema contract or backward-compatibility issue.
+- A meaningful gap in test coverage for a code path this PR changes.
+
+**Decline** a finding when it does not meet that bar. Grounds for declining:
+- **Speculative**: the failure scenario requires operator choices or config combinations that no
+  realistic user would make, or that existing schema/validation already prevents.
+- **Over-engineered**: the proposed fix adds significant complexity without proportionate benefit to
+  real-world correctness or safety — the simpler current code works correctly for all real inputs.
+- **Already enforced**: the concern is already addressed by schema validation, an existing test,
+  runtime enforcement, or a documented convention the reviewer did not account for.
+- **Style/cosmetic**: no functional, correctness, or security impact.
+
+**How to decline**: reply once on the thread with the specific evidence-based reason (cite the
+existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
+Do not resolve the thread — leave it open for the Codex delta review. Do not loop: a declined
+finding stays declined unless Codex presents new evidence in the delta review. One remediation
+cycle per finding, maximum.
+
+For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
+workflow requests the delta review automatically. Limit the total remediation → delta-review loop
+to two iterations; if material findings remain after that, escalate to a human rather than looping.
+If Codex review is unavailable, report the PR as awaiting independent review — never substitute
+self-review for it.
 
 ## Resume safely
 
