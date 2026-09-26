@@ -41,21 +41,23 @@ Review comments require judgment — not every finding requires a fix. Both Clau
 and Codex (as reviewer) must apply this standard:
 
 **A finding is actionable when it describes a real problem in the actual change** — a correctness
-error with realistic inputs, a concrete security risk under normal operator config, a broken contract,
-or a meaningful test gap for changed code.
+error with valid or realistically reachable inputs (including adversarial inputs at untrusted system
+boundaries), a concrete security risk under normal operator config, a broken contract, or a
+meaningful test gap for changed code.
 
 **A finding should be declined when:**
 - **Speculative**: the failure requires operator choices or config combinations no realistic user
   would make, or that existing schema validation / runtime enforcement already prevents.
 - **Over-engineered**: the proposed fix adds complexity disproportionate to the real-world risk;
   the simpler current code is correct for all realistic inputs.
-- **Already enforced**: the concern is addressed by the schema, an existing test, or a documented
-  convention the reviewer did not account for.
+- **Already enforced**: the concern is addressed by schema validation, a test, or a runtime
+  enforcement mechanism already in the codebase. A documented convention alone — without schema or
+  runtime backing — does not count: documentation describes intent, not enforcement.
 - **Style/cosmetic**: no functional, correctness, or safety impact.
 
 **Codex (reviewer):** report only findings that meet the actionable bar above. A finding that
-requires unrealistic preconditions is noise that slows the pipeline — omit it or mark it `nit` at
-most. Focus on what is actually broken in what the diff actually changes.
+requires unrealistic preconditions is noise that slows the pipeline — omit it entirely.
+Focus on what is actually broken in what the diff actually changes.
 
 **Claude (implementor):** decline non-actionable findings with one evidence-based reply. Do not
 resolve the thread — leave it open for the Codex delta review. Do not loop on a finding you have
