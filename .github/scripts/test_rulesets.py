@@ -47,16 +47,6 @@ def test_ruleset_json() -> None:
     ok("file exists and is valid JSON")
 
     # 2. Top-level structure: org ruleset target + active enforcement.
-    if data.get("target") == "branch":
-        ok("target == 'branch'")
-    else:
-        fail(f"expected target='branch', got {data.get('target')!r}")
-
-    if data.get("enforcement") == "active":
-        ok("enforcement == 'active'")
-    else:
-        fail(f"expected enforcement='active', got {data.get('enforcement')!r}")
-
     ref_includes = (
         (data.get("conditions") or {}).get("ref_name") or {}
     ).get("include", [])
@@ -68,6 +58,15 @@ def test_ruleset_json() -> None:
             "so the ruleset protects the default branch; "
             f"got {ref_includes!r}"
         )
+    if data.get("target") == "branch":
+        ok("target == 'branch'")
+    else:
+        fail(f"expected target='branch', got {data.get('target')!r}")
+
+    if data.get("enforcement") == "active":
+        ok("enforcement == 'active'")
+    else:
+        fail(f"expected enforcement='active', got {data.get('enforcement')!r}")
 
     # 3. Rules list must be present and non-empty.
     rules = data.get("rules")
