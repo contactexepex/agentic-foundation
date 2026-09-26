@@ -17,8 +17,9 @@ concurrency:
   group: fast-ai-review-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'review' }}
   cancel-in-progress: true
 
+# The router checks out nothing and calls no contents endpoint: GITHUB_TOKEN is used only to
+# list the PR's changed files (pull-requests: read) and publish a commit status (statuses: write).
 permissions:
-  contents: read
   pull-requests: read
   statuses: write
 

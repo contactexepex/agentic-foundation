@@ -35,6 +35,7 @@ from render_tests.auto_merge import (
 )
 from render_tests.gate_behavior import test_gate_behavior
 from render_tests.isolation import test_implementer_principal_isolation
+from render_tests.permissions import test_least_privilege_permissions
 
 
 def main() -> int:
@@ -57,6 +58,7 @@ def main() -> int:
     test_implementer_principal_isolation()
     test_render_structural()
     test_actions_sha_pinned()
+    test_least_privilege_permissions()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
         return 1

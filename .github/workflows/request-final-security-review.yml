@@ -31,7 +31,6 @@ on:
     - cron: "*/15 * * * *"
 
 permissions:
-  contents: read
   pull-requests: read
 
 # Serialize EVERY run of this workflow repo-wide onto one concurrency group so no two runs — a scheduled

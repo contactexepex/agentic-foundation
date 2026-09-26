@@ -26,9 +26,9 @@ concurrency:
   group: resolve-codex-threads-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base == null && 'metadata-only' || 'resolve' }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  pull-requests: read
+# No workflow-token scopes: every GitHub API call runs on the remediation PAT (GH_TOKEN, set
+# per-step) and nothing is checked out, so the built-in GITHUB_TOKEN needs nothing.
+permissions: {}
 
 jobs:
   resolve:
