@@ -108,10 +108,14 @@ Validate the contract and resolve the stage graph, then print a health report:
   for app backends such as `codex`, which choose their own model);
 - the **secret NAMES** the pipeline needs (provider API keys, any `extra_headers_secret`, and the
   codex review PAT) — configure these in your CI secret store; their values never appear here;
-- the workflow files that would be rendered.
+- the workflow files that would be rendered;
+- **advisory notes** (operator action items that are not config errors and do not affect the exit
+  code) — for example, a reminder to configure a GitHub branch-protection ruleset on the default
+  branch, which is required regardless of `modules.auto_merge` to prevent direct pushes.
 
 Exits non-zero if the config is invalid or any required model cannot be resolved (fail-loud — no
-hidden default). `--json` emits the report as machine-readable JSON for CI.
+hidden default). `--json` emits the report as machine-readable JSON for CI; the JSON object includes
+a `notes` key (a list of strings) for the advisory items described above.
 
 ```bash
 stagr doctor --config .agentic/config.yml

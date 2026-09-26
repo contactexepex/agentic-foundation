@@ -24,16 +24,42 @@ gate merges.
 ## Agent roles
 
 - **Claude Code** is the primary implementation agent for authorized tasks: owns the feature branch,
-  focused implementation, tests/validation, commit, PR, and remediation of accepted review findings.
+  focused implementation, tests/validation, commit, PR, and remediation of **accepted** review findings.
 - **Codex** is the independent PR reviewer (code review and security review). It reports actionable
   findings; it does not implement the original task. After Claude addresses findings, Codex reviews
   only the delta.
 - The only permitted automated merge is the **fail-closed foundation-lane gate** (see "Merge lanes").
   It enforces every gate rather than bypassing one. Neither Claude nor Codex hand-merges.
-- Automated resolution of Codex review threads is limited to threads a later commit has already made
-  outdated.
+- Review threads are resolved only when a later commit makes them outdated; neither Claude nor any
+  automated actor resolves a current (non-outdated) thread.
 - If a finding cannot be resolved within the bounded review cycles in `CLAUDE.md`, escalate to a
   human rather than looping.
+
+## Evaluating review findings
+
+Review comments require judgment — not every finding requires a fix. Both Claude (as implementor)
+and Codex (as reviewer) must apply this standard:
+
+**A finding is actionable when it describes a real problem in the actual change** — a correctness
+error with realistic inputs, a concrete security risk under normal operator config, a broken contract,
+or a meaningful test gap for changed code.
+
+**A finding should be declined when:**
+- **Speculative**: the failure requires operator choices or config combinations no realistic user
+  would make, or that existing schema validation / runtime enforcement already prevents.
+- **Over-engineered**: the proposed fix adds complexity disproportionate to the real-world risk;
+  the simpler current code is correct for all realistic inputs.
+- **Already enforced**: the concern is addressed by the schema, an existing test, or a documented
+  convention the reviewer did not account for.
+- **Style/cosmetic**: no functional, correctness, or safety impact.
+
+**Codex (reviewer):** report only findings that meet the actionable bar above. A finding that
+requires unrealistic preconditions is noise that slows the pipeline — omit it or mark it `nit` at
+most. Focus on what is actually broken in what the diff actually changes.
+
+**Claude (implementor):** decline non-actionable findings with one evidence-based reply. Do not
+resolve the thread — leave it open for the Codex delta review. Do not loop on a finding you have
+declined with evidence. One remediation cycle per finding is the limit.
 
 ## Core operating loop
 

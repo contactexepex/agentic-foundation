@@ -113,6 +113,20 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
         report["workflows"] = sorted(render.render_all(cfg, platform).keys())
     except render.RenderError as exc:
         problems.append(f"render: {exc}")
+
+    # Notes: advisory operator actions that are not config errors. The branch-protection
+    # ruleset note is always emitted because an org-level ruleset on the default branch
+    # prevents direct pushes regardless of auto_merge configuration: even when auto_merge
+    # renders a merge-gate workflow, the ruleset is the external guard that enforces it.
+    notes: list[str] = [
+        "branch-protection ruleset required: configure a GitHub branch-protection ruleset on "
+        "the default branch to prevent direct pushes, enforce required checks, and (for "
+        "human-lane repos) require at least one approving review "
+        "(required_approving_review_count: 1); this is required regardless of whether "
+        "modules.auto_merge is enabled "
+        "(see https://github.com/contactexepex/agentic-foundation/blob/main/docs/stagr/rulesets/org-branch-protection.json)."
+    ]
+    report["notes"] = notes
     return report
 
 

@@ -39,6 +39,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"    - {name}")
     print(f"  workflows to render: {', '.join(report['workflows']) or '(none)'}")
 
+    if report.get("notes"):
+        print("\ndoctor: notes (operator action required outside this config):")
+        for note in report["notes"]:
+            print(f"  - {note}")
+
     if report["problems"]:
         print("\ndoctor: problems found:", file=sys.stderr)
         for problem in report["problems"]:

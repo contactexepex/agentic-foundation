@@ -52,6 +52,10 @@ from cli_tests.detect import (
     test_init_uses_detected_preset,
     test_init_wizard_uses_detected_preset_default,
 )
+from cli_tests.doctor_probes import (
+    test_doctor_missing_ruleset,
+    test_doctor_missing_secret,
+)
 
 
 def main() -> int:
@@ -83,6 +87,8 @@ def main() -> int:
     test_detect_presets_are_schema_valid()
     test_init_uses_detected_preset()
     test_init_wizard_uses_detected_preset_default()
+    test_doctor_missing_secret()
+    test_doctor_missing_ruleset()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
         return 1
