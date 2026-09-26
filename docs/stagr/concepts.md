@@ -9,8 +9,13 @@ leans on, plus the one genuinely new concept — the **agent-backend seam**.
 
 A **stage** is one unit of the dev lane, bound to:
 
-- a **type** (`implement`, `code-review`, `security-review`, `test`, `integration-test`,
-  `performance-test`, `custom`),
+- a **type** — one of the contract's accepted values **[shipped]**: `plan`, `implement`,
+  `security`, `test`, `integration-test`, `review`, `docs`, `release`, `custom`. The dev lane uses
+  `implement`, `review`, `security`, `test`, `integration-test`, and `custom`. There is **no
+  `code-review`/`security-review`/`performance-test` type**: the friendly name is the stage **`id`**
+  (e.g. an `id: code-review` stage of `type: review`, an `id: security-review` stage of
+  `type: security`), and performance testing is a `test` or `custom` stage. This doc uses the
+  `id`-style names in prose; the `type` is always one of the values above.
 - a **provider + model** (the knob; resolved most-specific-first — see `ARCHITECTURE.md` §4),
 - a **backend** (the executor; see the seam below),
 - one or more **triggers** (issue label, PR opened/updated, comment command, push, schedule,
@@ -30,7 +35,12 @@ This keeps one generic abstraction for all stage kinds:
   `pull_request` events; a story-centric stage triggers on an issue label; a sweep triggers on
   schedule.
 - **Gate** — how the stage's outcome affects the merge:
-  - **advisory** — posts a comment only; never blocks.
+  - **advisory** — emits **no required status check** of its own, so its outcome never adds a merge
+    requirement. It is *not* a guarantee of "cannot affect readiness": an advisory **review** can
+    still open review threads, and the zero-open-threads predicate ([dev-lane.md](dev-lane.md)) counts
+    review threads **regardless** of the producing stage's gate — so an advisory reviewer's unresolved
+    finding still gates the merge until resolved. "Advisory" means "adds no required check," not
+    "invisible to the gate."
   - **blocking** — emits a **required status check**; the merge is impossible until it is a clean
     success. Fail-closed: missing / pending / errored ⇒ blocked (see
     [trust-and-correctness.md](trust-and-correctness.md)).
@@ -40,19 +50,25 @@ This keeps one generic abstraction for all stage kinds:
 A **backend** is the executor that actually runs a stage's agent. stagr derives it from the
 provider and lets a stage pin or swap it **by name** — the *agent-backend seam*.
 
-| Backend | Wraps | Harness kind | Ships today |
-|---|---|---|---|
-| `claude-code-action` | Anthropic Claude Code | GitHub-native (Actions) | ✅ implement |
-| `codex` | OpenAI Codex | GitHub-native (Actions + Codex app) | ✅ code review, security review |
-| `*-cloud` (e.g. cloud agent APIs) | provider cloud agents | Cloud-API (dispatch + poll) | roadmap |
-| `*-cli` | a CLI on the runner | CLI-in-runner | roadmap |
+`backend.name` is a **closed enum [shipped]**: `generic`, `claude-code-action`, `openhands`,
+`pr-agent`, `codex`, `swe-agent`, `custom`.
 
-The seam exists in the contract **now**; only the two GitHub-native backends are implemented.
-Adding a cloud or CLI backend later is a **new adapter template, not a contract change or a
-renderer rewrite** — the "a new backend is a renderer, never a rewrite" charter principle. The
-seam also carries a hard invariant: **the backend always runs on the user's side of the line** —
-in their CI runner, or by dispatching to a provider's cloud — never inside a stagr-hosted
-process. See [security-and-secrets.md](security-and-secrets.md).
+| Backend | Wraps | Harness kind | Status |
+|---|---|---|---|
+| `claude-code-action` | Anthropic Claude Code | GitHub-native (Actions) | **[shipped]** — implement |
+| `codex` | OpenAI Codex | GitHub-native (Actions + Codex app) | **[shipped]** — code review, security review |
+| `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom` | provider-agnostic runner / OSS agents / any action | varies | enum-accepted for forward-compat, **not rendered [target]** |
+| a cloud-API or CLI backend (e.g. `*-cloud`, `*-cli`) | provider cloud agents / a runner CLI | Cloud-API (dispatch+poll) / CLI-in-runner | **[target]** — needs a new enum name + adapter |
+
+The **seam pattern** exists now (a stage names a backend; the enum + `provider→tool` derivation is
+in the schema). But because the enum is **closed**, adding a cloud/CLI backend later is a **new
+adapter template *plus* adding its name to the `backend.name` enum — a backward-compatible schema
+addition, never a renderer rewrite** (this is the "a new backend is a renderer, never a rewrite"
+charter principle, honest about the small schema step it needs). The seam also carries a hard
+invariant **[target for the implementer]**: a backend should always run on the user's side of the
+line — in their CI runner, or by dispatching to a provider's cloud — never inside a stagr-hosted
+process. See [security-and-secrets.md](security-and-secrets.md) for where the shipped implementer
+does not yet meet the isolation half of this.
 
 > The demo binds `implement`→`claude-code-action` and the reviews→`codex`. That is the
 > **default reference binding, not an identity**: stagr is not Codex or Claude; it is the seam

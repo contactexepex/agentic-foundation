@@ -54,8 +54,19 @@ about the sink, endpoint, or format is hardcoded; it adapts to what the org alre
 - stagr **emits** to a configured sink; it does not host storage, search, or a UI.
 - It does not reinvent LLM/agent observability — it speaks a standard event shape (e.g.
   OpenTelemetry GenAI conventions) so an existing backend ingests it.
-- If no sink is configured, events still land in the platform's native run logs (fail-safe), never
-  nowhere.
+
+### The record must always exist (sink failure handling)
+
+Because "every decision is recorded" and "a merge without a record is defective" must both hold, the
+**platform's native run log is the durable record of record**, written **first and locally**; remote
+emission to a configured sink is **best-effort on top**. Therefore:
+
+- **No sink configured** → the record lives in the native run log; nothing is lost.
+- **Configured sink unavailable** (webhook down, OTLP collector unreachable, bus rejects) → the
+  durable run-log record is already written, so the merge is **not blocked** by a remote outage; the
+  failed delivery is **flagged and retried** (best-effort), never silently dropped.
+- The merge is **never** gated on a remote sink's availability — only on the local record existing.
+  This keeps "a merge always has a record" true without letting an external outage stall the gate.
 
 ## What "auditable" means here
 

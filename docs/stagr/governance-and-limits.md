@@ -7,17 +7,21 @@ guarantees in the pipeline — not advice an agent may choose to follow.
 ## Budgets & cost governance
 
 Agents re-review on every push and fix in a loop; unbounded, that burns tokens and money
-(providers are increasingly usage-billed). stagr renders explicit limits:
+(providers are increasingly usage-billed). The contract carries a `budgets` block **[shipped]**, but
+it is **`enabled: false` by default** — so today an unconfigured repo has **no enforced cap**. The
+enforcement below is **[target]** ([roadmap.md](roadmap.md)):
 
-- **Per-PR review-iteration cap** — a maximum number of review→fix cycles per PR.
-- **Cost ceiling** — an optional per-PR (and per-stage) budget; exceeding it stops the loop and
-  escalates rather than spending further.
-- **Circuit breaker** — repeated identical failures, or a stage that never returns, trip the
-  breaker instead of retrying forever.
+- **Per-PR review-iteration cap** **[target]** — a maximum number of review→fix cycles per PR.
+- **Cost ceiling** **[target]** — an optional per-PR (and per-stage) budget; exceeding it stops the
+  loop and escalates rather than spending further.
+- **Circuit breaker** **[target]** — repeated identical failures, or a stage that never returns,
+  trip the breaker instead of retrying forever.
 
-Budgets are declared in config and honoured by the rendered wiring; a stage cannot silently exceed
-its budget. Where a limit is not configured, a safe default applies (a finite cap, never
-"unlimited").
+**Target contract:** budgets are honoured by the rendered wiring so a stage cannot silently exceed
+its budget, and where a limit is not configured a **safe finite default** applies (never
+"unlimited"). **Today:** budgets are opt-in and default-disabled — operators must **not** assume
+paid calls are bounded until the finite-default enforcement lands. Closing this is a Phase-1
+roadmap item.
 
 ## Failure, stuck, and escalation semantics
 
@@ -53,8 +57,11 @@ A team may enable the `auto_merge` module to let a fail-closed gate merge automa
 PR is provably ready — **bypassing human approval by explicit configuration**. Rules:
 
 - **Off by default.** Nothing auto-merges unless a team turns the module on.
-- **Team-configured trigger.** The team declares when/how auto-merge applies (which branches,
-  labels, authors, conditions).
+- **Configurable controls.** **[shipped]** today the `auto_merge` module exposes the module toggle,
+  the **merge method**, **protected paths**, and the **required-checks** set. Richer
+  **selectors** (auto-merge only for certain branches / labels / authors / conditions) are
+  **[target]** — the contract has no fields for them yet ([roadmap.md](roadmap.md)); do not assume a
+  labelled/branch-scoped auto-merge trigger is expressible today.
 - **`human-merge` is always a hard stop** — even with auto-merge on, the label blocks the
   automatic merge.
 - **Same fail-closed gate.** Auto-merge uses the identical readiness predicate as the human lane

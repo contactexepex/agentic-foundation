@@ -17,7 +17,7 @@ genuinely its own.
 | **App installation** | The agent apps (Codex, Claude) are installed once at the org, for all or selected repos. |
 | **Secrets & environment** | Org/environment secrets shared to selected repos — no per-repo secret setup ([security-and-secrets.md](security-and-secrets.md)). |
 | **The pipeline** | Org **required/reusable workflows** injected centrally, so a repo needs no copied-in workflow files. |
-| **The gate** | Org **rulesets** enforce branch protection + required checks across repos from a place a repo/PR cannot edit ([trust-and-correctness.md](trust-and-correctness.md#anti-tamper--enforcement)). |
+| **The gate** | Org **rulesets** enforce branch protection + required checks across repos from a place a repo/PR cannot edit, and **must enable "dismiss stale approvals on push"** so a post-approval commit invalidates the prior human approval (this is what makes the human-lane re-approval rule real — see [edge-cases.md](edge-cases.md)). ([trust-and-correctness.md](trust-and-correctness.md#anti-tamper--enforcement)) |
 
 ### Irreducibly per-repo (stated honestly)
 
@@ -32,15 +32,25 @@ declaration.
 
 ## Config layering: org default + per-repo override
 
-stagr supports an **org-level default config** with **per-repo override**, layered
-org → team → repo (via `extends`):
+stagr layers config **org → team → repo** via `extends`, so a repo overrides **only** what differs:
 
-- The org sets the standard stage graph, gate, budgets, and policies **once**.
-- A repo overrides **only** what differs (its build/test commands, an extra custom stage).
-- Deleting an override falls back to the org default; the common repo overrides **nothing**.
+- The org sets the standard stage graph, gate, budgets, and policies once.
+- A repo overrides only its specifics (build/test commands, an extra custom stage).
+- Deleting an override falls back to the base; the common repo overrides **nothing**.
 
-So onboarding a new repo is "it's already covered by the org config" — optionally plus a tiny
-override file. This is the org-scale form of the charter's zero-config onboarding goal.
+**How the org default actually reaches a repo (be precise).** `extends` **[shipped]** resolves
+**local paths confined to the repository checkout only** — it **does not fetch remote/URI bases**
+(those fail loudly). So a repo inherits an org default only by having that base **present in its
+checkout**, delivered by one of:
+
+- **Vendoring** the org base into the repo (referenced by relative path), refreshed by the
+  onboarding/provisioning step; or
+- **Injection** via an org **required/reusable workflow** that supplies the base at render time.
+
+A **centrally-updated, live** org default (edit once at the org, every repo picks it up without
+re-vendoring) is **[target]** — it needs a provisioning re-sync step or an authenticated resolver,
+which the offline loader does not do today ([roadmap.md](roadmap.md)). This design does **not** rely
+on remote `extends`.
 
 ## The onboarding CLI
 

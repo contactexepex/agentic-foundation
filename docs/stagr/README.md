@@ -33,3 +33,13 @@ explains the reconciliation.
 - **Platform-neutral by contract, GitHub-first by delivery.** The contract names no CI system;
   today only the GitHub renderer ships.
 - **Minimal by default, curated when advanced.** The common repo is a handful of config lines.
+
+## Status convention (shipped vs. target)
+
+These are **design + roadmap** docs. To avoid presenting intent as fact, claims are marked:
+
+- **[shipped]** — implemented today in the schema/renderer (`stagr/`).
+- **[target]** — the design intent; **not yet implemented**, tracked in [roadmap.md](roadmap.md).
+
+Where a statement is unmarked it describes shipped behaviour. A **[target]** marker means a renderer
+built strictly from today's code will not yet exhibit that behaviour.

@@ -32,24 +32,51 @@ The demo-grade, provably-correct lane on GitHub.
 **Done when:** a trusted PR runs implement → review loop → security/SAST → tests → provably-ready,
 human-approved merge, with every [edge-cases.md](edge-cases.md) row covered by a test.
 
+### Phase-1 hardening backlog (surfaced by design review)
+
+Specific **[target]** items the design docs reference — each is a gap between today's shipped
+behaviour and the stated design:
+
+- **Approved-story trigger.** Wire the `implement` stage to an approved-story **issue label** (today
+  it is `workflow_dispatch` only). ([dev-lane.md](dev-lane.md))
+- **Budget enforcement + finite default.** Budgets ship `enabled: false`; add loop-iteration caps, a
+  cost ceiling, a circuit breaker, and a **finite default** so an unconfigured repo is never
+  unbounded. ([governance-and-limits.md](governance-and-limits.md))
+- **Implementer write isolation.** The Claude implementer job holds `contents`/`pull-requests: write`
+  directly; move agent writes behind a buffered, separately-scoped apply step.
+  ([security-and-secrets.md](security-and-secrets.md))
+- **Exact-SHA review binding.** Drop the abbreviated-SHA **prefix** fallback in the review predicates
+  in favour of the full machine-readable marker/object. ([trust-and-correctness.md](trust-and-correctness.md))
+- **Auto-merge sweep ordering.** Add oldest-updated-first ordering to the merge sweep (the
+  security-review sweep already has it). ([trust-and-correctness.md](trust-and-correctness.md))
+- **Dismiss-stale-approvals invariant.** Make the ruleset setting a required onboarding invariant so
+  human-lane re-approval on push is real. ([onboarding-and-config.md](onboarding-and-config.md))
+- **Profile alignment.** Move `plan`/`docs` out of the shipped `full` profile to the sibling toolkits,
+  and decide whether dev-lane `standard` makes `security` blocking. ([dev-lane.md](dev-lane.md))
+
 ## Phase 2 — Org-scale onboarding & the stage catalogue
 
 Make it a one-time, org-level setup and broaden the standard stages.
 
 - **Org-scoped provisioning**: org app install, org secrets, org required/reusable workflows, org
   rulesets ([onboarding-and-config.md](onboarding-and-config.md)).
-- **Org-default config + per-repo override**; `doctor --init` proposes/confirms.
+- **Org-default config + per-repo override**; `doctor --init` proposes/confirms. Includes a
+  **live central-update path** (provisioning re-sync or an authenticated resolver), since `extends`
+  is local-only today.
+- **Auto-merge selectors** — contract fields to scope auto-merge by branch/label/author/condition
+  (today only the toggle, method, protected paths, and required checks exist).
 - **Schema versioning + migrations**.
-- First-class **SAST/quality integrations** (Sonar, Checkmarx) and **integration/performance/custom**
-  stages as reference templates.
+- First-class **SAST/quality integrations** (Sonar, Checkmarx) and **integration / performance
+  (as a `test`/`custom` stage) / custom** stages as reference templates.
 - Fuller **provenance/attestation** stream for compliance (EU AI Act / ISO 42001 / SOC 2).
 
 ## Phase 3 — Backend & platform breadth
 
 Prove neutrality where it pays.
 
-- **Cloud-API backend** (provider cloud agents) behind the existing seam — a new adapter, not a
-  rewrite; then a **CLI backend**.
+- **Cloud-API backend** (provider cloud agents) behind the existing seam — a new adapter template
+  **plus a `backend.name` enum addition** (backward-compatible), not a renderer rewrite; then a
+  **CLI backend**.
 - **Second platform renderer** (e.g. GitLab CI), then others — contract unchanged.
 - **Hybrid** support: decouple "where code lives" (SCM) from "where agents run" (compute), for orgs
   whose runtime environment differs from their source host.

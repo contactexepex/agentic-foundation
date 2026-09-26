@@ -20,7 +20,10 @@ behavioural fixture with a stubbed platform API).
 | Draft PR | **Blocked** until marked ready |
 | Base is not the default branch | **Blocked** (out of the gate's scope) |
 | Untrusted author | Automation does not run; **Blocked** |
-| `human-merge` label present | Hard stop — **Blocked** for auto-merge even if otherwise ready |
+| `human-merge` label present | Hard stop for the **auto-merge lane** only; does **not** block human-lane readiness (a human may still merge) |
+| Merge conflict (`mergeable=false`) | **Blocked** (fail-closed) |
+| Behind / not clean (`mergeable_state != clean`: behind, blocked, unstable, dirty) | **Blocked** |
+| Mergeability still computing (`mergeable=null`) | **Blocked** (fail-closed until GitHub reports `true`) |
 | PR already merged/closed | No-op |
 
 ## 2. Implementation & the review loop
@@ -46,7 +49,7 @@ behavioural fixture with a stubbed platform API).
 | Old-head success, new head has no result | **Blocked** (SHA-bound) |
 | Same-named check from the **wrong app** | Not matched (name+app-id identity) → requirement unmet → **Blocked** |
 | PR deletes/renames `validate.yml` so no failing check exists | Trusted workflow-run check for the head is absent → **Blocked** |
-| Unrelated failing check not in the configured list | Combined status catches it → **Blocked** (list is not an allowlist) |
+| Unrelated failing check-run not in the configured list | The gate's **separate check-run scan** catches it → **Blocked** (the combined commit status does **not** include Checks-API runs, so the check-run scan is what covers this; the list is not an allowlist) |
 | Integration/perf/custom stage red | **Blocked** |
 | A stage hangs past its timeout | Times out → its check not green → **Blocked** → **Escalate** |
 
@@ -59,7 +62,7 @@ behavioural fixture with a stubbed platform API).
 | Code review bound to an old head only | Does not satisfy the head-bound requirement → **Blocked** |
 | Security review missing or old-head | **Blocked** (both reviews must be head-bound + complete) |
 | Security summary row edited/deleted/ambiguous | Fail-closed **Blocked** |
-| Human approves, then a new commit is pushed | Approval no longer matches the head → not ready until re-approved (human lane) |
+| Human approves, then a new commit is pushed | Re-approval is required **only if** the repo's ruleset enables **dismiss-stale-approvals** (an onboarding invariant — see [onboarding-and-config.md](onboarding-and-config.md)); GitHub does not invalidate an approval on push by itself |
 | Thread resolved but no webhook fired | The **scheduled sweep** catches it and re-evaluates |
 
 ## 5. Forgery / tamper attempts
@@ -84,8 +87,8 @@ behavioural fixture with a stubbed platform API).
 
 | Case | Behaviour |
 |---|---|
-| State changes between last read and merge | Re-read + re-check mutable predicates before the SHA-pinned merge; residual race can only *defer*, never merge the wrong commit |
-| Event run and scheduled sweep overlap | Global serialization; the gate's own in-progress check makes an event run **defer**, a later sweep completes |
+| State changes between last read and merge | Re-read + re-check mutable predicates + head-move check before the SHA-pinned merge. SHA-pinning prevents merging a *different* commit, but the predicates are **not atomic**: a `human-merge` add / thread reopen / review turning blocking on the **same** SHA can admit a now-unready commit. Only **server-side branch protection** closes these atomically (see [trust-and-correctness.md](trust-and-correctness.md)) |
+| Event run and scheduled sweep overlap on one PR | **Not** globally serialized (per-PR group for events, separate group for the sweep); safeguards are **idempotent re-evaluation**, the final re-read + head-move check, and the gate's own in-progress check-run making an event run **defer** so a later sweep completes |
 | Two events for the same PR | Idempotent; duplicate/echo events are skipped |
 | A signal has no webhook at all | The scheduled sweep is the backstop |
 

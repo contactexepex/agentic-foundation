@@ -45,8 +45,11 @@ boundaries decided for the three-toolkit split:
 
 ## The two sibling toolkits
 
-The three toolkits share one contract family and connect **only through GitHub artifacts** — no
-toolkit calls another directly.
+The three toolkits share one contract family and connect through **two transports** — **SCM
+artifacts** (issues, PRs, labels, merge/release events) **and the decision-event stream**
+([audit-and-provenance.md](audit-and-provenance.md)) — and **never by calling each other directly**.
+(The event stream is what keeps the seam viable once non-GitHub renderers exist and for an
+orchestrator that ingests events rather than polling the SCM.)
 
 | Toolkit | Span | Shape | Connects to stagr via |
 |---|---|---|---|

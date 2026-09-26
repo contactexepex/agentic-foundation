@@ -20,16 +20,24 @@ Distinct machine principals stay isolated even though one team owns them:
 
 ## Least privilege per stage
 
-Every rendered job declares the **minimum** `permissions:` it needs, scoped to the stage:
+**Design intent [target]:** every rendered job declares the **minimum** `permissions:` it needs,
+scoped to the stage:
 
 - A review/analysis stage that only reads code and posts comments gets read scopes + the narrow
   write it needs to comment — never `contents: write`.
-- Only the **publish/merge** step carries write/merge scope, and it is the base-controlled gate,
-  not an agent stage.
-- Writes produced by an agent are **buffered and applied in a separate, scoped-permission step**,
-  so an agent's output cannot exercise a broad token directly.
-- No stage is granted a capability "just in case." If a stage does not need a scope, it does not
-  get it.
+- Only the **publish/merge** step carries merge scope, and it is the base-controlled gate, not an
+  agent stage.
+- Agent-produced writes are **buffered and applied in a separate, scoped-permission step**, so an
+  agent's output cannot exercise a broad token directly.
+- No stage is granted a capability "just in case."
+
+**Current state [shipped], stated honestly:** the Codex **review/security** stages are read-scoped as
+above, but the shipped **Claude implementer job** runs `claude-code-action` **with `contents: write`
+and `pull-requests: write` on the same job** — there is **no buffered-output / separately-scoped
+apply step yet**. So for the implementer, the buffered-write separation is a **[target] hardening
+item** ([roadmap.md](roadmap.md)), not an enforced guarantee today. What *does* hold today: the
+implementer never carries **merge** scope or the **remediation/publisher** credential, and fork PRs
+drive nothing.
 
 ## Secrets model
 
@@ -62,7 +70,9 @@ is a first-class selling point, not an implementation detail.
 ## What "secure" means here
 
 A rendered pipeline is secure only when: no stage holds a scope it does not need; the implementer
-principal provably cannot reach the push credential; every secret is name-referenced and redacted;
-fork PRs drive nothing; and there is a negative test for each of these in
+principal cannot reach the **merge scope or the remediation/publisher** credential (its own
+branch-write is expected, and buffered-write isolation of that scope is the **[target]** above);
+every secret is name-referenced and redacted; fork PRs drive nothing; and there is a negative test
+for each of these in
 [edge-cases.md](edge-cases.md) (e.g. a sentinel injected into every untrusted PR field must never
 reach the build/publish step or a credential).

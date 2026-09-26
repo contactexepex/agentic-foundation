@@ -23,9 +23,14 @@ to:
    ⇒ **not ready**. The gate only ever opens on an explicit, current, clean success. There is no
    "assume green."
 
-2. **SHA-bound.** Every predicate is evaluated on the **exact current head SHA**. A success, a
-   review, or a status bound to any other commit does not count. The merge call itself is
-   SHA-pinned, so the gate can never merge a *different* commit than the one it verified.
+2. **SHA-bound.** Predicates are evaluated on the current head SHA, and the merge call itself is
+   SHA-pinned, so the gate can never merge a *different* commit than the one it verified. **One honest
+   gap [target]:** the review predicates prefer a canonical review **object** matched on the **full**
+   `commit_id == head_sha` (exact), but they **fall back** to a visible Codex summary row whose SHA is
+   matched by **prefix** (`head_sha == row_sha*`), which accepts an abbreviated 7–40-char SHA. A
+   commit crafted to share a reviewed head's short prefix could satisfy the fallback. Removing the
+   abbreviated fallback in favour of the full machine-readable marker/object (exact-only binding) is
+   an open hardening item ([roadmap.md](roadmap.md)).
 
 3. **Base-controlled definition and execution.** The gate workflow's definition **and** its token
    come from the trusted base branch, never from PR content. The gate **never checks out or
@@ -48,9 +53,15 @@ to:
    newer attempt exists (no success→queued/cancelled/stale downgrade slips through).
 
 7. **Re-read before merge.** After all predicates pass, the gate **re-reads fresh authoritative
-   state and re-checks the mutable predicates** as the final step before the SHA-pinned merge. The
-   residual last-read→merge race is documented honestly; the SHA-pin guarantees it can never merge
-   the wrong commit, and the scheduled sweep bounds worst-case latency.
+   state, re-checks the mutable predicates, and verifies the head has not moved** as the final step
+   before the SHA-pinned merge. This narrows — but does **not** close — the last-read→merge race:
+   SHA-pinning guarantees it can never merge a *different* commit, but the mutable predicates are
+   **not atomic** with the merge. Between the final read and the merge PUT, a `human-merge` label can
+   be added, a review thread can reopen, or a check/review can turn blocking on the *same* SHA — so
+   the residual race can admit a **now-unready commit**, not merely defer it. Only **server-side
+   branch protection** closes these predicates atomically; that is why the gate's guarantees are
+   layered on org rulesets, not a substitute for them. The scheduled sweep bounds worst-case latency
+   but does not make the step atomic.
 
 ## Sequencing code vs. security review
 
@@ -70,10 +81,21 @@ completed — a security review alone, or one bound to an old head, is not enoug
 Some state changes emit no reliable Actions event — a review thread being resolved/unresolved, a
 check that silently never reports. Relying on events alone would let a PR sit falsely "ready" or
 falsely "blocked." So the gate is driven by **both** events **and a scheduled sweep** over open
-PRs targeting the default branch, oldest-updated-first. The sweep is what ultimately catches
-thread resolution and missing check reports. The gate's own in-progress run is on the head, so an
-event-driven run **defers** (does not merge) while its own check is pending and a later sweep
-completes the merge — with **no name-substring exclusion**, which would be a bypass.
+PRs targeting the default branch. The sweep is what ultimately catches thread resolution and
+missing check reports.
+
+- **Concurrency [shipped].** Event runs use a **per-PR** group (`auto-merge-<PR>`) and the sweep a
+  separate group, so a per-PR event and a sweep are **not globally serialized** and can overlap on
+  the same PR. The safeguards are **idempotent re-evaluation**, the **final re-read + head-move
+  check** (invariant 7), and the gate's own in-progress check-run — which makes an event-driven run
+  **defer** (not merge) while its own check is pending, so a later sweep completes the merge — with
+  **no name-substring exclusion**, which would be a bypass. (Global serialization *is* used,
+  correctly, for the separate security-review workflow — see the sequencing section above — but the
+  merge gate is per-PR, not globally serialized.)
+- **Ordering [shipped/target].** The final-security-review sweep processes PRs
+  **oldest-updated-first [shipped]**; the **auto-merge sweep currently uses GitHub's default
+  ordering**, so adding an explicit oldest-updated ordering to bound worst-case merge latency under
+  many open PRs is a **[target]** hardening item ([roadmap.md](roadmap.md)).
 
 ## Anti-tamper / enforcement
 
