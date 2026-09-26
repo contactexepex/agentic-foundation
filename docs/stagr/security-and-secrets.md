@@ -94,6 +94,11 @@ today leaves the rendered job without its credential even though `doctor` succee
 default name until the resolved name is wired into the template
 ([onboarding-and-config.md](onboarding-and-config.md)).
 
+**Plan requirement.** Organization secrets require **GitHub Team or Enterprise Cloud**.
+On GitHub Free, organization secrets for Actions are not available for private repositories;
+in that case, create the secrets at the repository scope instead (the pipeline reads them the
+same way — only the location changes). Public repositories can use org secrets on any plan.
+
 **How to share at org scope (GitHub).** In your organization's settings under
 *Secrets and variables → Actions*, create each secret and set repository access to
 **Selected repositories** (add only the onboarded repos — not All repositories, which would

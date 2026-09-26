@@ -81,7 +81,7 @@ def check_secret_name_fields(cfg, label: str) -> None:
     if not isinstance(cfg, dict):
         return
     for field_path, value in _collect_secret_fields(cfg):
-        if not _SECRET_NAME_RE.match(value):
+        if not _SECRET_NAME_RE.fullmatch(value):
             fail(
                 f"{label}: {field_path}: value looks like a literal credential rather than "
                 f"a secret name (expected an identifier like ANTHROPIC_API_KEY containing "
@@ -237,17 +237,24 @@ def main() -> int:
             continue
         validate(cfg, rel)
         check_stage_graph(cfg, rel)
-        check_secret_name_fields(cfg, rel)
-        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) + templating
-        # safety (no ${{ }} / breakout char in any operator literal). Same code path as `stagr validate`.
+        # Canonical validation and resolved secret check for the real config; template gets raw check.
         # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g. a
         # <anthropic-default-model>) that a real config replaces and that resolution would reject.
         if rel == ".agentic/config.yml":
+            # Check secret fields on the extends-resolved config so inherited literal credentials
+            # are caught. Fall back to the raw config if resolution fails (failure already reported).
+            try:
+                check_secret_name_fields(render.load_config(path), rel)
+            except render.RenderError as exc:
+                fail(f"{rel}: cannot resolve extends for secret-field check: {exc}")
+                check_secret_name_fields(cfg, rel)
             try:
                 render.validate_config(cfg)
                 print(f"OK  {rel} passes canonical validation (schema + semantics + templating)")
             except render.RenderError as exc:
                 fail(f"{rel}: canonical validation failed: {exc}")
+        else:
+            check_secret_name_fields(cfg, rel)
 
     # 4. Minimal config.
     validate(
