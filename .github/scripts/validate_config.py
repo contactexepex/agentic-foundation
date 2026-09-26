@@ -16,6 +16,8 @@ Checks:
      if it names a `skill`, that skill dir exists.
   7. Every skill (stagr/templates/skills/*/SKILL.md) has parseable YAML frontmatter with
      the required keys and a `verdict:` line inside a fenced code block.
+  8. Secret-name fields in config files hold identifiers (e.g. ANTHROPIC_API_KEY), not
+     literal credential values — secrets are referenced by name only, never by value.
 
 Exit code 0 = all pass; non-zero = at least one failure (details on stderr).
 """
@@ -33,6 +35,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SKILL_REQUIRED_KEYS = {"id", "name", "stage_type", "version"}
 errors: list[str] = []
 
+# A GitHub Actions secret name may only contain letters, digits, and underscores,
+# and must start with a letter or underscore.  Any value in a *_secret config field
+# that does not match this pattern is flagged as a potential literal credential value.
+_SECRET_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 # Reuse the toolkit's OWN canonical validator (schema + semantic coherence + templating safety) rather
 # than reimplementing those checks here — so CI exercises the same front door `stagr validate` uses.
 sys.path.insert(0, str(ROOT))
@@ -46,6 +53,36 @@ def fail(msg: str) -> None:
 def load_yaml(path: Path):
     with path.open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+def _collect_secret_fields(obj, path: str = "") -> list[tuple[str, str]]:
+    """Recursively collect (field_path, value) for every *_secret key in a config dict."""
+    result: list[tuple[str, str]] = []
+    if isinstance(obj, dict):
+        for key, val in obj.items():
+            child_path = f"{path}.{key}" if path else key
+            if isinstance(key, str) and key.endswith("_secret") and isinstance(val, str):
+                result.append((child_path, val))
+            else:
+                result.extend(_collect_secret_fields(val, child_path))
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            result.extend(_collect_secret_fields(item, f"{path}[{i}]"))
+    return result
+
+
+def check_secret_name_fields(cfg, label: str) -> None:
+    """Check 8: secret-name fields hold identifiers, not literal credential values."""
+    if not isinstance(cfg, dict):
+        return
+    for field_path, value in _collect_secret_fields(cfg):
+        if not _SECRET_NAME_RE.match(value):
+            fail(
+                f"{label}: {field_path}: value looks like a literal credential rather than "
+                f"a secret name (expected an identifier like ANTHROPIC_API_KEY containing "
+                f"only letters, digits, and underscores); secrets must be referenced by "
+                f"name only — never commit a secret value"
+            )
 
 
 def check_stage_graph(cfg, label: str) -> None:
@@ -189,6 +226,7 @@ def main() -> int:
             continue
         validate(cfg, rel)
         check_stage_graph(cfg, rel)
+        check_secret_name_fields(cfg, rel)
         # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) + templating
         # safety (no ${{ }} / breakout char in any operator literal). Same code path as `stagr validate`.
         # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g. a

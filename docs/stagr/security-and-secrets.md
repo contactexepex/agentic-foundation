@@ -69,6 +69,47 @@ can push to the default branch or call the merge API** — the "work on a featur
   ([onboarding-and-config.md](onboarding-and-config.md)). Non-secret provider metadata
   (`base_url`, `api_version`, `deployment`) may live in config; credentials never do.
 
+## Org/environment secret sharing
+
+Secrets live at the **org (or environment) scope** and are shared to selected repos. This removes
+per-repo secret setup: any repo covered by the org automatically inherits those secrets with no
+local configuration step.
+
+**What a standard pipeline needs.** The table below lists the default secret names a standard
+stagr-rendered pipeline requires. `stagr doctor` prints the names your specific config resolves to.
+
+| Secret name | Stage that uses it | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Implement (Claude Code) | Anthropic API key for the implementer |
+| `CODEX_PAT` | Review, Security (Codex) | GitHub PAT for the Codex reviewer identity (PR read + comment write) |
+| `REMEDIATION_TOKEN` | Implement | GitHub PAT for the remediation step (push + PR write for fix commits) |
+
+Secrets are **always referenced by name** — `${{ secrets.ANTHROPIC_API_KEY }}` in a rendered
+workflow — and the name is what lives in `.agentic/config.yml`. A secret value never appears in
+config, templates, logs, or a rendered file.
+
+The default names above are overridable in `.agentic/config.yml`
+(e.g. `providers: { anthropic: { api_key_secret: MY_CLAUDE_KEY } }`). **Caveat:** the shipped
+`implementor.yml` template currently hardcodes `ANTHROPIC_API_KEY`; changing that name in config
+today leaves the rendered job without its credential even though `doctor` succeeds — use the
+default name until the resolved name is wired into the template
+([onboarding-and-config.md](onboarding-and-config.md)).
+
+**How to share at org scope (GitHub).** In your organization's settings under
+*Secrets and variables → Actions*, create each secret and set repository access to
+**Selected repositories** (add each repo) or **All repositories**. The pipeline reads each
+secret by name; no per-repo copy of the value is needed.
+
+**Confirming required names.** `stagr doctor` reports the secret names the config requires (e.g.
+`providers.anthropic.api_key_secret → ANTHROPIC_API_KEY`). It does **not** probe GitHub to verify
+those names are populated at the org scope; confirming that each name resolves is a one-time
+manual step at onboarding ([onboarding-and-config.md](onboarding-and-config.md)).
+
+**Validation.** `validate_config.py` confirms that every secret-name field in the config holds an
+identifier (e.g. `ANTHROPIC_API_KEY`) rather than a literal credential value. A value that does not
+match the identifier format (`[A-Za-z_][A-Za-z0-9_]*`) fails the check so a committed secret is
+caught before it reaches a remote.
+
 ## Execution stays on the user's side of the line
 
 The agent-backend seam ([concepts.md](concepts.md#backend-and-the-agent-backend-seam)) guarantees
