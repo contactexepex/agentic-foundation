@@ -41,6 +41,26 @@ gate once green and reviewer-clean; a PR needing human judgment carries
 
 ## Reviewer handoff
 
-Hand the PR to the independent reviewer (code + security). Fix accepted findings, rerun
-affected checks, commit, push; record an evidence-based reason for any rejected finding.
-Limit the remediation → delta-review loop to two iterations, then escalate.
+Hand the PR to the independent reviewer (code + security). Evaluate each finding with judgment.
+
+**Accept** a finding when it identifies a real problem in the actual change:
+- A genuine correctness or logic error reproducible with normal inputs.
+- A concrete security risk with a plausible exploit path under realistic operator config.
+- A broken API/schema contract or backward-compatibility issue.
+- A meaningful gap in test coverage for a code path this PR changes.
+
+**Decline** a finding when it does not meet that bar:
+- **Speculative**: the failure requires operator choices no realistic user would make, or that
+  existing schema/validation already prevents.
+- **Over-engineered**: the proposed fix adds complexity disproportionate to the real-world risk.
+- **Already enforced**: the concern is addressed by schema validation, an existing test, or a
+  documented convention the reviewer did not account for.
+- **Style/cosmetic**: no functional, correctness, or security impact.
+
+**How to decline**: reply once on the thread with the specific evidence-based reason. Do not
+resolve the thread — leave it open for the reviewer's delta review. One remediation cycle per
+finding, maximum.
+
+For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
+workflow requests the delta review automatically. Limit the remediation → delta-review loop to
+two iterations, then escalate.
