@@ -32,6 +32,7 @@ from render_tests.auto_merge import (
     test_build_command_trust_boundary,
 )
 from render_tests.gate_behavior import test_gate_behavior
+from render_tests.isolation import test_implementer_principal_isolation
 from render_tests.permissions import test_least_privilege_permissions
 
 
@@ -50,6 +51,7 @@ def main() -> int:
     test_auto_merge_p0_invariants()
     test_build_command_trust_boundary()
     test_gate_behavior()
+    test_implementer_principal_isolation()
     test_render_structural()
     test_least_privilege_permissions()
     if failures:
