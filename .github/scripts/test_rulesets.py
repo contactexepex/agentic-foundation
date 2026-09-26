@@ -109,11 +109,11 @@ def test_ruleset_json() -> None:
                 "so newly created repositories can push their initial default branch; "
                 f"got {rsc_params.get('do_not_enforce_on_create')!r}"
             )
-        checks = rsc_params.get("required_status_checks", [])
-        if not isinstance(checks, list):
-            fail(f"required_status_checks must be a list; got {checks!r}")
+        check_entries = rsc_params.get("required_status_checks", [])
+        if not isinstance(check_entries, list):
+            fail(f"required_status_checks must be a list; got {check_entries!r}")
         else:
-            contexts = {c.get("context") for c in checks if isinstance(c, dict)}
+            contexts = {c.get("context") for c in check_entries if isinstance(c, dict)}
             required_contexts = {"Validate", "Publish fast review result"}
             missing_contexts = required_contexts - contexts
             extra_contexts = contexts - required_contexts
