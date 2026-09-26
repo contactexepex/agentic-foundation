@@ -74,6 +74,14 @@ def test_auto_merge_templating_closure() -> None:
 
     check(_closure_report(emitted, produced, operator, safe, nonop) == [],
           "closure: emitted tokens produced, every token classified, provenance == declared safe-literals")
+    # Negative fixtures: prove _closure_report can actually detect each failure mode so it cannot
+    # become vacuously passing (always returning []) without failing here.
+    check(_closure_report(emitted | {"ghost_token"}, produced, operator, safe, nonop) != [],
+          "closure regression: an emitted-but-unproduced token is flagged")
+    check(_closure_report(emitted, produced | {"ghost_token"}, operator, safe, nonop) != [],
+          "closure regression: an unclassified produced token is flagged")
+    check(_closure_report(emitted, produced, operator | {"ghost_token"}, safe, nonop) != [],
+          "closure regression: an operator token missing from the declared safe-literals is flagged")
     # render_template still rejects an unknown token outright.
     expect_raises(lambda: render.render_template("a {{ not_a_token }} b", ctx.substitutions()),
                   "closure: render_template rejects an unregistered token")
