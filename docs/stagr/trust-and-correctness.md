@@ -185,7 +185,9 @@ only** — not executable as-is. Before applying it:
    The `id` field in the response is the numeric App ID. For status checks produced by GitHub
    Actions workflows the app slug is `github-actions`. Leave `integration_id: null`
    if the check producer is not a GitHub App (e.g. a third-party CI service that posts a commit
-   status directly via the Statuses API).
+   status directly via the Statuses API). **Note:** with `integration_id: null`, any actor with
+   `statuses: write` can satisfy the check by posting the same context name — there is no
+   identity binding. Use an App-backed producer and set `integration_id` whenever possible.
 2. Scope `repository_name.include` to the repos you want covered. **Caution with `~ALL`:** applying
    the ruleset org-wide means every repo must produce both the `Validate` and
    `Publish fast review result` checks on every PR. A repo that has not yet run `stagr apply`

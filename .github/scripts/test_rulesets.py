@@ -57,6 +57,18 @@ def test_ruleset_json() -> None:
     else:
         fail(f"expected enforcement='active', got {data.get('enforcement')!r}")
 
+    ref_includes = (
+        (data.get("conditions") or {}).get("ref_name") or {}
+    ).get("include", [])
+    if "~DEFAULT_BRANCH" in ref_includes:
+        ok("conditions.ref_name.include contains '~DEFAULT_BRANCH'")
+    else:
+        fail(
+            "conditions.ref_name.include must contain '~DEFAULT_BRANCH' "
+            "so the ruleset protects the default branch; "
+            f"got {ref_includes!r}"
+        )
+
     # 3. Rules list must be present and non-empty.
     rules = data.get("rules")
     if not isinstance(rules, list) or len(rules) == 0:
