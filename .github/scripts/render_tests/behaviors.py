@@ -75,6 +75,17 @@ def test_backend_name_seam() -> None:
               f"backend seam: provider '{provider}' derives backend '{expected_tool}' when none is pinned")
         check(derived in known_set,
               f"backend seam: derived backend '{derived}' is an admitted schema enum value")
+    # ...and cover EVERY current PROVIDER_TOOL entry too, not only the required two: the documented
+    # extension path is adding a provider->backend entry, and if a newly added entry's backend name is
+    # omitted from the schema enum, derivation would produce a backend an operator cannot explicitly
+    # configure or validate. Assert each derived tool is an admitted enum value so that gap fails here.
+    for provider, expected_tool in render.PROVIDER_TOOL.items():
+        cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": provider}]}
+        derived = (render.expand_stages(cfg)[0].get("backend") or {}).get("name")
+        check(derived == expected_tool,
+              f"backend seam: provider '{provider}' derives its PROVIDER_TOOL backend '{expected_tool}'")
+        check(derived in known_set,
+              f"backend seam: PROVIDER_TOOL backend '{derived}' for provider '{provider}' is an admitted schema enum value")
 
 
 def test_new_behaviors() -> None:
