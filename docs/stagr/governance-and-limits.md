@@ -64,6 +64,9 @@ PR is provably ready — **bypassing human approval by explicit configuration**.
   labelled/branch-scoped auto-merge trigger is expressible today.
 - **`human-merge` is always a hard stop** — even with auto-merge on, the label blocks the
   automatic merge.
+- **Control-plane guard** — a PR that changes a `merge.protected_paths` file (default
+  `.github/workflows/**` and `.agentic/**`) is never auto-merged; it is left for a human, so the gate
+  and toolkit config cannot be changed by an auto-merged PR.
 - **Same fail-closed gate.** Auto-merge uses the identical readiness predicate as the human lane
   (nothing is weakened to enable automation); the merge is SHA-pinned.
 - **Never self-merge across principals.** The merge actor is the gate, not the implementer or

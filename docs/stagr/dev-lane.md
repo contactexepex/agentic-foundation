@@ -90,7 +90,9 @@ auto-merge gate unless marked:
 **Human lane vs. auto-merge.** A PR satisfying 1–7 is **ready for human approval**, and a human may
 merge it. The **`human-merge` label does not block human-lane readiness** — it is a **hard stop for
 the auto-merge lane only**. So *auto-merge* eligibility = 1–7 **plus** the absence of `human-merge`
-**plus** the team's auto-merge configuration ([governance-and-limits.md](governance-and-limits.md)).
+**plus** the **control-plane guard** (no changed file matches `merge.protected_paths` — default
+`.github/workflows/**` and `.agentic/**`; a PR touching one is left for a human) **plus** the team's
+auto-merge configuration ([governance-and-limits.md](governance-and-limits.md)).
 The **how** (SHA binding, no forgeable signals, base-controlled definitions, and the residual
 last-read race) is in [trust-and-correctness.md](trust-and-correctness.md).
 

@@ -5,6 +5,11 @@ Emitting run/cost/decision events is explicitly **in scope** for the control pla
 seam to an external orchestrator **and** the compliance/provenance wedge, and where the line to
 "not a dashboard" sits.
 
+> **Status: [target].** No decision-event emitter ships in `stagr/` today — this entire page is
+> **design intent**, not current behaviour. The decision records, provenance fields, delivery
+> retries, and sink-failure handling below describe what the emit layer will do; they are tracked in
+> [roadmap.md](roadmap.md). Do not read any statement here as an existing guarantee.
+
 ## stagr emits; it does not store or display
 
 stagr is not a database or a UI. It **emits a structured event stream** to the org's existing

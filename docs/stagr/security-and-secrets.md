@@ -31,13 +31,19 @@ scoped to the stage:
   agent's output cannot exercise a broad token directly.
 - No stage is granted a capability "just in case."
 
-**Current state [shipped], stated honestly:** the Codex **review/security** stages are read-scoped as
-above, but the shipped **Claude implementer job** runs `claude-code-action` **with `contents: write`
-and `pull-requests: write` on the same job** — there is **no buffered-output / separately-scoped
-apply step yet**. So for the implementer, the buffered-write separation is a **[target] hardening
-item** ([roadmap.md](roadmap.md)), not an enforced guarantee today. What *does* hold today: the
-implementer never carries **merge** scope or the **remediation/publisher** credential, and fork PRs
-drive nothing.
+**Current state [shipped], stated honestly — neither shipped agent lane is read-only today:**
+
+- The **Claude implementer job** runs `claude-code-action` **with `contents: write` and
+  `pull-requests: write`** on the same job — no buffered-output / separately-scoped apply step.
+- The **Codex review and security lanes** carry the **remediation PAT** (`CODEX_PAT`, a real-user
+  credential with **Contents R/W + Pull Requests R/W**) in their shell steps, used to author review
+  comments as a trusted user. So the review/security lane is **not read-scoped** and holds a
+  publisher-class credential (used only in the controlled comment-post step, not handed to the model).
+
+So the least-privilege, buffered-apply, and minimal-commenting-identity goals above are **[target]
+hardening items** ([roadmap.md](roadmap.md)), not enforced guarantees today. What *does* hold: the
+implementer's `GITHUB_TOKEN` carries no **merge** scope, the PAT is confined to the comment-post step
+(never exposed to model output), and **fork PRs drive nothing**.
 
 ## Secrets model
 

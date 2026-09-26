@@ -53,6 +53,17 @@ behaviour and the stated design:
   human-lane re-approval on push is real. ([onboarding-and-config.md](onboarding-and-config.md))
 - **Profile alignment.** Move `plan`/`docs` out of the shipped `full` profile to the sibling toolkits,
   and decide whether dev-lane `standard` makes `security` blocking. ([dev-lane.md](dev-lane.md))
+- **Minimal commenting identity for review lanes.** Replace the broad remediation PAT
+  (`CODEX_PAT`, Contents + PR R/W) used by the Codex review/security lanes with a narrowly-scoped
+  commenting identity. ([security-and-secrets.md](security-and-secrets.md))
+- **Shared review lock.** A cross-workflow lock (or single dispatch authority) for code vs. security
+  review, closing the check-to-post window so "never concurrent" is guaranteed, not best-effort.
+  ([trust-and-correctness.md](trust-and-correctness.md))
+- **Decision-event emitter.** Build the audit/provenance emit layer — none ships today, so all of
+  [audit-and-provenance.md](audit-and-provenance.md) is target.
+- **Server-enforced `human-merge`.** Represent the `human-merge` hard stop as a server-enforced gate
+  signal (e.g. a required status the label toggles) to close the label race branch protection cannot.
+  ([trust-and-correctness.md](trust-and-correctness.md))
 
 ## Phase 2 — Org-scale onboarding & the stage catalogue
 

@@ -21,6 +21,7 @@ behavioural fixture with a stubbed platform API).
 | Base is not the default branch | **Blocked** (out of the gate's scope) |
 | Untrusted author | Automation does not run; **Blocked** |
 | `human-merge` label present | Hard stop for the **auto-merge lane** only; does **not** block human-lane readiness (a human may still merge) |
+| PR changes a `merge.protected_paths` file (default `.github/workflows/**`, `.agentic/**`) | **Control-plane guard**: left for a human — never auto-merged |
 | Merge conflict (`mergeable=false`) | **Blocked** (fail-closed) |
 | Behind / not clean (`mergeable_state != clean`: behind, blocked, unstable, dirty) | **Blocked** |
 | Mergeability still computing (`mergeable=null`) | **Blocked** (fail-closed until GitHub reports `true`) |
@@ -75,9 +76,9 @@ behavioural fixture with a stubbed platform API).
 | Attempt to reach a credential from an untrusted stage | Principal isolation + least privilege → no access |
 | Sentinel injected into PR title/body/branch/author | Must never reach the build/publish step or a credential (data-flow test) |
 
-## 6. Budgets & limits
+## 6. Budgets & limits — **[target]** (budgets ship `enabled: false`; not enforced today)
 
-| Case | Behaviour |
+| Case | Behaviour **[target]** |
 |---|---|
 | Review-iteration cap reached | Stop → **Escalate** |
 | Cost ceiling exceeded | Stop spending → **Escalate** with partial state recorded |

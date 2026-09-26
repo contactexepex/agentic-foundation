@@ -58,10 +58,14 @@ to:
    SHA-pinning guarantees it can never merge a *different* commit, but the mutable predicates are
    **not atomic** with the merge. Between the final read and the merge PUT, a `human-merge` label can
    be added, a review thread can reopen, or a check/review can turn blocking on the *same* SHA — so
-   the residual race can admit a **now-unready commit**, not merely defer it. Only **server-side
-   branch protection** closes these predicates atomically; that is why the gate's guarantees are
-   layered on org rulesets, not a substitute for them. The scheduled sweep bounds worst-case latency
-   but does not make the step atomic.
+   the residual race can admit a **now-unready commit**, not merely defer it. **Server-side branch
+   protection** closes *some* of these atomically — required checks and conversation-resolution —
+   which is why the gate's guarantees are layered on org rulesets rather than a substitute for them.
+   But branch protection **cannot** enforce the absence of the toolkit-specific **`human-merge`
+   label**: a label added after the final read can still lose to the merge PUT. So the `human-merge`
+   race remains an **irreducible residual** unless it is represented by a server-enforced gate signal
+   (e.g. a required status the label toggles). The scheduled sweep bounds worst-case latency but does
+   not make the step atomic.
 
 ## Sequencing code vs. security review
 
@@ -70,10 +74,18 @@ Therefore:
 
 - the **code-review loop runs per push** until it converges (completed + clean on the head);
 - the **single security review** is triggered **only after** convergence;
-- the two are **globally serialized** so an event-driven run and a scheduled sweep cannot start a
-  second review while one is in flight.
+- the security-review workflow **serializes its own runs** (concurrency group `request-codex-security`).
 
-This is why the gate requires a head-bound code review **and** a head-bound security review to have
+**Honest residual [target].** The code-review and security-review *request* workflows use **separate**
+concurrency groups (`request-codex-review-*` per PR vs. `request-codex-security`), so there is **no
+shared cross-workflow lock**. A push landing in the security workflow's **check-to-post window**
+(after it verifies the head but before its comment POST, and before Codex flips the summary row to
+`Running`) can let the code-review request post too — a narrow window where both could be requested.
+"Never concurrent" is therefore the **design intent**, achieved by converge-then-request plus
+per-workflow serialization; fully closing the window needs a **shared lock or a single dispatch
+authority** ([roadmap.md](roadmap.md)).
+
+Either way, the gate requires a head-bound code review **and** a head-bound security review to have
 completed — a security review alone, or one bound to an old head, is not enough.
 
 ## Catching what webhooks miss
