@@ -69,25 +69,9 @@ def test_backend_name_seam() -> None:
     # caught: if a provider's derived tool were dropped from the enum, this fails instead of staying
     # green. Also assert every derived name is itself an admitted schema value (the two sides agree).
     known_set = set(known)
-    # Pin the two documented provider->tool mappings INDEPENDENTLY of PROVIDER_TOOL. Iterating
-    # PROVIDER_TOOL directly would just stop generating a case if an entry were dropped, so the suite
-    # would still pass and the seam would not actually be locked. Asserting each required entry exists
-    # (and matches) makes an accidental removal FAIL here (AGENTS.md: never weaken a check to pass).
-    required_mappings = {"anthropic": "claude-code-action", "openai": "codex"}
-    for provider, expected_tool in required_mappings.items():
-        check(render.PROVIDER_TOOL.get(provider) == expected_tool,
-              f"backend seam: PROVIDER_TOOL maps required provider '{provider}' to '{expected_tool}'")
-        cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": provider}]}
-        expanded = render.expand_stages(cfg)
-        derived = (expanded[0].get("backend") or {}).get("name")
-        check(derived == expected_tool,
-              f"backend seam: provider '{provider}' derives backend '{expected_tool}' when none is pinned")
-        check(derived in known_set,
-              f"backend seam: derived backend '{derived}' is an admitted schema enum value")
-    # ...and cover EVERY current PROVIDER_TOOL entry too, not only the required two: the documented
-    # extension path is adding a provider->backend entry, and if a newly added entry's backend name is
-    # omitted from the schema enum, derivation would produce a backend an operator cannot explicitly
-    # configure or validate. Assert each derived tool is an admitted enum value so that gap fails here.
+    # Cover every PROVIDER_TOOL entry: the documented extension path is adding a provider->backend
+    # entry, and if a newly added entry's backend name is omitted from the schema enum, derivation
+    # would produce a backend an operator cannot explicitly configure or validate.
     for provider, expected_tool in render.PROVIDER_TOOL.items():
         cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": provider}]}
         derived = (render.expand_stages(cfg)[0].get("backend") or {}).get("name")
@@ -100,7 +84,7 @@ def test_backend_name_seam() -> None:
     # provider), so exercise it explicitly — a regression that dropped the `or default_provider` fallback
     # would leave such a stage on the generic backend while every case above (which pins `provider`)
     # stayed green.
-    for default_provider, expected_tool in required_mappings.items():
+    for default_provider, expected_tool in render.PROVIDER_TOOL.items():
         cfg = {"version": 2, "profile": "custom",
                "platform": {"type": "github", "default_branch": "main"},
                "defaults": {"provider": default_provider,

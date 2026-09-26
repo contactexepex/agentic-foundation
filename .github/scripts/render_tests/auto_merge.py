@@ -74,7 +74,8 @@ def test_auto_merge_templating_closure() -> None:
 
     check(_closure_report(emitted, produced, operator, safe, nonop) == [],
           "closure: emitted tokens produced, every token classified, provenance == declared safe-literals")
-    # Regression fixtures: the closure MUST flag each kind of drift (proves it is not vacuous).
+    # Negative fixtures: prove _closure_report can actually detect each failure mode so it cannot
+    # become vacuously passing (always returning []) without failing here.
     check(_closure_report(emitted | {"ghost_token"}, produced, operator, safe, nonop) != [],
           "closure regression: an emitted-but-unproduced token is flagged")
     check(_closure_report(emitted, produced | {"ghost_token"}, operator, safe, nonop) != [],
@@ -130,7 +131,9 @@ def test_auto_merge_config_hardening() -> None:
         expect_raises(lambda c=cfg: render.validate_config(c),
                       f"protected_paths: general glob {bad!r} rejected at front door")
 
-    # RenderContext is a full read-only Mapping (Codex: keep the exported build_context mapping API).
+    # RenderContext is the exported public API (build_context, via stagr/render/__init__.py).
+    # Operators and downstream code use it; exercise the Mapping contract so regressions in
+    # indexing, iteration, or equality are caught before they ship.
     ctx = render.build_context(_IMPL_BASE)
     subs = ctx.substitutions()
     check(ctx["human_merge_label"] == subs["human_merge_label"], "RenderContext: indexing works")

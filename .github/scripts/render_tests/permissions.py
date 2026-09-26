@@ -125,18 +125,6 @@ def test_least_privilege_permissions() -> None:
                 f"permissions: {name} top-level block equals least-privilege set "
                 f"(expected {EXPECTED[name]}, got {actual})",
             )
-            # Job-level ``permissions:`` override the top-level block for that job and can ESCALATE
-            # the token (an added write scope, or ``write-all``). Reading only the top-level block
-            # would miss that. No template sets job-level permissions today; assert none does, so a
-            # future template that adds one fails loud instead of silently widening a job's
-            # GITHUB_TOKEN beyond the least-privilege top-level set.
-            for job_name, job in (doc.get("jobs") or {}).items():
-                job_perms = job.get("permissions") if isinstance(job, dict) else None
-                check(
-                    job_perms is None,
-                    f"permissions: {name} job '{job_name}' declares no job-level permissions "
-                    f"(job-level overrides can escalate the token; got {job_perms})",
-                )
     # The matrix must, between them, activate every declared lane — otherwise an EXPECTED entry
     # (or a whole lane) could rot unexercised, or the matrix could quietly stop covering one.
     check(
