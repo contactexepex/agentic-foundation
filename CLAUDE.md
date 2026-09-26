@@ -68,7 +68,7 @@ finding — review comments require judgment, not blind acceptance.
   (including adversarial inputs at untrusted system boundaries).
 - A concrete security risk with a plausible exploit path under realistic operator config.
 - A broken API/schema contract or backward-compatibility issue.
-- A meaningful gap in test coverage for a code path this PR changes.
+- A meaningful gap in test coverage for changed code paths or closely related behavior.
 
 **Decline** a finding when it does not meet that bar. Grounds for declining:
 - **Speculative**: the failure scenario requires operator choices or config combinations that no
@@ -84,7 +84,7 @@ finding — review comments require judgment, not blind acceptance.
 existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
 Do not resolve the thread — leave it open for the Codex delta review. Do not loop: a declined
 finding stays declined unless Codex presents new evidence in the delta review. One remediation
-cycle per finding, maximum.
+cycle per finding is the limit.
 
 When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
 the delta review manually, since no push fires the per-push workflow. If findings remain
