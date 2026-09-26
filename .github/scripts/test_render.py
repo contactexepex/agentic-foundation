@@ -16,7 +16,7 @@ import sys
 
 from render_tests.harness import failures
 from render_tests.resolution import test_backend, test_profile_expansion, test_resolution
-from render_tests.structural import test_render_structural
+from render_tests.structural import test_actions_sha_pinned, test_render_structural
 from render_tests.behaviors import (
     test_new_behaviors,
     test_round2_fixes,
@@ -50,6 +50,7 @@ def main() -> int:
     test_build_command_trust_boundary()
     test_gate_behavior()
     test_render_structural()
+    test_actions_sha_pinned()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
         return 1
