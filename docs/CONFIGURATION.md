@@ -190,7 +190,7 @@ Normally you do **not** set `backend` — the executor is **derived from `provid
 
 | Field | Meaning |
 |---|---|
-| `name` | The executor to pin. **Rendered today:** `claude-code-action` (the Anthropic implementer) and `codex` (the OpenAI review/security lane). **Roadmap** (accepted so configs stay forward-compatible, not rendered yet): `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom`. |
+| `name` | The executor to pin. **Rendered today:** `claude-code-action` (the Anthropic implementer) and `codex` (the OpenAI review/security lane). **Roadmap** (accepted so configs stay forward-compatible, not rendered yet): `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom`, `claude-code-cli` (CLI-in-runner adapter for Claude Code, Phase 3). |
 | `uses` | Action ref or container image (for `custom`, or to pin/override an adapter). |
 | `with` | Backend-specific inputs, passed through unchanged. |
 

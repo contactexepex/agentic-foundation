@@ -284,12 +284,12 @@
       }
     },
     "backend": {
-      "description": "Optional executor override. Normally omit it — the tool is derived from `provider` (`anthropic` -> Claude Code, `openai` -> Codex). Set it only to pin a specific tool or point at a custom adapter. Rendered today: `claude-code-action` (the Anthropic implementer) and `codex` (the OpenAI review/security lane). The remaining names are accepted so configs stay forward-compatible but are roadmap: `generic` (a provider-agnostic runner via a user-supplied adapter), `openhands`, `pr-agent`, `swe-agent`, and `custom`. `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
+      "description": "Optional executor override. Normally omit it — the tool is derived from `provider` (`anthropic` -> Claude Code, `openai` -> Codex). Set it only to pin a specific tool or point at a custom adapter. Rendered today: `claude-code-action` (the Anthropic implementer) and `codex` (the OpenAI review/security lane). The remaining names are accepted so configs stay forward-compatible but are roadmap: `generic` (a provider-agnostic runner via a user-supplied adapter), `openhands`, `pr-agent`, `swe-agent`, `custom`, and `claude-code-cli` (a CLI-in-runner adapter for Claude Code, Phase 3). `with` carries backend-specific inputs; `uses` overrides the action/image for `custom`.",
       "type": "object",
       "additionalProperties": false,
       "required": ["name"],
       "properties": {
-        "name": { "enum": ["generic", "claude-code-action", "openhands", "pr-agent", "codex", "swe-agent", "custom"] },
+        "name": { "enum": ["generic", "claude-code-action", "openhands", "pr-agent", "codex", "swe-agent", "custom", "claude-code-cli"] },
         "uses": { "type": "string", "description": "Action ref or container image (for `custom`, or to pin/override an adapter)." },
         "with": { "type": "object", "additionalProperties": true, "description": "Backend-specific inputs passed through to the executor." }
       }

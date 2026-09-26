@@ -51,14 +51,14 @@ A **backend** is the executor that actually runs a stage's agent. stagr derives 
 provider and lets a stage pin or swap it **by name** — the *agent-backend seam*.
 
 `backend.name` is a **closed enum [shipped]**: `generic`, `claude-code-action`, `openhands`,
-`pr-agent`, `codex`, `swe-agent`, `custom`.
+`pr-agent`, `codex`, `swe-agent`, `custom`, `claude-code-cli`.
 
 | Backend | Wraps | Harness kind | Status |
 |---|---|---|---|
 | `claude-code-action` | Anthropic Claude Code | GitHub-native (Actions) | **[shipped]** — implement |
 | `codex` | OpenAI Codex | GitHub-native (Actions + Codex app) | **[shipped]** — code review, security review |
 | `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom` | provider-agnostic runner / OSS agents / any action | varies | enum-accepted for forward-compat, **not rendered [target]** |
-| a cloud-API or CLI backend (e.g. `*-cloud`, `*-cli`) | provider cloud agents / a runner CLI | Cloud-API (dispatch+poll) / CLI-in-runner | **[target]** — needs a new enum name + adapter |
+| `claude-code-cli` | Claude Code CLI-in-runner adapter | CLI-in-runner | enum-accepted (follows the `*-cli` pattern, mirrors `claude-code-action`), **not rendered [Phase 3 target]** |
 
 The **seam pattern** exists now (a stage names a backend; the enum + `provider→tool` derivation is
 in the schema). But because the enum is **closed**, adding a cloud/CLI backend later is a **new
