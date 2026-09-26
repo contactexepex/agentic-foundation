@@ -76,10 +76,10 @@ findings:
 - No false confidence: mark **needs info** rather than guessing.
 - Do not run untrusted code from the diff to "verify" an issue.
 - If nothing meets medium+ severity, return `verdict: pass` and say so.
-- **Right-size to actual exposure.** A finding must name a realistic exploit path
-  against the change as-deployed. Theoretical risks that existing schema validation,
-  runtime enforcement, or documented conventions already prevent — are `info` at most,
-  not `critical`/`high`/`medium`/`low`. (`low` and above map to `warn` or `fail`, which
-  create blocking review threads; do not raise already-prevented risks above `info`.)
-  Do not escalate hardening suggestions above the severity that realistic preconditions
-  support.
+- **Right-size to actual exposure.** A finding must name a realistic exploit path against the
+  change as-deployed. Theoretical risks that existing schema validation or runtime enforcement
+  already prevent are `info` at most, not `critical`/`high`/`medium`/`low`. (`low` and above
+  map to `warn` or `fail`, which create blocking review threads; do not raise already-prevented
+  risks above `info`.) Documentation describes intent, not enforcement; do not use a documented
+  convention alone as evidence that a risk is mitigated. Do not escalate hardening suggestions
+  above the severity that realistic preconditions support.

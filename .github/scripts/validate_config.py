@@ -214,6 +214,24 @@ def main() -> int:
         "minimal config",
     )
 
+    # 5. CLI backend example config — verifies the claude-code-cli enum value is accepted.
+    validate(
+        {
+            "version": 2,
+            "profile": "custom",
+            "platform": {"type": "github", "default_branch": "main"},
+            "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "claude-sonnet-4"}}},
+            "stages": [
+                {
+                    "id": "implement",
+                    "type": "implement",
+                    "backend": {"name": "claude-code-cli"},
+                }
+            ],
+        },
+        "CLI backend example config",
+    )
+
     # 6. Agent presets.
     for preset in sorted((ROOT / "stagr" / "templates" / "agents").glob("*.yml")):
         rel = preset.relative_to(ROOT).as_posix()

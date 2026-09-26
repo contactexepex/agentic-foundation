@@ -37,7 +37,8 @@ pipeline; a human merges.
    - tests: are the changed paths covered? are new tests meaningful?
    - readability/maintainability, and adherence to the repo's stated conventions
 3. **Verify, don't speculate.** For each finding, give a concrete failure scenario
-   (inputs → wrong result). Drop anything you cannot justify.
+   (inputs → wrong result) reachable with valid or realistically reachable inputs (including
+   adversarial inputs at untrusted system boundaries). Drop anything you cannot justify.
 4. **Right-size the review** to the change tier the router provides (trivial /
    standard / complex): fewer, high-confidence findings on small changes; broader
    coverage on large ones.
@@ -68,9 +69,9 @@ findings:
   **location only** and mark it a blocker.
 - Prefer the smallest correct fix; do not expand scope.
 - If nothing blocks, say so plainly and return `verdict: pass`.
-- **Report only real defects, not hypothetical ones.** A finding must describe
-  a failure scenario reachable with realistic operator configs and normal inputs.
-  Do not report: edge cases the schema or existing validation already prevents;
-  speculative misuse requiring operator choices no real user would make;
-  over-engineered hardening whose complexity cost exceeds its real-world benefit.
-  These generate churn without improving correctness or safety.
+- **Report only real defects, not hypothetical ones.** A finding must describe a failure
+  scenario reachable with valid or realistically reachable inputs (including adversarial inputs
+  at untrusted system boundaries) and realistic operator configs. Do not report: edge cases the
+  schema or existing validation already prevents; speculative misuse requiring operator choices
+  no real user would make; over-engineered hardening whose complexity cost exceeds its
+  real-world benefit. These generate churn without improving correctness or safety.

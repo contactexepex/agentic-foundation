@@ -30,7 +30,7 @@ A repository's agentic pipeline is an **ordered, extensible graph of stages**. E
 The same contract expresses a two-stage pipeline or a full SDLC of a dozen stages.
 
 ```
-issue ──▶ [plan] ──▶ [implement] ──┬─▶ [security]          ──┐
+issue ──▶ [plan] ──▶ [implement] ─┬─▶ [security]          ──┐
                                    ├─▶ [integration-test]  ──┤─▶ gates ─▶ PR/MR ─▶ (auto_merge?) ─▶ human
                                    └─▶ [review]            ──┘
 ```
@@ -66,6 +66,7 @@ contract layer**: a stage names a **provider**, and the toolkit derives the codi
 | Backend (tool) | Wraps | Derived from | Rendered today? |
 |---|---|---|---|
 | `claude-code-action` | Anthropic's Claude Code | `anthropic` | ✅ implement |
+| `claude-code-cli` | Anthropic's Claude Code (CLI runner) | — (override only) | roadmap |
 | `codex` | OpenAI Codex | `openai` | ✅ review, security |
 | `generic` | Built-in prompt-runner (provider adapter + prompt + tools) | — | roadmap |
 | `openhands` | OpenHands issue resolver | — | roadmap |
@@ -182,5 +183,5 @@ Profile expansions:
 - **M2 — GitHub renderer + generic backend:** installer renders the graph to GitHub
   Actions; `generic` runner + `claude-code-action`/`pr-agent` adapters.
 - **M3 — CLI:** `doctor`, `plan`, `apply`.
-- **M4 — more backends & platforms:** OpenHands/Codex/SWE-agent adapters; GitLab and
-  Azure DevOps renderers.
+- **M4 — more backends & platforms:** OpenHands/Codex/SWE-agent adapters; `claude-code-cli`
+  backend; GitLab and Azure DevOps renderers.
