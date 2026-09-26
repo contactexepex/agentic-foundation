@@ -32,8 +32,9 @@ EXPECTED: dict[str, dict[str, str]] = {
         "statuses": "read",
         "actions": "read",
     },
+    # Reads PRs/threads/comments/commit-associated PRs with GITHUB_TOKEN and posts via the PAT;
+    # no checkout, so no contents access.
     "final-security-review.yml": {
-        "contents": "read",
         "pull-requests": "read",
     },
     "implementor.yml": {
@@ -41,8 +42,9 @@ EXPECTED: dict[str, dict[str, str]] = {
         "pull-requests": "write",
         "id-token": "write",
     },
+    # Reads PR data/comments, the router commit status, and the check-suite commit's PR with
+    # GITHUB_TOKEN; posts via the PAT. No checkout, so no contents access.
     "request-review.yml": {
-        "contents": "read",
         "pull-requests": "read",
         "statuses": "read",
     },
