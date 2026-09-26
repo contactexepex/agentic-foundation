@@ -6,8 +6,8 @@ Checks that the JSON at docs/stagr/rulesets/org-branch-protection.json:
   - is an org-level ruleset (target == "branch", enforcement == "active");
   - includes a pull_request rule with dismiss_stale_reviews_on_push == true
     and required_approving_review_count == 0;
-  - includes a required_status_checks rule whose contexts are exactly
-    "Validate" and "Publish fast review result".
+  - includes a required_status_checks rule with strict_required_status_checks_policy == true
+    and contexts exactly {"Validate", "Publish fast review result"}.
 
 Run with: python .github/scripts/test_rulesets.py
 Exit 0 = all checks pass.  Exit 1 = one or more failures (details printed).
@@ -87,12 +87,20 @@ def test_ruleset_json() -> None:
                 f"got {pr_params.get('required_approving_review_count')!r}"
             )
 
-    # 5. required_status_checks rule with exactly the required context names.
+    # 5. required_status_checks rule with exactly the required context names
+    #    and strict evaluation enabled.
     rsc_rules = [r for r in rules if isinstance(r, dict) and r.get("type") == "required_status_checks"]
     if not rsc_rules:
         fail("no 'required_status_checks' rule found — required checks missing")
     else:
         rsc_params = rsc_rules[0].get("parameters", {})
+        if rsc_params.get("strict_required_status_checks_policy") is True:
+            ok("strict_required_status_checks_policy == true")
+        else:
+            fail(
+                "required_status_checks rule must have parameters.strict_required_status_checks_policy == true; "
+                f"got {rsc_params.get('strict_required_status_checks_policy')!r}"
+            )
         checks = rsc_params.get("required_status_checks", [])
         if not isinstance(checks, list):
             fail(f"required_status_checks must be a list; got {checks!r}")
