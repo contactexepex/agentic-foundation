@@ -46,10 +46,9 @@ EXPECTED: dict[str, dict[str, str]] = {
         "pull-requests": "read",
         "statuses": "read",
     },
-    "resolve-threads.yml": {
-        "contents": "read",
-        "pull-requests": "read",
-    },
+    # No workflow-token scopes: resolve-threads runs every API call on the remediation PAT
+    # (GH_TOKEN) and never checks out PR content, so the built-in GITHUB_TOKEN needs nothing.
+    "resolve-threads.yml": {},
     "review-router.yml": {
         "contents": "read",
         "pull-requests": "read",
@@ -123,6 +122,18 @@ def test_least_privilege_permissions() -> None:
                 f"permissions: {name} top-level block equals least-privilege set "
                 f"(expected {EXPECTED[name]}, got {actual})",
             )
+            # Job-level ``permissions:`` override the top-level block for that job and can ESCALATE
+            # the token (an added write scope, or ``write-all``). Reading only the top-level block
+            # would miss that. No template sets job-level permissions today; assert none does, so a
+            # future template that adds one fails loud instead of silently widening a job's
+            # GITHUB_TOKEN beyond the least-privilege top-level set.
+            for job_name, job in (doc.get("jobs") or {}).items():
+                job_perms = job.get("permissions") if isinstance(job, dict) else None
+                check(
+                    job_perms is None,
+                    f"permissions: {name} job '{job_name}' declares no job-level permissions "
+                    f"(job-level overrides can escalate the token; got {job_perms})",
+                )
     # The matrix must, between them, activate every declared lane — otherwise an EXPECTED entry
     # (or a whole lane) could rot unexercised, or the matrix could quietly stop covering one.
     check(
@@ -130,4 +141,15 @@ def test_least_privilege_permissions() -> None:
         "permissions: matrix renders every declared lane "
         f"(unrendered {sorted(set(EXPECTED) - rendered_names)}, "
         f"undeclared {sorted(rendered_names - set(EXPECTED))})",
+    )
+    # Coverage completeness: EXPECTED must account for EVERY template a lane can emit — not only the
+    # lanes these three configs happen to activate. Enumerate the templates declared by the ``LANES``
+    # registry (the single source of truth for what can render), so a future lane whose predicate
+    # none of the matrix configs triggers still cannot ship without an explicit least-privilege entry.
+    declared = {t[: -len(".tmpl")] if t.endswith(".tmpl") else t
+                for lane in render.LANES for t in lane.templates}
+    check(
+        set(EXPECTED) == declared,
+        "permissions: EXPECTED covers exactly the templates declared by LANES "
+        f"(missing {sorted(declared - set(EXPECTED))}, extra {sorted(set(EXPECTED) - declared)})",
     )
