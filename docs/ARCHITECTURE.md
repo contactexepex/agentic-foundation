@@ -4,6 +4,14 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 **easy for newcomers** yet **granular for experts**, across **any provider/model**,
 **any SCM platform**, and **any language**.
 
+> **Scope note.** The contract described here is **generic** — it can express any stage type
+> (`plan`, `implement`, `security`, `test`, `review`, `docs`, `release`, `custom`). stagr's
+> **product scope**, however, is the **development lane** (approved story → merged PR). Planning
+> and CD/deploy are delivered by **separate sibling toolkits** that reuse this same contract, not
+> by stagr's reference lane. Read any single `plan … release` pipeline below as the *contract's*
+> reach across the toolkit family, not as stagr's own span. The authoritative, refined design and
+> roadmap live in [`stagr/`](stagr/README.md) — start with [`stagr/overview.md`](stagr/overview.md).
+
 ---
 
 ## 1. Mental model: a pipeline is a graph of stages
