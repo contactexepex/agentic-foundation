@@ -16,7 +16,7 @@ behavioural fixture with a stubbed platform API).
 
 | Case | Behaviour |
 |---|---|
-| Fork PR | Drives no automation; no credential; **Blocked** for auto actions |
+| Fork PR | Drives **no privileged lane** (agent/review/merge); no credential; **Blocked** for auto actions. Validate/CI still runs under GitHub's restricted fork token |
 | Draft PR | **Blocked** until marked ready |
 | Base is not the default branch | **Blocked** (out of the gate's scope) |
 | Untrusted author | Automation does not run; **Blocked** |
@@ -100,7 +100,7 @@ behavioural fixture with a stubbed platform API).
 | Invalid config | `validate_config()` fails at render time (schema → coherence → templating safety) — never renders a broken/unsafe workflow |
 | `${{ }}` injected into an operator-controlled field | Templating-safety validator rejects it |
 | Config targets an unsupported schema version | Rejected with a migration message (`doctor`) |
-| Required secret absent (by name) | `doctor` reports it; the model-consuming stage fails loud rather than guessing |
+| Required secret absent (by name) | `doctor` lists the **required secret names** but does **not** detect absence (no env probe **[target]**); an unconfigured secret passes `doctor` and fails only when the workflow runs — verifying existence is manual today. The model-consuming stage then fails loud rather than guessing |
 | Unresolved model on a model-consuming backend | Fail loud; never guess a version (Codex supplies its own model, so the rule does not apply to it) |
 
 ## 9. Fully positive path

@@ -11,7 +11,7 @@ GitHub first**, and **name the agent-backend seam now, ship one GitHub-native ba
 | Dev-lane core | validate, review router, implement, Codex code + security review, thread cleanup, fail-closed gate, merge lanes — **rendered** | Formalizes the **ordered gate** (security/SAST before integration/perf/custom) and the readiness predicate |
 | Trust/correctness | SHA-bound, fail-closed, base-controlled, serialized security review, scheduled sweep — **built** (PR #22/#25/#27) | States them as **invariants with required tests**; adds **anti-tamper via org rulesets** |
 | Backends | `claude-code-action` (implement), `codex` (review/security) | Names the **agent-backend seam** (cloud/CLI as future adapters) |
-| Governance | budgets/guardrails referenced in the contract | **Rendered** loop caps, cost ceiling, circuit breaker, and **escalation** terminal states |
+| Governance | budgets/guardrails referenced in the contract (default-disabled) | **[target]** loop caps, cost ceiling, circuit breaker, and **escalation** terminal states — not yet rendered |
 | Audit | decision events in scope | First-class **decision record + provenance** stream and orchestrator seam |
 | Onboarding | per-repo config; `doctor`/`plan`/`apply` on the roadmap | **Org-scoped** provisioning + **org-default/per-repo override** + **schema versioning/migration** |
 | Platforms | GitHub renderer | Neutrality kept as a **contract principle**; more renderers later |

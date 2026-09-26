@@ -14,7 +14,7 @@ genuinely its own.
 
 | Concern | How it is one-time |
 |---|---|
-| **App installation** | The agent apps (Codex, Claude) are installed once at the org, for all or selected repos. |
+| **App installation + config** | The agent apps (Codex, Claude) are installed once at the org, for all or selected repos. **Installation alone is not enough:** the Codex App must be **configured to auto-run the code review on PR open** (the rendered `request-review.yml` listens to pushes, not PR-open events, so a freshly opened PR relies on the App to start the code review), and its **native security auto-review must be disabled** so it does not race the final-security workflow. Miss either and a PR can go unreviewed or get concurrent code+security reviews. |
 | **Secrets & environment** | Org/environment secrets shared to selected repos — no per-repo secret setup ([security-and-secrets.md](security-and-secrets.md)). |
 | **The pipeline** | Org **required/reusable workflows** injected centrally, so a repo needs no copied-in workflow files. |
 | **The gate** | Org **rulesets** enforce branch protection + required checks across repos from a place a repo/PR cannot edit, and **must enable "dismiss stale approvals on push"** so a post-approval commit invalidates the prior human approval (this is what makes the human-lane re-approval rule real — see [edge-cases.md](edge-cases.md)). ([trust-and-correctness.md](trust-and-correctness.md#anti-tamper--enforcement)) |
@@ -27,8 +27,11 @@ Some things are genuinely repo-specific and cannot be fully centralized:
 - **Which optional stages** that repo opts into (integration/perf/custom) and any per-repo
   overrides.
 
-There is **no per-repo agent, key, or workflow-file setup** — only this small, genuinely-local
-declaration.
+**Workflow-file setup today [shipped]:** each repo currently runs `stagr apply` to write the rendered
+workflow files and the operator **commits them into that repo** — so committing generated workflow
+files *is* a per-repo step today. Removing it via **org-injected required/reusable workflows** (so no
+workflow files live in the repo) is **[target]** (Phase 2). There is no per-repo **agent or key**
+setup when apps/secrets are provisioned at the org level.
 
 ## Config layering: org default + per-repo override
 
@@ -66,9 +69,9 @@ See [`../CLI.md`](../CLI.md) for the authoritative command reference; in summary
 - **`stagr plan`** — dry run: show exactly what `apply` **would** write to `.github/workflows/`
   (with `--diff`), marking each workflow.
 - **`stagr apply`** — **writes the rendered workflow files into `.github/workflows/` in the working
-  tree** (removing orphaned ones); the operator then commits and opens their own PR. It performs
-  **no Git or GitHub action itself** — there is **no auto-opened bootstrap PR** — and never
-  hand-merges.
+  tree**; orphaned workflows are removed **only with `--prune`** (by default they are kept). The
+  operator then **commits the generated files and opens their own PR**. `apply` performs **no Git or
+  GitHub action itself** — there is **no auto-opened bootstrap PR** — and never hand-merges.
 
 ## Config versioning & migration
 

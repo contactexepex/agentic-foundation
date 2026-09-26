@@ -34,12 +34,17 @@ explains the reconciliation.
   today only the GitHub renderer ships.
 - **Minimal by default, curated when advanced.** The common repo is a handful of config lines.
 
-## Status convention (shipped vs. target)
+## Status convention (design-first)
 
-These are **design + roadmap** docs. To avoid presenting intent as fact, claims are marked:
+These are **design + roadmap** docs for a system that is **largely still being built**, so they are
+**design-intent-first**:
 
-- **[shipped]** — implemented today in the schema/renderer (`stagr/`).
-- **[target]** — the design intent; **not yet implemented**, tracked in [roadmap.md](roadmap.md).
+- **Treat every statement as design intent (target) unless it is explicitly marked [shipped].**
+  Absence of a marker does **not** imply the behaviour exists today.
+- **[shipped]** marks behaviour implemented today in the schema/renderer (`stagr/`).
+- **[target]** is used for emphasis on notable not-yet-built items, but the guarantee comes from the
+  **[shipped]** marker, not from the absence of **[target]**.
 
-Where a statement is unmarked it describes shipped behaviour. A **[target]** marker means a renderer
-built strictly from today's code will not yet exhibit that behaviour.
+The **authoritative list of what is implemented today** is the current-state table in
+[roadmap.md](roadmap.md). Do not assume any behaviour here is enforced by the current code unless it
+is marked **[shipped]** or appears in that table.

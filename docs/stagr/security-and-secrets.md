@@ -15,8 +15,11 @@ Distinct machine principals stay isolated even though one team owns them:
 - The workflow `GITHUB_TOKEN`, the remediation PAT, `github-actions[bot]`, and any GitHub App
   identity have **different capabilities that must not be conflated**. A stage gets the identity
   its job requires and no other.
-- **Fork PRs never drive automation** and never reach a credential. Automation runs only for
-  trusted `author_association` on same-repo branches.
+- **Fork PRs never drive the privileged automation** — the agent, review, and merge lanes run only
+  for trusted `author_association` on same-repo branches, and a fork PR never reaches a credential.
+  (**Exception, stated honestly:** the shipped `validate.yml` triggers on `pull_request`, so it *does*
+  run CI — checkout + `build.commands` — for a fork PR, under GitHub's restricted fork token with no
+  secrets. So "forks drive nothing" means the privileged lanes, not Validate/CI.)
 
 ## Least privilege per stage
 
@@ -46,7 +49,7 @@ So the least-privilege, buffered-apply, and minimal-commenting-identity goals ab
 splitting PAT login/post into separately-scoped steps) are **[target] hardening items**
 ([roadmap.md](roadmap.md)), not enforced guarantees today. What *does* hold: the implementer's
 `GITHUB_TOKEN` carries no **merge** scope, the PAT is used by the workflow's shell and **never handed
-to the model**, and **fork PRs drive nothing**.
+to the model**, and **fork PRs drive no privileged lane** (Validate/CI may still run under GitHub's restricted fork token).
 
 ## Secrets model
 
@@ -81,7 +84,7 @@ is a first-class selling point, not an implementation detail.
 A rendered pipeline is secure only when: no stage holds a scope it does not need; the implementer
 principal cannot reach the **merge scope or the remediation/publisher** credential (its own
 branch-write is expected, and buffered-write isolation of that scope is the **[target]** above);
-every secret is name-referenced and redacted; fork PRs drive nothing; and there is a negative test
+every secret is name-referenced and redacted; fork PRs drive no privileged lane (Validate/CI aside); and there is a negative test
 for each of these in
 [edge-cases.md](edge-cases.md) (e.g. a sentinel injected into every untrusted PR field must never
 reach the build/publish step or a credential).
