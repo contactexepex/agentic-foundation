@@ -107,7 +107,7 @@ defaults:
 ### `profile`
 | Field | Meaning |
 |---|---|
-| `profile` | Onboarding shortcut that expands to a default stage graph: `minimal` (implement + review), `standard` (implement + review + security), `full` (plan + implement + security + test + integration-test + review + docs), or `custom` (no auto stages). Default `standard`. Stages you list under `stages` are merged on top (same id overrides). |
+| `profile` | Onboarding shortcut that expands to a default stage graph: `minimal` (implement + review), `standard` (implement + review + security), `full` (implement + security + test + integration-test + review), or `custom` (no auto stages). Default `standard`. Stages you list under `stages` are merged on top (same id overrides). |
 
 ### `platform`
 | Field | Meaning |
@@ -291,6 +291,7 @@ must **not** be listed here. Only meaningful when `modules.auto_merge` is on.
 |---|---|
 | `enabled` | Turn budget enforcement on. Default `false`. |
 | `currency` | Currency for `max_usd` limits. Default `USD`. |
+| `max_review_iterations` | Max review→fix cycles per PR before the lane stops and escalates. Integer ≥ 1. **Declaration-only today** — the field records the cap; enforcement is rendered separately (see `docs/stagr/governance-and-limits.md`). |
 | `per_run.{max_usd,max_tokens}` | Ceiling for a single run. |
 | `per_period.{window,max_usd,max_tokens}` | Rolling ceiling over `daily`/`weekly`/`monthly`. |
 | `on_exceed` | `block` (stop the run), `downgrade` (drop to a cheaper tier), or `warn`. Default `block`. |

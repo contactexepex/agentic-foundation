@@ -18,6 +18,99 @@ from .harness import (
 )
 
 
+def test_backend_name_seam() -> None:
+    """The agent-backend seam is a CLOSED enum: adding a backend is an enum addition + adapter, not a
+    rewrite (docs/stagr/concepts.md). Validation must accept every known backend name and reject an
+    unknown one with a clear error that names the offending value and the allowed set."""
+    base = {"version": 2, "profile": "custom",
+            "platform": {"type": "github", "default_branch": "main"},
+            "defaults": {"provider": "anthropic",
+                         "models": {"anthropic": {"default": "m"}, "openai": {"default": "o"}}}}
+    # Read the admitted names from the CANONICAL schema (single source of truth) rather than a
+    # hand-maintained copy, so a backend added to the enum is automatically exercised here instead of
+    # being silently skipped. A custom-type stage isolates the seam from stage/provider coherence
+    # rules so this tests the name only.
+    schema = json.loads(Path(render.SCHEMA_PATH).read_text())
+    known = schema["$defs"]["backend"]["properties"]["name"]["enum"]
+    check(len(known) >= 2, "backend seam: schema enum lists the known backend names")
+    for name in known:
+        cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": "openai",
+                                   "backend": {"name": name}}]}
+        try:
+            render.validate_config(cfg)
+            ok = True
+        except render.RenderError:
+            ok = False
+        check(ok, f"backend seam: known name '{name}' validates")
+        # An explicit backend name must SURVIVE expansion — the seam permits pinning/swapping the tool
+        # by name. If `_apply_backend_defaults` regressed and overwrote an explicit override with the
+        # provider-derived tool, validation would still pass; assert the pinned name is preserved.
+        preserved = (render.expand_stages(cfg)[0].get("backend") or {}).get("name")
+        check(preserved == name,
+              f"backend seam: explicit backend '{name}' survives expansion (not overwritten by derivation)")
+    # An unknown name is rejected, and the error names the offending value and the COMPLETE allowed
+    # set so an operator can fix it without reading the schema.
+    bad = {**base, "stages": [{"id": "x", "type": "custom", "provider": "openai",
+                               "backend": {"name": "bogus-backend"}}]}
+    try:
+        render.validate_config(bad)
+        check(False, "backend seam: an unknown backend name is rejected")
+    except render.RenderError as e:
+        msg = str(e)
+        # Compare each allowed name as a WHOLE quoted token, not a bare substring: a future name that is
+        # a substring of another (e.g. `agent` vs `pr-agent`) would let a message that omits it still
+        # satisfy a substring check. The schema formats each enum value as a single-quoted token.
+        check("bogus-backend" in msg and all(f"'{name}'" in msg for name in known),
+              "backend seam: unknown-name error names the offending value and the complete allowed set")
+
+    # DERIVATION seam: a stage that omits `backend` gets its tool from the provider (the primary knob:
+    # anthropic -> Claude Code, openai -> Codex). Exercise the *derivation* path (`expand_stages` ->
+    # `_apply_backend_defaults`), not just explicit-name validation, so schema/`PROVIDER_TOOL` drift is
+    # caught: if a provider's derived tool were dropped from the enum, this fails instead of staying
+    # green. Also assert every derived name is itself an admitted schema value (the two sides agree).
+    known_set = set(known)
+    # Pin the two documented provider->tool mappings INDEPENDENTLY of PROVIDER_TOOL. Iterating
+    # PROVIDER_TOOL directly would just stop generating a case if an entry were dropped, so the suite
+    # would still pass and the seam would not actually be locked. Asserting each required entry exists
+    # (and matches) makes an accidental removal FAIL here (AGENTS.md: never weaken a check to pass).
+    required_mappings = {"anthropic": "claude-code-action", "openai": "codex"}
+    for provider, expected_tool in required_mappings.items():
+        check(render.PROVIDER_TOOL.get(provider) == expected_tool,
+              f"backend seam: PROVIDER_TOOL maps required provider '{provider}' to '{expected_tool}'")
+        cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": provider}]}
+        expanded = render.expand_stages(cfg)
+        derived = (expanded[0].get("backend") or {}).get("name")
+        check(derived == expected_tool,
+              f"backend seam: provider '{provider}' derives backend '{expected_tool}' when none is pinned")
+        check(derived in known_set,
+              f"backend seam: derived backend '{derived}' is an admitted schema enum value")
+    # ...and cover EVERY current PROVIDER_TOOL entry too, not only the required two: the documented
+    # extension path is adding a provider->backend entry, and if a newly added entry's backend name is
+    # omitted from the schema enum, derivation would produce a backend an operator cannot explicitly
+    # configure or validate. Assert each derived tool is an admitted enum value so that gap fails here.
+    for provider, expected_tool in render.PROVIDER_TOOL.items():
+        cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": provider}]}
+        derived = (render.expand_stages(cfg)[0].get("backend") or {}).get("name")
+        check(derived == expected_tool,
+              f"backend seam: provider '{provider}' derives its PROVIDER_TOOL backend '{expected_tool}'")
+        check(derived in known_set,
+              f"backend seam: PROVIDER_TOOL backend '{derived}' for provider '{provider}' is an admitted schema enum value")
+    # DEFAULT-PROVIDER inheritance: a stage may omit `provider` and inherit `defaults.provider`. That
+    # inheritance is a documented derivation path (`_apply_backend_defaults` falls back to the default
+    # provider), so exercise it explicitly — a regression that dropped the `or default_provider` fallback
+    # would leave such a stage on the generic backend while every case above (which pins `provider`)
+    # stayed green.
+    for default_provider, expected_tool in required_mappings.items():
+        cfg = {"version": 2, "profile": "custom",
+               "platform": {"type": "github", "default_branch": "main"},
+               "defaults": {"provider": default_provider,
+                            "models": {"anthropic": {"default": "m"}, "openai": {"default": "o"}}},
+               "stages": [{"id": "x", "type": "custom"}]}  # no per-stage provider -> inherits the default
+        derived = (render.expand_stages(cfg)[0].get("backend") or {}).get("name")
+        check(derived == expected_tool,
+              f"backend seam: stage inheriting defaults.provider '{default_provider}' derives backend '{expected_tool}'")
+
+
 def test_new_behaviors() -> None:
     # extends: base merged before child; child wins
     with _project_dir() as dp:
@@ -309,3 +402,22 @@ def test_round4_fixes() -> None:
     invg = build_invocation({"defaults": {"provider": "anthropic"}, "guardrails": {"allowed_tools": ["read", "grep"], "max_context_files": 12}},
                             {"id": "r", "type": "review", "provider": "anthropic"}, "m")
     check(invg.allowed_tools == ["read", "grep"] and invg.max_context_files == 12, "backend: tool/context guardrails carried")
+
+
+def test_budgets_max_review_iterations() -> None:
+    # #35: budgets.max_review_iterations declares the review→fix loop cap (enforcement is separate).
+    base = {"version": 2, "profile": "standard",
+            "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m"}}}}
+    # accepted: a positive integer
+    accepted = True
+    try:
+        render.validate_config({**base, "budgets": {"max_review_iterations": 3}})
+    except Exception:
+        accepted = False
+    check(accepted, "validate: budgets.max_review_iterations accepts a positive integer")
+    # rejected: zero, negative, non-integer number, and non-number
+    for bad in (0, -1, 1.5, "3"):
+        expect_raises(
+            lambda b=bad: render.validate_config({**base, "budgets": {"max_review_iterations": b}}),
+            f"validate: budgets.max_review_iterations rejects {bad!r}",
+        )

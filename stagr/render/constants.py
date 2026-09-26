@@ -68,9 +68,9 @@ PRESET_COMMANDS: dict[str, dict[str, str]] = {
     "custom": {},
 }
 
-# Profile stages carry a provider so a profile renders correctly out of the box: implement/plan/docs
-# run Claude Code (anthropic), review/security/test run Codex (openai). Without it, an unprovidered
-# review stage would inherit `defaults.provider` and silently render no Codex lane.
+# Profile stages carry a provider so a profile renders correctly out of the box: implement runs
+# Claude Code (anthropic), review/security/test/integration-test run Codex (openai). Without it, an
+# unprovidered review stage would inherit `defaults.provider` and silently render no Codex lane.
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
         {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
@@ -81,14 +81,14 @@ PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
         {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
         {"id": "security", "type": "security", "provider": PROVIDER_OPENAI, "gate": GATE_ADVISORY},
     ],
+    # Dev-lane scope only: `plan` (feature planning) and `docs`/`release` belong to the Planning and
+    # CD sibling toolkits, not stagr's shipped profile (see docs/stagr/overview.md, dev-lane.md, #77).
     "full": [
-        {"id": "plan", "type": "plan", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
         {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC},
         {"id": "security", "type": "security", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
         {"id": "test", "type": "test", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
         {"id": "integration-test", "type": "integration-test", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
         {"id": "review", "type": "review", "provider": PROVIDER_OPENAI, "gate": GATE_BLOCKING},
-        {"id": "docs", "type": "docs", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
     ],
     "custom": [],
 }

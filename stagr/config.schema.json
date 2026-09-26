@@ -301,6 +301,7 @@
       "properties": {
         "enabled": { "type": "boolean", "default": false },
         "currency": { "type": "string", "default": "USD" },
+        "max_review_iterations": { "type": "integer", "minimum": 1, "description": "Maximum number of review→fix cycles per PR before the lane stops and escalates. Opt-in; the field only declares the cap — enforcement is rendered separately (see docs/stagr/governance-and-limits.md)." },
         "per_run": {
           "type": "object",
           "additionalProperties": false,

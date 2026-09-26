@@ -28,23 +28,24 @@ DEFAULT_PLATFORM = "github"
 DEFAULT_BRANCH = "main"
 
 # Which stages each profile includes. `minimal` = implement + review; `standard` adds a security
-# review; `full` additionally declares the not-yet-rendered stages (plan/test/…); `custom` emits a
-# skeleton the operator fills in.
+# review; `full` additionally declares the not-yet-rendered stages (test/integration-test); `custom`
+# emits a skeleton the operator fills in. `plan` and `docs` are NOT dev-lane stages — they belong to
+# the Planning and CD sibling toolkits (see docs/stagr/dev-lane.md), so no profile emits them.
 _PROFILE_STAGES: dict[str, list[str]] = {
     "minimal": ["implement", "review"],
     "standard": ["implement", "review", "security"],
-    "full": ["implement", "review", "security", "plan", "test", "integration-test", "docs"],
+    "full": ["implement", "review", "security", "test", "integration-test"],
     "custom": [],
 }
 
 # Stages declared/validated but NOT yet rendered to workflows (roadmap — CHARTER §7). `full` lists
 # them, commented, so the intended graph is visible without emitting anything unexpected.
-_ROADMAP_STAGES = ("plan", "test", "integration-test", "docs")
+_ROADMAP_STAGES = ("test", "integration-test")
 
-# Canonical provider per roadmap stage (mirrors render.PROFILE_STAGES): plan/docs run Claude Code,
-# test/integration-test run Codex. Serialized into the commented stages so uncommenting one keeps the
-# provider the profile intended instead of silently inheriting defaults.provider.
-_ROADMAP_STAGE_PROVIDER = {"plan": "anthropic", "docs": "anthropic", "test": "openai", "integration-test": "openai"}
+# Canonical provider per roadmap stage (mirrors render.PROFILE_STAGES): test/integration-test run
+# Codex. Serialized into the commented stages so uncommenting one keeps the provider the profile
+# intended instead of silently inheriting defaults.provider.
+_ROADMAP_STAGE_PROVIDER = {"test": "openai", "integration-test": "openai"}
 
 
 def _canonical_gate(profile: str, stage_type: str) -> str | None:
