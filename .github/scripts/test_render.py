@@ -16,13 +16,14 @@ import sys
 
 from render_tests.harness import failures
 from render_tests.resolution import test_backend, test_profile_expansion, test_resolution
-from render_tests.structural import test_render_structural
+from render_tests.structural import test_actions_sha_pinned, test_render_structural
 from render_tests.behaviors import (
     test_backend_name_seam,
     test_new_behaviors,
     test_round2_fixes,
     test_round3_fixes,
     test_round4_fixes,
+    test_budgets_max_review_iterations,
 )
 from render_tests.selection import test_pipeline_selection
 from render_tests.auto_merge import (
@@ -46,6 +47,7 @@ def main() -> int:
     test_round3_fixes()
     test_pipeline_selection()
     test_round4_fixes()
+    test_budgets_max_review_iterations()
     test_auto_merge_templating_closure()
     test_auto_merge_injection_matrix()
     test_auto_merge_config_hardening()
@@ -54,6 +56,7 @@ def main() -> int:
     test_gate_behavior()
     test_implementer_principal_isolation()
     test_render_structural()
+    test_actions_sha_pinned()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
         return 1

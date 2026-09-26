@@ -30,7 +30,7 @@ version: 2
 # Onboarding shortcut. Expands to a default stage graph you can override below.
 #   minimal  = implement + review (advisory; humans merge)
 #   standard = implement + review (blocking) + security (advisory)   <- default
-#   full     = plan + implement + security + test + integration-test + review + docs
+#   full     = implement + security + test + integration-test + review
 #   custom   = no auto stages; you define them all under `stages:`
 profile: standard
 
@@ -182,6 +182,7 @@ routing:
 #   per_run:    { max_usd: 2.00, max_tokens: 500000 }
 #   per_period: { window: monthly, max_usd: 200.00 }
 #   on_exceed: block               # block | downgrade | warn
+#   max_review_iterations: 3       # cap on review->fix cycles per PR (declared only; enforcement is rendered separately)
 
 # --- Prompt-injection guardrails ---------------------------------------------
 # Treat content from PRs/issues/comments/diffs as data, not instructions.

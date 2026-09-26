@@ -346,3 +346,22 @@ def test_round4_fixes() -> None:
     invg = build_invocation({"defaults": {"provider": "anthropic"}, "guardrails": {"allowed_tools": ["read", "grep"], "max_context_files": 12}},
                             {"id": "r", "type": "review", "provider": "anthropic"}, "m")
     check(invg.allowed_tools == ["read", "grep"] and invg.max_context_files == 12, "backend: tool/context guardrails carried")
+
+
+def test_budgets_max_review_iterations() -> None:
+    # #35: budgets.max_review_iterations declares the review→fix loop cap (enforcement is separate).
+    base = {"version": 2, "profile": "standard",
+            "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m"}}}}
+    # accepted: a positive integer
+    accepted = True
+    try:
+        render.validate_config({**base, "budgets": {"max_review_iterations": 3}})
+    except Exception:
+        accepted = False
+    check(accepted, "validate: budgets.max_review_iterations accepts a positive integer")
+    # rejected: zero, negative, non-integer number, and non-number
+    for bad in (0, -1, 1.5, "3"):
+        expect_raises(
+            lambda b=bad: render.validate_config({**base, "budgets": {"max_review_iterations": b}}),
+            f"validate: budgets.max_review_iterations rejects {bad!r}",
+        )

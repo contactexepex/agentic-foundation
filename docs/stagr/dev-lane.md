@@ -125,15 +125,17 @@ The **shipped** expansions today (id — gate):
 |---|---|
 | `minimal` | implement (advisory), review (advisory) |
 | `standard` | implement, review (**blocking**), security (advisory) |
-| `full` | plan (advisory), implement, security (**blocking**), test (**blocking**), integration-test (**blocking**), review (**blocking**), docs (advisory) |
+| `full` | implement, security (**blocking**), test (**blocking**), integration-test (**blocking**), review (**blocking**) |
 | `custom` | none — every stage is declared |
 
-> **[target] migration.** Two gaps between the shipped profiles and this design are tracked in
+> **Scope note.** `plan` and `docs` are **not** dev-lane stages — under the refined dev-lane scope
+> they move to the **Planning** and **CD** sibling toolkits
+> ([overview.md](overview.md#scope-alignment-with-older-docs)), so no stagr profile emits them. The
+> stage **types** stay valid in the contract, so a repo can still declare them explicitly.
+>
+> **[target] migration.** One gap between the shipped profiles and this design is tracked in
 > [roadmap.md](roadmap.md), not silently assumed here:
-> 1. The shipped `full` profile still includes `plan` and `docs`; under the refined dev-lane scope
->    these move to the **Planning** and **CD** sibling toolkits
->    ([overview.md](overview.md#scope-alignment-with-older-docs)).
-> 2. `standard`'s `security` stage is **advisory** today; whether the dev-lane default should make it
+> 1. `standard`'s `security` stage is **advisory** today; whether the dev-lane default should make it
 >    blocking is a roadmap decision, not a claim of current behaviour.
 
 ## Handoffs (the GitHub-artifact seams)

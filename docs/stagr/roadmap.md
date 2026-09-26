@@ -51,8 +51,8 @@ behaviour and the stated design:
   security-review sweep already has it). ([trust-and-correctness.md](trust-and-correctness.md))
 - **Dismiss-stale-approvals invariant.** Make the ruleset setting a required onboarding invariant so
   human-lane re-approval on push is real. ([onboarding-and-config.md](onboarding-and-config.md))
-- **Profile alignment.** Move `plan`/`docs` out of the shipped `full` profile to the sibling toolkits,
-  and decide whether dev-lane `standard` makes `security` blocking. ([dev-lane.md](dev-lane.md))
+- **Dev-lane `standard` security gate.** Decide whether the dev-lane `standard` profile should make
+  its `security` stage blocking (it is advisory today). ([dev-lane.md](dev-lane.md))
 - **Minimal commenting identity for review lanes.** Replace the broad remediation PAT
   (`CODEX_PAT`, Contents + PR R/W) used by the Codex review/security lanes with a narrowly-scoped
   commenting identity. ([security-and-secrets.md](security-and-secrets.md))
