@@ -158,6 +158,10 @@ def test_auto_merge_p0_invariants() -> None:
     # Self-merge model: the gate publishes NO commit status (no forgeable persistent positive artifact).
     check("/statuses/" not in am and "--method POST" not in am,
           "P0: gate publishes no commit status (no rollup to go stale or be forged)")
+    # Sweep fairness (#33): the whole-repo sweep lists open PRs oldest-updated-first so an older
+    # ready PR is not starved when many PRs are open and one sweep run exhausts its budget.
+    check("-f sort=updated -f direction=asc" in am,
+          "P0: sweep lists open PRs oldest-updated-first (starvation-resistant ordering)")
 
 
 def test_build_command_trust_boundary() -> None:
