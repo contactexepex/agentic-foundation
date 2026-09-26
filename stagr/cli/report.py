@@ -113,6 +113,20 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
         report["workflows"] = sorted(render.render_all(cfg, platform).keys())
     except render.RenderError as exc:
         problems.append(f"render: {exc}")
+
+    # Notes: advisory operator actions that are not config errors. A missing branch-protection
+    # ruleset is the most important: without modules.auto_merge, stagr renders no merge-gate
+    # workflow, so merge-gate enforcement depends entirely on an externally-configured GitHub
+    # branch-protection ruleset (required checks + required approvals on the default branch).
+    notes: list[str] = []
+    if not bool((cfg.get("modules") or {}).get("auto_merge")):
+        notes.append(
+            "branch-protection ruleset required: modules.auto_merge is not enabled, so stagr "
+            "renders no merge-gate workflow; configure a GitHub branch-protection ruleset to "
+            "enforce required checks and prevent unreviewed merges "
+            "(see docs/stagr/onboarding-and-config.md)."
+        )
+    report["notes"] = notes
     return report
 
 
