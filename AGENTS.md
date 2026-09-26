@@ -56,6 +56,14 @@ meaningful test gap for changed code.
   enforcement mechanism already in the codebase. A documented convention alone — without schema or
   runtime backing — does not count: documentation describes intent, not enforcement.
 - **Style/cosmetic**: no functional, correctness, or safety impact.
+- **Operator-conformance guard on reference templates, schemas, or config files**: the finding asks
+  for extra test assertions, validation, or guardrails against hypothetical future operator edits to
+  a reference template, schema, or configuration file. These artifacts declare the contract;
+  conformance is the operator's responsibility. This is the same model used by Kubernetes manifests,
+  GitHub Actions workflows, Azure DevOps pipelines, and every widely-adopted configuration-driven
+  tool: if an operator deviates from the declared contract, the tool fails — that is the correct and
+  expected behavior. A test validates that the *shipped artifact* conforms to its own contract; it
+  does not pre-emptively guard against every way an operator could later break conformance.
 
 **Codex (reviewer):** report only findings that meet the actionable bar above. A finding that
 requires unrealistic preconditions is noise that slows the pipeline — omit it entirely.

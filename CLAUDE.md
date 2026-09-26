@@ -79,6 +79,14 @@ finding — review comments require judgment, not blind acceptance.
   runtime enforcement mechanism in the codebase. A documented convention alone does not count:
   documentation describes intent, not enforcement.
 - **Style/cosmetic**: no functional, correctness, or security impact.
+- **Operator-conformance guard on reference templates, schemas, or config files**: the finding asks
+  for extra test assertions, validation, or guardrails against hypothetical future operator edits to
+  a reference template, schema, or configuration file. These artifacts declare the contract;
+  conformance is the operator's responsibility — the same model used by Kubernetes, GitHub Actions,
+  Azure DevOps, and every widely-adopted configuration-driven tool. If an operator deviates from the
+  declared contract, the tool fails — that is correct and expected. A test validates that the
+  *shipped artifact* conforms to its own contract; it does not pre-emptively guard against every way
+  an operator could later break conformance.
 
 **How to decline**: reply once on the thread with the specific evidence-based reason (cite the
 existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
