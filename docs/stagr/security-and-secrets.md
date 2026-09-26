@@ -19,9 +19,9 @@ Distinct machine principals stay isolated even though one team owns them:
   for trusted `author_association` on same-repo branches, and a fork PR never reaches a **secret or a
   write/publisher/merge token**. (**Stated honestly:** the shipped `validate.yml` triggers on
   `pull_request`, so it *does* run CI — checkout + `build.commands` — for a fork PR. That runs under
-  GitHub's **restricted fork token** with **no secrets**, but the fork's `build.commands` can read the
+  GitHub’s **restricted fork token** with **no secrets**, but the fork’s `build.commands` can read the
   **read-scoped `GITHUB_TOKEN`** in that job; hardening the build against even the read token is a
-  consideration. So "forks drive nothing" means the privileged lanes, not Validate/CI.)
+  consideration. So “forks drive nothing” means the privileged lanes, not Validate/CI.)
 
 ## Least privilege per stage
 
@@ -33,8 +33,8 @@ scoped to the stage:
 - Only the **publish/merge** step carries merge scope, and it is the base-controlled gate, not an
   agent stage.
 - Agent-produced writes are **buffered and applied in a separate, scoped-permission step**, so an
-  agent's output cannot exercise a broad token directly.
-- No stage is granted a capability "just in case."
+  agent’s output cannot exercise a broad token directly.
+- No stage is granted a capability “just in case.”
 
 **Current state [shipped], stated honestly — neither shipped agent lane is read-only today:**
 
@@ -49,9 +49,9 @@ scoped to the stage:
 
 So the least-privilege, buffered-apply, and minimal-commenting-identity goals above (including
 splitting PAT login/post into separately-scoped steps) are **[target] hardening items**
-([roadmap.md](roadmap.md)), not enforced guarantees today. **Honest limitation:** the implementer's
+([roadmap.md](roadmap.md)), not enforced guarantees today. **Honest limitation:** the implementer’s
 `GITHUB_TOKEN` holds `contents: write` + `pull-requests: write`, so **absent a server-side ruleset it
-can push to the default branch or call the merge API** — the "work on a feature branch" behaviour is
+can push to the default branch or call the merge API** — the “work on a feature branch” behaviour is
 **prompt-driven, not enforced**; a scoped publisher and/or a required ruleset is **[target]**. What
 *does* hold today: secrets are name-referenced and redacted, the PAT is never handed to the model, and
 **fork PRs drive no privileged lane**.
@@ -81,7 +81,7 @@ stagr-rendered pipeline requires. `stagr doctor` prints the names your specific 
 | Secret name | Stage that uses it | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Implement (Claude Code) | Anthropic API key for the implementer |
-| `REMEDIATION_TOKEN` | Review, Security (Codex), Implement | PAT used by Codex for review, thread resolution, and remediation pushes (the `codex_review_secret` default) |
+| `REMEDIATION_TOKEN` | Review, Security (Codex) | PAT used by Codex for review comments, security review, and thread resolution (the `codex_review_secret` default) |
 
 Secrets are **always referenced by name** — `${{ secrets.ANTHROPIC_API_KEY }}` in a rendered
 workflow — and the name is what lives in `.agentic/config.yml`. A secret value never appears in
@@ -94,7 +94,7 @@ today leaves the rendered job without its credential even though `doctor` succee
 default name until the resolved name is wired into the template
 ([onboarding-and-config.md](onboarding-and-config.md)).
 
-**How to share at org scope (GitHub).** In your organization's settings under
+**How to share at org scope (GitHub).** In your organization’s settings under
 *Secrets and variables → Actions*, create each secret and set repository access to
 **Selected repositories** (add each repo) or **All repositories**. The pipeline reads each
 secret by name; no per-repo copy of the value is needed.
@@ -109,12 +109,12 @@ identifier (e.g. `ANTHROPIC_API_KEY`) rather than a literal credential value. A 
 match the identifier format (`[A-Za-z_][A-Za-z0-9_]*`) fails the check so a committed secret is
 caught before it reaches a remote.
 
-## Execution stays on the user's side of the line
+## Execution stays on the user’s side of the line
 
 The agent-backend seam ([concepts.md](concepts.md#backend-and-the-agent-backend-seam)) guarantees
-that a backend runs **either** in the user's CI runner (CLI / GitHub-native) **or** by dispatching
-to a provider's cloud — **never inside a stagr-hosted process or service**. stagr writes wiring; it
-never becomes a runtime that holds the user's code or keys. This keeps the trust surface small and
+that a backend runs **either** in the user’s CI runner (CLI / GitHub-native) **or** by dispatching
+to a provider’s cloud — **never inside a stagr-hosted process or service**. stagr writes wiring; it
+never becomes a runtime that holds the user’s code or keys. This keeps the trust surface small and
 is a first-class selling point, not an implementation detail.
 
 ## Supply-chain integrity
@@ -124,10 +124,10 @@ is a first-class selling point, not an implementation detail.
 - Renderer output is deterministic and reviewable, so what runs in CI is exactly what the contract
   declared.
 
-## What "secure" means here
+## What “secure” means here
 
 A rendered pipeline is secure only when: no stage holds a scope it does not need; the implementer
-principal's write scope is **narrowed so it cannot merge or reach the remediation/publisher
+principal’s write scope is **narrowed so it cannot merge or reach the remediation/publisher
 credential** (**[target]** — today it holds `contents`/`pull-requests: write` and relies on a
 server-side ruleset to prevent a direct merge to the default branch); every secret is
 name-referenced and redacted; fork PRs drive no privileged lane (Validate/CI aside); and there is a
