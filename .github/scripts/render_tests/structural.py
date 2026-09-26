@@ -7,29 +7,46 @@ import yaml
 
 from .harness import REPO_ROOT, check, render
 
-# A `uses:` value, without any trailing ` # comment`. Captures the action reference so the pinning
-# check below can inspect the ref after the final `@`.
-_USES = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+)", re.MULTILINE)
 # A pinned third-party/repo action ref ends in `@<40-hex-sha>` (immutable), not `@<tag>`.
 _SHA_PIN = re.compile(r"@[0-9a-f]{40}$")
 
 
 def _rendered_workflows() -> dict[str, str]:
-    """Every workflow rendered from the repo's own config UNION a `full`-profile config, so the
-    pinning check covers the widest set of lanes (the dogfood config may not enable every stage)."""
-    workflows: dict[str, str] = {}
-    repo_cfg = render.load_config(REPO_ROOT / ".agentic" / "config.yml")
-    render.validate_config(repo_cfg)
-    workflows.update(render.render_all(repo_cfg, "github"))
-    full_cfg = {
-        "version": 2, "profile": "full",
-        "platform": {"type": "github", "default_branch": "main"},
-        "defaults": {"provider": "anthropic",
-                     "models": {"anthropic": {"default": "m"}, "openai": {"default": "o"}}},
+    """Every workflow rendered from the repo's own config AND a `full`-profile config, so the pinning
+    check covers the widest set of lanes (the dogfood config may not enable every stage). Keys are
+    namespaced per source config so a workflow that BOTH configs emit under the same filename is kept
+    as two distinct entries — a plain dict merge would clobber one rendering and leave its
+    config-dependent action refs unchecked."""
+    configs = {
+        "repo": render.load_config(REPO_ROOT / ".agentic" / "config.yml"),
+        "full": {
+            "version": 2, "profile": "full",
+            "platform": {"type": "github", "default_branch": "main"},
+            "defaults": {"provider": "anthropic",
+                         "models": {"anthropic": {"default": "m"}, "openai": {"default": "o"}}},
+        },
     }
-    render.validate_config(full_cfg)
-    workflows.update(render.render_all(full_cfg, "github"))
+    workflows: dict[str, str] = {}
+    for label, cfg in configs.items():
+        render.validate_config(cfg)
+        for name, content in render.render_all(cfg, "github").items():
+            workflows[f"{label}:{name}"] = content
     return workflows
+
+
+def _iter_uses(node: object):
+    """Yield every `uses:` value in a parsed workflow, wherever it appears. Walking the parsed YAML
+    (not the raw text) means every valid spelling of the key — `uses:`, `- uses : x`, `"uses"`, an
+    inline mapping — is caught, so a mutable action ref cannot slip past behind YAML formatting."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "uses" and isinstance(value, str):
+                yield value
+            else:
+                yield from _iter_uses(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_uses(item)
 
 
 def test_actions_sha_pinned() -> None:
@@ -40,7 +57,7 @@ def test_actions_sha_pinned() -> None:
     workflows = _rendered_workflows()
     checked = 0
     for name, content in workflows.items():
-        for ref in _USES.findall(content):
+        for ref in _iter_uses(yaml.safe_load(content)):
             if ref.startswith("./") or ref.startswith("docker://"):
                 continue  # local action / container image — not a tag-pinnable third-party ref
             checked += 1
