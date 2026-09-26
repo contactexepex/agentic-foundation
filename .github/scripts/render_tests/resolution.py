@@ -54,3 +54,27 @@ def test_backend() -> None:
     # default secret name when provider not configured
     inv2 = build_invocation(cfg, {"id": "implement", "type": "implement", "provider": "anthropic"}, "c-model")
     check(inv2.api_key_secret == "ANTHROPIC_API_KEY" and inv2.action == "implement", "backend: default secret name + implement action")
+
+
+def test_default_token_secret_fallback() -> None:
+    """DEFAULT_TOKEN_SECRET is the PAT name used when platform.auth.token_secret is omitted.
+    Operators who don't configure auth rely on this fallback; if the constant changes, rendered
+    workflows must change too and this test must be updated explicitly."""
+    _base = {
+        "version": 2, "profile": "custom",
+        "platform": {"type": "github", "default_branch": "main"},
+        "defaults": {"provider": "openai", "models": {"openai": {"default": "o"}}},
+        "stages": [
+            {"id": "review", "type": "review", "backend": {"name": "codex"}, "gate": "blocking",
+             "triggers": ["pr_opened", "pr_updated"]},
+        ],
+    }
+    # With no auth block: the fallback constant value is used in the rendered workflow.
+    rendered = render.render_all(_base, "github")
+    check(f"secrets.{render.DEFAULT_TOKEN_SECRET}" in rendered["request-review.yml"],
+          f"default_token_secret: omitting auth uses DEFAULT_TOKEN_SECRET ({render.DEFAULT_TOKEN_SECRET!r}) in request-review")
+    # With an explicit token_secret: the operator value is used, not the default.
+    _with_auth = {**_base, "platform": {**_base["platform"], "auth": {"token_secret": "MY_CUSTOM_PAT"}}}
+    rendered_custom = render.render_all(_with_auth, "github")
+    check("secrets.MY_CUSTOM_PAT" in rendered_custom["request-review.yml"],
+          "default_token_secret: explicit token_secret overrides the default")

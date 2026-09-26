@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 
+import yaml
+
 from .harness import REPO_ROOT, check, expect_raises, render
 
 # The final security review is requested with this exact slash command; referenced in several
@@ -19,7 +21,8 @@ def test_pipeline_selection() -> None:
                  "auto-merge.yml"):
         check(name in rendered, f"select: {name} emitted for codex-review config")
     # The codex PAT is referenced by NAME (from platform.auth.token_secret), never a value.
-    check("secrets.REMEDIATION_TOKEN" in rendered["request-review.yml"],
+    _expected_secret = cfg["platform"]["auth"]["token_secret"]
+    check(f"secrets.{_expected_secret}" in rendered["request-review.yml"],
           "select: codex_review_secret NAME substituted into request-review")
     check(not re.search(r"ghp_[A-Za-z0-9]{8,}", rendered["resolve-threads.yml"]),
           "select: resolve-threads inlines no secret value")
@@ -38,10 +41,12 @@ def test_pipeline_selection() -> None:
     # sweep/event runs can't double-post `@codex security review`, and (d) trigger the ONE security
     # review only AFTER the code review is Completed on the head with zero unresolved threads.
     _sec = rendered["final-security-review.yml"]
-    _sec_on = _sec.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
     # (a) EXACTLY the three supported triggers: no invalid pull_request_review_thread (declaring it
     # fails the whole workflow at startup, so the security review never runs) and no other stray trigger.
-    _triggers = set(re.findall(r"^ {2}([a-z_]+):", _sec_on, re.M))
+    # Parse the rendered YAML to extract trigger names (not a fragile text regex, so indentation
+    # changes in the template don't produce a false failure).
+    # Note: PyYAML parses the YAML key `on` as Python boolean True (YAML 1.1 reserved word).
+    _triggers = set(((yaml.safe_load(_sec) or {}).get(True) or {}).keys())
     check(_triggers == {"issue_comment", "check_suite", "schedule"},
           f"select: final-security-review triggers are exactly issue_comment/check_suite/schedule (got {sorted(_triggers)})")
     # (b) global serialization so a scheduled sweep and an event run can't both pass the check-then-post

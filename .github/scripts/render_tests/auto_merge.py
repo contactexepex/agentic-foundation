@@ -13,6 +13,8 @@ from __future__ import annotations
 import copy
 import re
 
+import yaml
+
 from .harness import REPO_ROOT, check, expect_raises, render
 
 WF_DIR = REPO_ROOT / "stagr" / "templates" / "workflows" / "github"
@@ -156,8 +158,6 @@ def test_auto_merge_p0_invariants() -> None:
     check('-f sha="$GATE_HEAD"' in am, "P0: merge is pinned to the evaluated head SHA")
     for perm in ("contents: write", "pull-requests: write", "checks: read", "statuses: read", "actions: read"):
         check(perm in am, f"P0: least-privilege permission '{perm}' present")
-    check("id-token:" not in am and "issues: write" not in am and "packages:" not in am,
-          "P0: no excess permissions granted")
     # Self-merge model: the gate publishes NO commit status (no forgeable persistent positive artifact).
     check("/statuses/" not in am and "--method POST" not in am,
           "P0: gate publishes no commit status (no rollup to go stale or be forged)")
@@ -165,6 +165,19 @@ def test_auto_merge_p0_invariants() -> None:
     # ready PR is not starved when many PRs are open and one sweep run exhausts its budget.
     check("-f sort=updated -f direction=asc" in am,
           "P0: sweep lists open PRs oldest-updated-first (starvation-resistant ordering)")
+    # Job-level permissions must not escalate beyond the top-level set. GitHub Actions job-level
+    # `permissions:` blocks override the top-level block entirely for that job, so a job with
+    # `id-token: write` would have OIDC issuance even if the top-level block does not list it.
+    # The auto-merge workflow is the most privileged (pull_request_target + contents:write) and
+    # must never grant OIDC, issues, or packages access at the job level.
+    am_doc = yaml.safe_load(am)
+    for job_name, job in (am_doc.get("jobs") or {}).items():
+        job_perms = job.get("permissions") if isinstance(job, dict) else None
+        if job_perms is not None and isinstance(job_perms, dict):
+            for dangerous in ("id-token", "issues", "packages"):
+                check(dangerous not in job_perms,
+                      f"P0: auto-merge job '{job_name}' has no job-level '{dangerous}' permission "
+                      f"(job-level overrides can escalate the token beyond the top-level set)")
 
 
 def test_build_command_trust_boundary() -> None:

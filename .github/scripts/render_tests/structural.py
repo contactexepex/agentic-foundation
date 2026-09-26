@@ -92,3 +92,9 @@ def test_render_structural() -> None:
         check(not re.search(r"sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{8,}", content), f"render: {name} inlines no secret value")
     # deterministic
     check(render.render_all(cfg, "github") == rendered, "render: deterministic / idempotent")
+    # REVIEW_STATUS_CONTEXT: the constant value must appear in the rendered review-router workflow.
+    # The gate stub reads this same constant from the env; if the constant changes and the structural
+    # check is not updated, the rendered workflow and the gate stub would diverge silently.
+    if "review-router.yml" in rendered:
+        check(render.REVIEW_STATUS_CONTEXT in rendered["review-router.yml"],
+              f"render: review-router.yml contains the REVIEW_STATUS_CONTEXT value ({render.REVIEW_STATUS_CONTEXT!r})")
