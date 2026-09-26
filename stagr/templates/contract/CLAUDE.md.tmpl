@@ -66,7 +66,7 @@ the delta review manually, since no push fires the per-push workflow. If finding
 unresolved after the delta review, escalate to a human (apply `{{ human_merge_label }}`) rather
 than looping.
 
-For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. Request the
-delta review: if the review stage includes a push-review lane (`pr_updated` trigger), the workflow
-requests it automatically; otherwise post `@codex review` manually. Limit the remediation →
-delta-review loop to two iterations, then escalate.
+For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. If a push-review
+workflow was generated for this repo, it requests the delta review automatically on push; otherwise
+post `@codex review` manually. Limit the remediation → delta-review loop to two iterations, then
+escalate.
