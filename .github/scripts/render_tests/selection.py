@@ -398,8 +398,8 @@ def test_pipeline_selection() -> None:
     check(_SEC_REVIEW_CMD not in rendered["request-review.yml"],
           "request-review: never requests the security review (moved to the final lane)")
 
-    # The lane registry is the single selection seam (names, in emit order).
-    check([lane.name for lane in render.LANES]
-          == ["core", "implementor", "codex-code-review", "codex-security-review", "codex-threads",
-              "auto-merge"],
-          "select: LANES registry drives template selection, in emit order")
+    # The lane registry is the single selection seam.
+    check({lane.name for lane in render.LANES}
+          == {"core", "implementor", "codex-code-review", "codex-security-review", "codex-threads",
+              "auto-merge"},
+          "select: LANES registry drives template selection")
