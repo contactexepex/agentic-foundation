@@ -135,7 +135,8 @@ def test_doctor_missing_ruleset() -> None:
         "doctor missing ruleset: ruleset note present when modules.auto_merge is explicitly false",
     )
 
-    # auto_merge enabled → stagr renders the merge gate; no ruleset note needed.
+    # auto_merge enabled → stagr renders the merge gate, but the org ruleset is still
+    # required to prevent direct pushes; the note must appear regardless of auto_merge.
     auto_merge_cfg = {
         **_human_merge_cfg(),
         "modules": {"auto_merge": True},
@@ -143,6 +144,6 @@ def test_doctor_missing_ruleset() -> None:
     }
     rep_am = cli.collect_report(auto_merge_cfg, "github")
     check(
-        not any("ruleset" in note.lower() for note in rep_am.get("notes", [])),
-        "doctor missing ruleset: no ruleset note when modules.auto_merge is enabled (gate is rendered)",
+        any("ruleset" in note.lower() for note in rep_am.get("notes", [])),
+        "doctor missing ruleset: ruleset note always present (org ruleset guards against direct pushes regardless of auto_merge)",
     )

@@ -114,18 +114,16 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
     except render.RenderError as exc:
         problems.append(f"render: {exc}")
 
-    # Notes: advisory operator actions that are not config errors. A missing branch-protection
-    # ruleset is the most important: without modules.auto_merge, stagr renders no merge-gate
-    # workflow, so merge-gate enforcement depends entirely on an externally-configured GitHub
-    # branch-protection ruleset (required checks + required approvals on the default branch).
-    notes: list[str] = []
-    if not bool((cfg.get("modules") or {}).get("auto_merge")):
-        notes.append(
-            "branch-protection ruleset required: modules.auto_merge is not enabled, so stagr "
-            "renders no merge-gate workflow; configure a GitHub branch-protection ruleset to "
-            "enforce required checks and prevent unreviewed merges "
-            "(see docs/stagr/onboarding-and-config.md)."
-        )
+    # Notes: advisory operator actions that are not config errors. The branch-protection
+    # ruleset note is always emitted because an org-level ruleset on the default branch
+    # prevents direct pushes regardless of auto_merge configuration: even when auto_merge
+    # renders a merge-gate workflow, the ruleset is the external guard that enforces it.
+    notes: list[str] = [
+        "branch-protection ruleset required: configure a GitHub branch-protection ruleset on "
+        "the default branch to prevent direct pushes and enforce required checks; this is "
+        "required regardless of whether modules.auto_merge is enabled "
+        "(see docs/stagr/onboarding-and-config.md)."
+    ]
     report["notes"] = notes
     return report
 
