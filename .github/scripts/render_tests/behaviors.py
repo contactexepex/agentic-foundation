@@ -54,6 +54,21 @@ def test_backend_name_seam() -> None:
         check("bogus-backend" in msg and all(name in msg for name in known),
               "backend seam: unknown-name error names the offending value and the complete allowed set")
 
+    # DERIVATION seam: a stage that omits `backend` gets its tool from the provider (the primary knob:
+    # anthropic -> Claude Code, openai -> Codex). Exercise the *derivation* path (`expand_stages` ->
+    # `_apply_backend_defaults`), not just explicit-name validation, so schema/`PROVIDER_TOOL` drift is
+    # caught: if a provider's derived tool were dropped from the enum, this fails instead of staying
+    # green. Also assert every derived name is itself an admitted schema value (the two sides agree).
+    known_set = set(known)
+    for provider, expected_tool in render.PROVIDER_TOOL.items():
+        cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": provider}]}
+        expanded = render.expand_stages(cfg)
+        derived = (expanded[0].get("backend") or {}).get("name")
+        check(derived == expected_tool,
+              f"backend seam: provider '{provider}' derives backend '{expected_tool}' when none is pinned")
+        check(derived in known_set,
+              f"backend seam: derived backend '{derived}' is an admitted schema enum value")
+
 
 def test_new_behaviors() -> None:
     # extends: base merged before child; child wins
