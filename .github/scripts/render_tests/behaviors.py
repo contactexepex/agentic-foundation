@@ -18,6 +18,39 @@ from .harness import (
 )
 
 
+def test_backend_name_seam() -> None:
+    """The agent-backend seam is a CLOSED enum: adding a backend is an enum addition + adapter, not a
+    rewrite (docs/stagr/concepts.md). Validation must accept every known backend name and reject an
+    unknown one with a clear error that names the offending value and the allowed set."""
+    base = {"version": 2, "profile": "custom",
+            "platform": {"type": "github", "default_branch": "main"},
+            "defaults": {"provider": "anthropic",
+                         "models": {"anthropic": {"default": "m"}, "openai": {"default": "o"}}}}
+    # Every name the seam currently admits (mirrors config.schema.json $defs.backend.name enum). A
+    # custom-type stage isolates the seam from stage/provider coherence rules so this tests the name only.
+    known = ["generic", "claude-code-action", "openhands", "pr-agent", "codex", "swe-agent", "custom"]
+    for name in known:
+        cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": "openai",
+                                   "backend": {"name": name}}]}
+        try:
+            render.validate_config(cfg)
+            ok = True
+        except render.RenderError:
+            ok = False
+        check(ok, f"backend seam: known name '{name}' validates")
+    # An unknown name is rejected, and the error names the offending value and the allowed set so an
+    # operator can fix it without reading the schema.
+    bad = {**base, "stages": [{"id": "x", "type": "custom", "provider": "openai",
+                               "backend": {"name": "bogus-backend"}}]}
+    try:
+        render.validate_config(bad)
+        check(False, "backend seam: an unknown backend name is rejected")
+    except render.RenderError as e:
+        msg = str(e)
+        check("bogus-backend" in msg and "claude-code-action" in msg,
+              "backend seam: unknown-name error names the offending value and the allowed set")
+
+
 def test_new_behaviors() -> None:
     # extends: base merged before child; child wins
     with _project_dir() as dp:
