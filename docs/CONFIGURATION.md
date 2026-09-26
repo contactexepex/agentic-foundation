@@ -120,6 +120,7 @@ defaults:
 | `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
 | `labels.human_merge` | A change-request with this label is **never** auto-merged (human keeps merge authority). |
 | `labels.dispatch` | Optional label that dispatches a task from an issue. |
+| `labels.approved_story` | Label that triggers the `implement` stage when applied to an issue (default: `approved-story`). Must be a plain name with no quotes, backslash, or `${{` expression opener. |
 
 ### `defaults` (optional — org/account fallbacks)
 | Field | Meaning |
@@ -448,8 +449,9 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 > avoid. `final-security-review.yml` is the sole trigger of the security review, so the App only needs
 > to review code on open; the workflow drives the single security review at the end.
 > The `anthropic` implementer needs no GitHub App: it runs the pinned Claude Code action from
-> `workflow_dispatch` and authenticates directly with the `ANTHROPIC_API_KEY` secret (`doctor` lists
-> the exact secret NAMES your config needs).
+> `workflow_dispatch` (manual dispatch) or when an issue is labeled with `labels.approved_story`
+> (default: `approved-story`), and authenticates directly with the `ANTHROPIC_API_KEY` secret
+> (`doctor` lists the exact secret NAMES your config needs).
 
 1. Add `.agentic/config.yml`. The quickest way is `stagr init` (guided wizard) or
    `stagr init --profile <minimal|standard|full|custom>` (non-interactive), which writes a commented,

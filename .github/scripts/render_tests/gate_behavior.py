@@ -244,6 +244,28 @@ def test_gate_behavior() -> None:
         {"id": 10, "user": {"login": CODEX, "id": 999}, "commit_id": HEAD, "state": "COMMENTED", "body": "### 💡 Codex Review", "submitted_at": "2020"},
         {"id": 11, "user": {"login": "human", "id": 5}, "commit_id": HEAD, "state": "CHANGES_REQUESTED", "body": "no", "submitted_at": "2021"}]])}),
           "gate: a reviewer's latest CHANGES_REQUESTED blocks")
+    # Advisory stage: the zero-open-threads predicate counts threads from ANY stage (advisory or
+    # blocking).  An advisory stage emits no required status check (REQUIRE_CODEX_CODE_REVIEW=false),
+    # but an unresolved thread it left must still gate the merge.
+    _adv_unresolved = {
+        "REQUIRE_CODEX_CODE_REVIEW": "false",
+        "REVIEWS_JSON": json.dumps([[]]),
+        "THREADS_JSON": json.dumps({"data": {"repository": {"pullRequest": {"reviewThreads": {
+            "nodes": [{"isResolved": False}],
+            "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}}),
+    }
+    check(not _merges(_adv_unresolved),
+          "gate: an advisory review's unresolved thread blocks (zero-open-threads ignores stage gate type)")
+    # Resolved-thread variant: once the thread is resolved the advisory PR may merge (all else green).
+    _adv_resolved = {
+        "REQUIRE_CODEX_CODE_REVIEW": "false",
+        "REVIEWS_JSON": json.dumps([[]]),
+        "THREADS_JSON": json.dumps({"data": {"repository": {"pullRequest": {"reviewThreads": {
+            "nodes": [{"isResolved": True}],
+            "pageInfo": {"hasNextPage": False, "endCursor": None}}}}}}),
+    }
+    check(_merges(_adv_resolved),
+          "gate: an advisory review's resolved thread does not block")
 
     # Fail-closed on API error.
     check(not _merges({"FAIL_PULL": "1"}), "gate: an API error fetching the PR fails closed (no merge)")

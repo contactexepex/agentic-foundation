@@ -109,6 +109,7 @@ NON_OPERATOR_TOKENS = frozenset({
     "require_codex_code_review",
     "require_codex_security_review",
     "merge_method",
+    "issue_labeled_trigger_block",
 })
 
 
@@ -272,6 +273,22 @@ def _resolve_merge_method(cfg: dict[str, Any]) -> str:
     return method
 
 
+def _issue_labeled_trigger_block(implement_stage: dict[str, Any] | None) -> str:
+    """The YAML issues/labeled trigger block to include under `on:`, or '' to omit it.
+
+    Includes the block by default (no explicit triggers set) or when `issue_labeled` is listed in
+    the stage's `triggers`. Returns '' only when the operator explicitly set `triggers` to a list
+    that does not contain `issue_labeled` (e.g. `triggers: [manual]`), so that the rendered
+    workflow does not subscribe to issues/labeled events the operator did not opt into.
+    """
+    if implement_stage is None:
+        return ""
+    triggers = implement_stage.get("triggers")
+    if triggers is None or "issue_labeled" in list(triggers):
+        return "  issues:\n    types: [labeled]"
+    return ""
+
+
 def build_context(cfg: dict[str, Any]) -> RenderContext:
     platform = cfg.get("platform", {}) or {}
     labels = platform.get("labels", {}) or {}
@@ -334,6 +351,8 @@ def build_context(cfg: dict[str, Any]) -> RenderContext:
                       "merge.required_status_checks", True),
         RenderedValue("merge_protected_paths_json", json.dumps(protected_paths), "merge.protected_paths", True),
         # Non-operator: constants, enum-/schema-locked, derived, or trusted shell.
+        RenderedValue("issue_labeled_trigger_block", _issue_labeled_trigger_block(implement_stage),
+                      "<derived from implement stage triggers>", False),
         RenderedValue("trusted_roles_json", json.dumps(gh_roles), "platform.trusted_roles (enum-mapped)", False),
         RenderedValue("fast_path_max_files", str(routing.get("max_files", 20)), "routing.fast_path.max_files", False),
         RenderedValue("fast_path_max_lines", str(routing.get("max_lines", 200)), "routing.fast_path.max_lines", False),

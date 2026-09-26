@@ -69,3 +69,29 @@ def test_approved_story_label_trigger() -> None:
                   "label-trigger: approved_story label with ${{}} expression rejected at render")
     expect_raises(lambda: render.validate_config(bad_cfg),
                   "label-trigger: approved_story label with ${{}} expression rejected at front door")
+
+    # A label containing a single quote must be rejected — the approved-story label is used in a
+    # single-quoted GitHub expression (`== '{{ approved_story_label }}'`) so a single quote in the
+    # label value would break the expression or enable injection.
+    sq_cfg = {
+        **_IMPL_CFG,
+        "platform": {**_IMPL_CFG["platform"], "labels": {"approved_story": "story' OR 1=1"}},
+    }
+    expect_raises(lambda: render.render_all(sq_cfg, "github"),
+                  "label-trigger: approved_story label with single quote rejected at render")
+    expect_raises(lambda: render.validate_config(sq_cfg),
+                  "label-trigger: approved_story label with single quote rejected at front door")
+
+    # Conditional trigger: when triggers explicitly excludes issue_labeled, the issues block is absent.
+    manual_only_cfg = {
+        **_IMPL_CFG,
+        "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"},
+                    "triggers": ["manual"]}],
+    }
+    manual_wf = render.render_all(manual_only_cfg, "github")["implementor.yml"]
+    manual_doc = yaml.safe_load(manual_wf)
+    manual_on = manual_doc.get("on", manual_doc.get(True))
+    check("issues" not in (manual_on or {}),
+          "label-trigger: issues trigger absent when triggers=[manual] (no issue_labeled)")
+    check("workflow_dispatch" in (manual_on or {}),
+          "label-trigger: workflow_dispatch still present when triggers=[manual]")
