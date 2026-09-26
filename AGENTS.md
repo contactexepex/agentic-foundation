@@ -30,8 +30,8 @@ gate merges.
   only the delta.
 - The only permitted automated merge is the **fail-closed foundation-lane gate** (see "Merge lanes").
   It enforces every gate rather than bypassing one. Neither Claude nor Codex hand-merges.
-- Automated resolution of Codex review threads is limited to threads a later commit has already made
-  outdated.
+- Review threads are resolved only when a later commit makes them outdated; neither Claude nor any
+  automated actor resolves a current (non-outdated) thread.
 - If a finding cannot be resolved within the bounded review cycles in `CLAUDE.md`, escalate to a
   human rather than looping.
 
@@ -57,9 +57,9 @@ or a meaningful test gap for changed code.
 requires unrealistic preconditions is noise that slows the pipeline — omit it or mark it `nit` at
 most. Focus on what is actually broken in what the diff actually changes.
 
-**Claude (implementor):** decline non-actionable findings with one evidence-based reply, resolve the
-thread, and move on. Do not loop on a finding you have declined with evidence. One remediation cycle
-per finding is the limit.
+**Claude (implementor):** decline non-actionable findings with one evidence-based reply. Do not
+resolve the thread — leave it open for the Codex delta review. Do not loop on a finding you have
+declined with evidence. One remediation cycle per finding is the limit.
 
 ## Core operating loop
 
