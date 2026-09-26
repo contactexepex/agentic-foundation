@@ -77,8 +77,9 @@ findings:
 - Do not run untrusted code from the diff to "verify" an issue.
 - If nothing meets medium+ severity, return `verdict: pass` and say so.
 - **Right-size to actual exposure.** A finding must name a realistic exploit path
-  against the change as-deployed. Theoretical risks that require simultaneously:
-  operator misconfiguration the schema prevents, no existing validation, and no
-  runtime enforcement — are `low`/`info` at most, not `critical`/`high`. Do not
-  escalate hardening suggestions above the severity that realistic preconditions
+  against the change as-deployed. Theoretical risks that existing schema validation,
+  runtime enforcement, or documented conventions already prevent — are `info` at most,
+  not `critical`/`high`/`medium`/`low`. (`low` and above map to `warn` or `fail`, which
+  create blocking review threads; do not raise already-prevented risks above `info`.)
+  Do not escalate hardening suggestions above the severity that realistic preconditions
   support.
