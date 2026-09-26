@@ -5,10 +5,10 @@ gate that decides when the PR is **provably ready**.
 
 > **Shipped vs. target for this lane (read first).** What renders today is narrower than the full
 > flow below:
-> - **implement** is triggered by `workflow_dispatch` only; the **review→fix loop is not
->   auto-driven** — after a finding, an **external actor** (a human, or an orchestrator) pushes the
->   fix, and the review lane only *re-requests* Codex on the new commit. An automatic
->   finding→remediation trigger with a bounded loop is **[target]**.
+> - **implement** is triggered by `workflow_dispatch` **and** the **approved-story issue label**
+>   **[shipped]**; the **review→fix loop is not auto-driven** — after a finding, an **external
+>   actor** (a human, or an orchestrator) pushes the fix, and the review lane only *re-requests*
+>   Codex on the new commit. An automatic finding→remediation trigger with a bounded loop is **[target]**.
 > - **code review** does **not** re-run on every push under the shipped default: `routing.fast_path`
 >   defaults **on**, so the router can classify a trivial head and **skip** the review. (This repo
 >   disables fast-path, so every PR is reviewed; that is a config choice, not the default.)
@@ -24,7 +24,7 @@ gate that decides when the PR is **provably ready**.
 
 ```
 approved story issue
-      │  (trigger: workflow_dispatch [shipped]; approved-story label [target])
+      │  (trigger: workflow_dispatch [shipped]; approved-story label [shipped])
       ▼
 [implement]  Claude opens a PR
       │  (trigger: PR opened/updated)
@@ -53,7 +53,7 @@ which defines "green" for the repo and is itself a blocking check.
 
 | Stage | Trigger | Gate | Loop / ordering rule |
 |---|---|---|---|
-| **implement** | manual `workflow_dispatch` **[shipped]**; approved-story **issue label** **[target]** | n/a (produces the PR) | one PR per story |
+| **implement** | manual `workflow_dispatch` **[shipped]**; approved-story **issue label** **[shipped]** | n/a (produces the PR) | one PR per story |
 | **validate / CI** | PR opened/updated, push | blocking | build + unit tests must pass on the head |
 | **code-review** (Codex) | PR opened/updated (`synchronize`) | advisory or blocking | re-runs on each push **unless fast-path skips a trivial head** (shipped default `fast_path: on`); converges only when **zero open review threads** on the current head |
 | **security-review** (Codex) | code review completed + clean on head | blocking **when configured** (advisory in the shipped `standard` profile) | **runs once, after** code review converges; **never concurrent** (best-effort). With auto-merge on **and an advisory security stage**, the gate may merge after code review **without** a blocking security review — see [trust-and-correctness.md](trust-and-correctness.md) |
@@ -141,9 +141,9 @@ The **shipped** expansions today (id — gate):
 ## Handoffs (the GitHub-artifact seams)
 
 - **In:** the Planning toolkit creates an **approved story issue** (with dependency metadata).
-  Today the `implement` stage is started by `workflow_dispatch` **[shipped]**; consuming the story
-  **issue label** directly is **[target]** ([roadmap.md](roadmap.md)). Either way, stagr does not
-  decide *which* story is ready — that ordering is the orchestrator's (see
+  The `implement` stage is started by `workflow_dispatch` **[shipped]** or by labeling the issue
+  with the configured **approved-story label** **[shipped]**. Either way, stagr does not decide
+  *which* story is ready — that ordering is the orchestrator's (see
   [audit-and-provenance.md](audit-and-provenance.md)).
 - **Out:** on merge, stagr emits a **merge event + decision record**; the CD toolkit and the
   orchestrator consume it. stagr's responsibility ends at the merged PR.

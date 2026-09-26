@@ -92,6 +92,7 @@ SAFE_LITERAL_TOKENS = frozenset({
     "default_branch",
     "human_merge_label",
     "dispatch_label",
+    "approved_story_label",
     "fast_path_globs_json",
     "fast_path_exclude_json",
     "implementer_model",
@@ -108,6 +109,9 @@ NON_OPERATOR_TOKENS = frozenset({
     "require_codex_code_review",
     "require_codex_security_review",
     "merge_method",
+    "issue_labeled_trigger_block",
+    "workflow_dispatch_trigger_block",
+    "implement_job_if",
 })
 
 
@@ -271,6 +275,69 @@ def _resolve_merge_method(cfg: dict[str, Any]) -> str:
     return method
 
 
+def _workflow_dispatch_trigger_block(implement_stage: dict[str, Any] | None) -> str:
+    """The YAML workflow_dispatch trigger block to include under `on:`, or '' to omit it.
+
+    Includes the block by default (no explicit triggers set) or when `manual` is listed in
+    the stage's `triggers`. Returns '' when the operator explicitly set `triggers` to a list
+    that does not contain `manual`, so the rendered workflow does not expose the paid
+    implementer via an entry point the operator did not opt into.
+    """
+    if implement_stage is None:
+        return ""
+    triggers = implement_stage.get("triggers")
+    if triggers is None or "manual" in list(triggers):
+        return (
+            "  workflow_dispatch:\n"
+            "    inputs:\n"
+            "      task:\n"
+            '        description: "Scoped engineering task for the implementer. Be specific."\n'
+            "        required: true\n"
+            "        type: string"
+        )
+    return ""
+
+
+def _implement_job_if(implement_stage: dict[str, Any] | None, approved_story_label: str) -> str:
+    """The if: condition for the implement job, derived from the effective trigger list.
+
+    Both arms are included by default (no explicit triggers) or when both `manual` and
+    `issue_labeled` are listed. Only the relevant arm is emitted when the operator restricts
+    triggers to a single entry point.
+    """
+    if implement_stage is None:
+        return "false"
+    triggers = implement_stage.get("triggers")
+    has_manual = triggers is None or "manual" in list(triggers)
+    has_issue_labeled = triggers is None or "issue_labeled" in list(triggers)
+    if has_manual and has_issue_labeled:
+        return (
+            f"github.event_name == 'workflow_dispatch' ||\n"
+            f"      github.event.label.name == '{approved_story_label}'"
+        )
+    if has_manual:
+        return "github.event_name == 'workflow_dispatch'"
+    if has_issue_labeled:
+        return f"github.event.label.name == '{approved_story_label}'"
+    return "false"
+
+
+def _issue_labeled_trigger_block(implement_stage: dict[str, Any] | None) -> str:
+    """The YAML issues/labeled trigger block to include under `on:`, or '' to omit it.
+
+    Includes the block by default (no explicit triggers set) or when `issue_labeled` is listed in
+    the stage's `triggers`. Returns '' only when the operator explicitly set `triggers` to a list
+    that does not contain `issue_labeled` (e.g. `triggers: [manual]`), so that the rendered
+    workflow does not subscribe to issues/labeled events the operator did not opt into.
+    """
+    if implement_stage is None:
+        return ""
+    triggers = implement_stage.get("triggers")
+    if triggers is None or "issue_labeled" in list(triggers):
+        return "  issues:\n    types: [labeled]"
+    return ""
+
+
 def build_context(cfg: dict[str, Any]) -> RenderContext:
     platform = cfg.get("platform", {}) or {}
     labels = platform.get("labels", {}) or {}
@@ -287,6 +354,8 @@ def build_context(cfg: dict[str, Any]) -> RenderContext:
                                           "platform.labels.human_merge")
     dispatch_label = assert_safe_label(str(labels.get("dispatch", "agentic-task")),
                                        "platform.labels.dispatch")
+    approved_story_label = assert_safe_label(str(labels.get("approved_story", "approved-story")),
+                                             "platform.labels.approved_story")
 
     stages = {stage["id"]: stage for stage in expand_stages(cfg)}
     stage_list = list(stages.values())
@@ -321,6 +390,7 @@ def build_context(cfg: dict[str, Any]) -> RenderContext:
         RenderedValue("default_branch", default_branch, "platform.default_branch", True),
         RenderedValue("human_merge_label", human_merge_label, "platform.labels.human_merge", True),
         RenderedValue("dispatch_label", dispatch_label, "platform.labels.dispatch", True),
+        RenderedValue("approved_story_label", approved_story_label, "platform.labels.approved_story", True),
         RenderedValue("codex_review_secret", codex_review_secret, "platform.auth.token_secret", True),
         RenderedValue("implementer_model", implementer_model, "<implement stage model>", True),
         # JSON lists of operator globs / check names — each element validated above / in the resolver.
@@ -330,6 +400,12 @@ def build_context(cfg: dict[str, Any]) -> RenderContext:
                       "merge.required_status_checks", True),
         RenderedValue("merge_protected_paths_json", json.dumps(protected_paths), "merge.protected_paths", True),
         # Non-operator: constants, enum-/schema-locked, derived, or trusted shell.
+        RenderedValue("issue_labeled_trigger_block", _issue_labeled_trigger_block(implement_stage),
+                      "<derived from implement stage triggers>", False),
+        RenderedValue("workflow_dispatch_trigger_block", _workflow_dispatch_trigger_block(implement_stage),
+                      "<derived from implement stage triggers>", False),
+        RenderedValue("implement_job_if", _implement_job_if(implement_stage, approved_story_label),
+                      "<derived from implement stage triggers + approved_story_label>", False),
         RenderedValue("trusted_roles_json", json.dumps(gh_roles), "platform.trusted_roles (enum-mapped)", False),
         RenderedValue("fast_path_max_files", str(routing.get("max_files", 20)), "routing.fast_path.max_files", False),
         RenderedValue("fast_path_max_lines", str(routing.get("max_lines", 200)), "routing.fast_path.max_lines", False),

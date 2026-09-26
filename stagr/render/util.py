@@ -65,11 +65,11 @@ def assert_safe_label(value: str, field: str) -> str:
             f"{field} must not be empty — no GitHub label could match, so the human-merge hard stop "
             "could never pause a PR for human review."
         )
-    if '"' in value or "\\" in value or _has_control_char(value) or _has_gha_expression(value):
+    if '"' in value or "'" in value or "\\" in value or _has_control_char(value) or _has_gha_expression(value):
         raise RenderError(
-            f"{field} {value!r} contains a double quote, backslash, control character, or the GitHub "
-            f"expression opener {_GHA_EXPRESSION!r}, and cannot be safely templated into the workflow; "
-            "use a plain label name."
+            f"{field} {value!r} contains a double quote, single quote, backslash, control character, "
+            f"or the GitHub expression opener {_GHA_EXPRESSION!r}, and cannot be safely templated into "
+            "the workflow; use a plain label name."
         )
     return value
 

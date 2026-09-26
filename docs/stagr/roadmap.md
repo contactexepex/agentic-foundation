@@ -8,7 +8,7 @@ GitHub first**, and **name the agent-backend seam now, ship one GitHub-native ba
 
 | Area | Today | This design adds |
 |---|---|---|
-| Dev-lane core | validate, review router, implement, Codex code + security review, thread cleanup, fail-closed gate, merge lanes — **rendered** | Formalizes the **ordered gate** (security/SAST before integration/perf/custom) and the readiness predicate |
+| Dev-lane core | validate, review router, implement (workflow_dispatch **+** approved-story label trigger), Codex code + security review, thread cleanup, fail-closed gate, merge lanes — **rendered** | Formalizes the **ordered gate** (security/SAST before integration/perf/custom) and the readiness predicate |
 | Trust/correctness | SHA-bound, fail-closed, base-controlled, scheduled sweep — **built** (PR #22/#25/#27). Security review is serialized **within its own workflow** (residual cross-workflow window — see trust doc) | States them as **invariants with required tests**; adds **anti-tamper via org rulesets**; closes the review window + base-retarget binding |
 | Backends | `claude-code-action` (implement), `codex` (review/security) | Names the **agent-backend seam** (cloud/CLI as future adapters) |
 | Governance | budgets/guardrails referenced in the contract (default-disabled) | **[target]** loop caps, cost ceiling, circuit breaker, and **escalation** terminal states — not yet rendered |
@@ -36,9 +36,6 @@ human-approved merge, with every [edge-cases.md](edge-cases.md) row covered by a
 
 Specific **[target]** items the design docs reference — each is a gap between today's shipped
 behaviour and the stated design:
-
-- **Approved-story trigger.** Wire the `implement` stage to an approved-story **issue label** (today
-  it is `workflow_dispatch` only). ([dev-lane.md](dev-lane.md))
 - **Budget enforcement + finite default.** Budgets ship `enabled: false`; add loop-iteration caps, a
   cost ceiling, a circuit breaker, and a **finite default** so an unconfigured repo is never
   unbounded. ([governance-and-limits.md](governance-and-limits.md))
