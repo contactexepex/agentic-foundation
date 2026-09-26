@@ -16,6 +16,8 @@ Checks:
      if it names a `skill`, that skill dir exists.
   7. Every skill (stagr/templates/skills/*/SKILL.md) has parseable YAML frontmatter with
      the required keys and a `verdict:` line inside a fenced code block.
+  8. docs/stagr/rulesets/org-branch-protection.json passes the ruleset reference template
+     checks (test_rulesets.py).
 
 Exit code 0 = all pass; non-zero = at least one failure (details on stderr).
 """
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -252,6 +255,24 @@ def main() -> int:
     # 7. Skills.
     for skill_md in sorted((ROOT / "stagr" / "templates" / "skills").glob("*/SKILL.md")):
         check_skill(skill_md)
+
+    # 8. Ruleset reference template.
+    ruleset_test = ROOT / ".github" / "scripts" / "test_rulesets.py"
+    if not ruleset_test.exists():
+        fail("ruleset test script not found: .github/scripts/test_rulesets.py")
+    else:
+        result = subprocess.run(
+            [sys.executable, str(ruleset_test)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            fail(
+                "ruleset template validation failed (.github/scripts/test_rulesets.py):\n"
+                + result.stdout.rstrip()
+            )
+        else:
+            print("OK  ruleset reference template validates")
 
     if errors:
         print(f"\n{len(errors)} validation error(s):", file=sys.stderr)

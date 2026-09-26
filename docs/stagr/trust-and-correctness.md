@@ -121,14 +121,90 @@ A gate a PR can edit away is not a gate.
 - **The gate's definition and required-check set must live where a PR cannot change them.** The
   strong form is **org rulesets** (required checks + branch protection enforced org-wide from a
   place the repo/PR cannot edit) and **org-injected required/reusable workflows**, so a PR that
-  deletes or edits a per-repo workflow file cannot remove the requirement. See
-  [onboarding-and-config.md](onboarding-and-config.md).
+  **deletes or renames** a per-repo workflow file cannot bypass the required-check gate. A PR can
+  still **replace** the workflow body with a trivially passing job while keeping the same path and
+  check name — the ruleset still accepts it because the check identity (name + App id) matches.
+  Protecting against that requires an org-controlled or base-ref-protected check producer, which is
+  outside this toolkit's current scope. See [onboarding-and-config.md](onboarding-and-config.md).
 - **Trusted authors and same-repo only.** Automation is driven only by trusted
   `author_association` on same-repo branches; **fork PRs never drive automation** and never reach
   a credential.
 - **No self-approval, no gate-weakening.** Neither an implementer nor a reviewer principal can
   merge, approve its own work, or disable a required check. The `human-merge` label is a hard stop
   the gate always honours.
+
+## Org-ruleset provisioning
+
+### Why org rulesets, not per-repo branch protection
+
+GitHub's per-repo branch protection lives in the repository itself. A PR that edits
+`.github/workflows/` or the branch-protection settings API can weaken or remove the gate from
+within the repository — exactly the threat the "Anti-tamper / enforcement" section above describes.
+
+**Org rulesets** (GitHub REST: `POST /orgs/{org}/rulesets`) are enforced from a place a repo or a PR
+inside the repo cannot edit:
+
+- Only an **org owner or admin** can create, modify, or delete an org ruleset.
+- The ruleset applies across selected (or all) repos without any per-repo config file that a PR
+  could overwrite.
+- Required checks and branch protection rules enforced by an org ruleset are **not bypassable** by
+  a repo-level actor.
+
+This is why the gate's layered guarantee is built on org rulesets rather than a substitute for them
+(see invariant 7 above).
+
+### Required ruleset settings
+
+The reference template configures the following settings:
+
+| Setting | Value | Why |
+|---|---|---|
+| `pull_request` rule | (present) | Prevents direct pushes to the default branch; requires a pull request so the gate has something to evaluate. |
+| `dismiss_stale_reviews_on_push` | `true` | A commit pushed after a human approval invalidates that approval, so a human-lane re-approval on the new head is real. Without this, an approval on an old head survives a force-push or additional commit. |
+| `required_review_thread_resolution` | `true` | Prevents a race where a review thread is reopened after the gate's final read but before the merge PUT. |
+| `required_status_checks` rule | (present) | Forces at least the `Validate` check and the `Publish fast review result` router status to pass before merge, server-side — preventing the "delete or rename validate.yml" bypass. Note: this prevents bypassing the gate via deletion or rename; it does **not** prevent a trusted author from replacing the workflow body with a trivially passing job (see the anti-tamper note above). **Scope:** requiring `Publish fast review result` enforces that the routing workflow ran, but does **not** enforce Codex-review completion. That enforcement is the sole responsibility of the rendered `auto-merge-foundation-prs.yml` gate, which checks for head-bound code and security reviews before merging. Any principal with merge permission (a human, or a workflow token with sufficient scope) can merge via the REST API or the GitHub UI as soon as only these two checks are green — before Codex reviews complete. Foundation-lane repos address this through the auto-merge gate being the only actor that calls the merge API; human-lane repos rely on reviewer discipline. |
+| `strict_required_status_checks_policy` | `true` | PRs must be up-to-date with the base branch before merging, preventing a merge against a stale base. |
+| `do_not_enforce_on_create` | `true` | Newly created repositories can push their initial default branch without required status checks blocking the bootstrap push. |
+
+> **Foundation-lane note.** The reference template sets `"required_approving_review_count": 0`
+> (no approvals required). The foundation lane's auto-merge does not create a human approval, so
+> requiring one would block automated merges. Repos that use the human-gated lane should set this
+> to `"required_approving_review_count": 1` when applying this template.
+
+A reference template is at
+[`rulesets/org-branch-protection.json`](rulesets/org-branch-protection.json). It is a **reference
+only** — not executable as-is. Before applying it:
+
+1. Replace `integration_id: null` in each `required_status_checks` entry with the **numeric GitHub
+   App id** of the app that posts each check (the Validate runner and the router status poster).
+   Using the app id prevents a same-named check from a different app from satisfying the requirement
+   (see invariant 5 above). To find the numeric App ID, query the GitHub API:
+   ```
+   GET https://api.github.com/apps/{app-slug}
+   ```
+   The `id` field in the response is the numeric App ID. For status checks produced by GitHub
+   Actions workflows the app slug is `github-actions`. Leave `integration_id: null`
+   if the check producer is not a GitHub App (e.g. a third-party CI service that posts a commit
+   status directly via the Statuses API). **Note:** with `integration_id: null`, any actor with
+   `statuses: write` can satisfy the check by posting the same context name — there is no
+   identity binding. Use an App-backed producer and set `integration_id` whenever possible.
+2. Scope `repository_name.include` to the repos you want covered. **Caution with `~ALL`:** applying
+   the ruleset org-wide means every repo must produce both the `Validate` and
+   `Publish fast review result` checks on every PR. A repo that has not yet run `stagr apply`
+   cannot produce those checks, and every PR on it will be permanently blocked. Scope to only
+   onboarded repos (by an explicit list or a naming convention) until the whole org is onboarded.
+3. Apply via the GitHub API (`POST /orgs/{org}/rulesets`) or the org's **Rules → Rulesets** UI, as
+   an org owner.
+
+### What the provisioning step is and is not
+
+stagr is a **control plane**: it declares, initializes, and governs — it does not execute the
+provisioning call itself. Provisioning the org ruleset is a **one-time manual (or scripted) operator
+step** performed by an org admin. The reference JSON is the declaration; applying it is the operator's
+job.
+
+Automated provisioning verification (`doctor` checking that the ruleset is installed with the correct
+settings) is a **[target]** item — see [roadmap.md](roadmap.md).
 
 ## What "done" means for the gate
 
