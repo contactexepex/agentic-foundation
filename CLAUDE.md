@@ -20,7 +20,9 @@ foundation gate, weaken required checks, or invent toolkit design decisions.
 3. Inspect `git status`, the branch, and recent history. Never edit or commit on `main`; create or
    resume a task-specific feature branch first.
 4. Read the smallest authoritative set of files needed (schema, template, docs) before changing them.
-5. If a design decision is absent, ambiguous, or contradictory, stop and ask the smallest precise
+5. Verify whether the requested behavior already exists and matches the story; implement only the
+   genuine gap, never re-implement what is already present and correct.
+6. If a design decision is absent, ambiguous, or contradictory, stop and ask the smallest precise
    human question (see `AGENTS.md`). Do not guess.
 
 Before editing, check whether the branch or PR already contains equivalent work; resume it rather
@@ -61,11 +63,40 @@ human for the merge; just drive it to provably-ready. A PR needing human judgmen
 ## Codex review handoff
 
 After opening the PR, hand it to Codex for an independent code and security review. Evaluate each
-finding: fix accepted ones, add/adjust checks, rerun affected validation, commit, and push. If
-rejecting a finding, record a concise evidence-based reason in the PR. Request a delta review covering
-only changed code and unresolved findings. Limit the remediation → delta-review loop to two
-iterations; if material findings remain or a decision needs a human, escalate. If Codex review is
-unavailable, report the PR as awaiting independent review — never substitute self-review for it.
+finding — review comments require judgment, not blind acceptance.
+
+**Accept** a finding when it identifies a real problem in the actual change:
+- A genuine correctness or logic error reproducible with valid or realistically reachable inputs
+  (including adversarial inputs at untrusted system boundaries).
+- A concrete security risk with a plausible exploit path under realistic operator config.
+- A broken API/schema contract or backward-compatibility issue.
+- A meaningful gap in test coverage for a code path this PR changes.
+
+**Decline** a finding when it does not meet that bar. Grounds for declining:
+- **Speculative**: the failure scenario requires operator choices or config combinations that no
+  realistic user would make, or that existing schema/validation already prevents.
+- **Over-engineered**: the proposed fix adds significant complexity without proportionate benefit to
+  real-world correctness or safety — the simpler current code works correctly for all real inputs.
+- **Already enforced**: the concern is already addressed by schema validation, a test, or a
+  runtime enforcement mechanism in the codebase. A documented convention alone does not count:
+  documentation describes intent, not enforcement.
+- **Style/cosmetic**: no functional, correctness, or security impact.
+
+**How to decline**: reply once on the thread with the specific evidence-based reason (cite the
+existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
+Do not resolve the thread — leave it open for the Codex delta review. Do not loop: a declined
+finding stays declined unless Codex presents new evidence in the delta review. One remediation
+cycle per finding, maximum.
+
+When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
+the delta review manually, since no push fires the per-push workflow. If findings remain
+unresolved after the delta review, escalate to a human (apply `human-merge`) rather than looping.
+
+For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
+workflow requests the delta review automatically. Limit the total remediation → delta-review loop
+to two iterations; if material findings remain after that, escalate to a human rather than looping.
+If Codex review is unavailable, report the PR as awaiting independent review — never substitute
+self-review for it.
 
 ## Resume safely
 

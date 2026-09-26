@@ -68,3 +68,10 @@ findings:
   **location only** and mark it a blocker.
 - Prefer the smallest correct fix; do not expand scope.
 - If nothing blocks, say so plainly and return `verdict: pass`.
+- **Report only real defects, not hypothetical ones.** A finding must describe
+  a failure scenario reachable with valid or realistically reachable inputs (including
+  adversarial inputs at untrusted system boundaries) and realistic operator configs.
+  Do not report: edge cases the schema or existing validation already prevents;
+  speculative misuse requiring operator choices no real user would make;
+  over-engineered hardening whose complexity cost exceeds its real-world benefit.
+  These generate churn without improving correctness or safety.
