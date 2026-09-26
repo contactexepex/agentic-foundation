@@ -32,6 +32,7 @@ from render_tests.auto_merge import (
     test_build_command_trust_boundary,
 )
 from render_tests.gate_behavior import test_gate_behavior
+from render_tests.permissions import test_least_privilege_permissions
 
 
 def main() -> int:
@@ -50,6 +51,7 @@ def main() -> int:
     test_build_command_trust_boundary()
     test_gate_behavior()
     test_render_structural()
+    test_least_privilege_permissions()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
         return 1
