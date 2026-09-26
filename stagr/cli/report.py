@@ -120,9 +120,11 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
     # renders a merge-gate workflow, the ruleset is the external guard that enforces it.
     notes: list[str] = [
         "branch-protection ruleset required: configure a GitHub branch-protection ruleset on "
-        "the default branch to prevent direct pushes and enforce required checks; this is "
-        "required regardless of whether modules.auto_merge is enabled "
-        "(see docs/stagr/onboarding-and-config.md)."
+        "the default branch to prevent direct pushes, enforce required checks, and (for "
+        "human-lane repos) require at least one approving review "
+        "(required_approving_review_count: 1); this is required regardless of whether "
+        "modules.auto_merge is enabled "
+        "(see https://github.com/contactexepex/agentic-foundation/blob/main/docs/stagr/rulesets/org-branch-protection.json)."
     ]
     report["notes"] = notes
     return report
