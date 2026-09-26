@@ -150,6 +150,13 @@ The toolkit ships a small set of default agents and skills; any can be overridde
 3. Broader validation relevant to the change.
 Add regression coverage for defects that could recur.
 
+## Backlog standards
+
+Every backlog story must carry **explicit acceptance criteria** and **at least one test item** before
+implementation begins. Acceptance criteria state what done looks like in plain, verifiable terms. The
+test item names a concrete check (a script, a validation command, or a described manual step) that
+confirms the criteria are met. A story that lacks either is not ready to start.
+
 ## Definition of done
 
 Work is done only when: the requested behavior is implemented; relevant checks pass; mandatory CI is
