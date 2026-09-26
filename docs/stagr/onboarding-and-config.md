@@ -19,6 +19,57 @@ genuinely its own.
 | **The pipeline** | Org **required/reusable workflows** injected centrally, so a repo needs no copied-in workflow files. |
 | **The gate** | Org **rulesets** enforce branch protection + required checks across repos from a place a repo/PR cannot edit, and **must enable "dismiss stale approvals on push"** so a post-approval commit invalidates the prior human approval (this is what makes the human-lane re-approval rule real — see [edge-cases.md](edge-cases.md)). ([trust-and-correctness.md](trust-and-correctness.md#anti-tamper--enforcement)) |
 
+### App installation at the org level
+
+Both agent apps — the **Codex App** and the **Claude Code App** — must be installed once at the org
+level. Installing them at the org grants access to all current and future repos in the org; you can
+restrict the grant to selected repos instead, but any unselected repo will not be covered.
+
+**Where to install:**
+
+- **Codex App** — install from the GitHub Marketplace listing for Codex. During installation,
+  under "Repository access", choose "All repositories" or select the repos stagr will manage.
+- **Claude Code App** — install from the GitHub Marketplace listing for Claude Code. Apply the same
+  repository scope you chose for the Codex App.
+
+Install once at the org, not per repository. If a new repo needs coverage later, expand the
+installation's repository access list — no other per-repo step is needed for app access.
+
+#### Required Codex App configuration
+
+Installation alone is not enough. After installing the Codex App, two settings must be configured:
+
+**1. Auto-run code review on PR open**
+
+Enable the setting that triggers Codex to start a code review automatically when a PR is opened.
+
+- *Where:* Codex App settings → code review behaviour → enable "Run automatically on pull request
+  open".
+- *Why it is required:* the rendered `request-codex-review-on-push.yml` workflow listens to
+  `push` events on a PR branch; it does not fire on the initial `pull_request: opened` event. A
+  freshly opened PR therefore relies on the Codex App's own trigger to start the first code review.
+- *Failure mode if missing:* a brand-new PR receives no code-review pass until someone pushes a
+  follow-up commit. The auto-merge gate requires a head-bound Codex code review before it merges, so
+  the PR will stall at the gate and never auto-merge, even if all CI is green.
+
+**2. Native security auto-review disabled**
+
+Disable the Codex App's built-in security auto-review feature.
+
+- *Where:* Codex App settings → security review → disable "Run security review automatically".
+- *Why it is required:* stagr serializes code review and security review through dedicated
+  workflows: `request-codex-review-on-push.yml` handles code review per push, and
+  `request-final-security-review.yml` fires the security review only after code review has converged
+  on the head commit. The Codex App's native security auto-review runs independently and
+  concurrently with that sequencing.
+- *Failure mode if missing:* the Codex App fires a security review at the same time as — or before —
+  the code-review loop has finished. This produces concurrent code and security reviews, which
+  violates the ordered-gate invariant and can leave conflicting review threads that block the merge
+  gate.
+
+Neither the Claude Code App nor any other app requires post-install settings changes for stagr's
+default configuration.
+
 ### Irreducibly per-repo (stated honestly)
 
 Some things are genuinely repo-specific and cannot be fully centralized:
