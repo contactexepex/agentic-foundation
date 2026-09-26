@@ -96,7 +96,8 @@ default name until the resolved name is wired into the template
 
 **How to share at org scope (GitHub).** In your organization's settings under
 *Secrets and variables → Actions*, create each secret and set repository access to
-**Selected repositories** (add each repo) or **All repositories**. The pipeline reads each
+**Selected repositories** (add only the onboarded repos — not All repositories, which would
+expose these credentials to every repo in the org). The pipeline reads each
 secret by name; no per-repo copy of the value is needed.
 
 **Confirming required names.** `stagr doctor` reports the secret names the config requires (e.g.

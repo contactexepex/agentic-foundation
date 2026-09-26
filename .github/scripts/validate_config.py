@@ -90,7 +90,7 @@ def check_secret_name_fields(cfg, label: str) -> None:
             )
         elif _RESERVED_SECRET_PREFIX_RE.match(value):
             fail(
-                f"{label}: {field_path}: secret name '{value}' starts with the reserved "
+                f"{label}: {field_path}: secret name starts with the reserved "
                 f"'GITHUB_' prefix — GitHub forbids user-defined secrets beginning with "
                 f"GITHUB_ (case-insensitive); choose a different name"
             )
