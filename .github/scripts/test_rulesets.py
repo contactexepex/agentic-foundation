@@ -58,6 +58,17 @@ def test_ruleset_json() -> None:
             "so the ruleset protects the default branch; "
             f"got {ref_includes!r}"
         )
+    repo_includes = (
+        (data.get("conditions") or {}).get("repository_name") or {}
+    ).get("include", [])
+    if isinstance(repo_includes, list) and len(repo_includes) > 0:
+        ok(f"conditions.repository_name.include is non-empty: {repo_includes!r}")
+    else:
+        fail(
+            "conditions.repository_name.include must be a non-empty list "
+            "so the ruleset covers at least one repository; "
+            f"got {repo_includes!r}"
+        )
     if data.get("target") == "branch":
         ok("target == 'branch'")
     else:
