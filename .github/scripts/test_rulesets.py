@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Standalone test: validate the org-branch-protection ruleset reference template.
+
+Checks that the JSON at docs/stagr/rulesets/org-branch-protection.json:
+  - is valid JSON;
+  - is an org-level ruleset (target == "branch", enforcement == "active");
+  - includes a pull_request rule with dismiss_stale_reviews_on_push == true;
+  - includes a required_status_checks rule with at least one required check.
+
+Run with: python .github/scripts/test_rulesets.py
+Exit 0 = all checks pass.  Exit 1 = one or more failures (details printed).
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+RULESET_PATH = Path(__file__).resolve().parents[2] / "docs" / "stagr" / "rulesets" / "org-branch-protection.json"
+
+failures: list[str] = []
+
+
+def fail(msg: str) -> None:
+    failures.append(msg)
+    print(f"  FAIL  {msg}")
+
+
+def ok(msg: str) -> None:
+    print(f"  ok    {msg}")
+
+
+def test_ruleset_json() -> None:
+    print("test_ruleset_json")
+
+    # 1. File exists and is valid JSON.
+    if not RULESET_PATH.exists():
+        fail(f"ruleset file not found: {RULESET_PATH}")
+        return
+    try:
+        data = json.loads(RULESET_PATH.read_text())
+    except json.JSONDecodeError as exc:
+        fail(f"ruleset is not valid JSON: {exc}")
+        return
+    ok("file exists and is valid JSON")
+
+    # 2. Top-level structure: org ruleset target + active enforcement.
+    if data.get("target") == "branch":
+        ok("target == 'branch'")
+    else:
+        fail(f"expected target='branch', got {data.get('target')!r}")
+
+    if data.get("enforcement") == "active":
+        ok("enforcement == 'active'")
+    else:
+        fail(f"expected enforcement='active', got {data.get('enforcement')!r}")
+
+    # 3. Rules list must be present and non-empty.
+    rules = data.get("rules")
+    if not isinstance(rules, list) or len(rules) == 0:
+        fail("'rules' must be a non-empty list")
+        return
+    ok(f"rules list present with {len(rules)} rule(s)")
+
+    rule_types = {r.get("type") for r in rules if isinstance(r, dict)}
+
+    # 4. pull_request rule with dismiss_stale_reviews_on_push == true.
+    pr_rules = [r for r in rules if isinstance(r, dict) and r.get("type") == "pull_request"]
+    if not pr_rules:
+        fail("no 'pull_request' rule found — branch protection missing")
+    else:
+        pr_params = pr_rules[0].get("parameters", {})
+        if pr_params.get("dismiss_stale_reviews_on_push") is True:
+            ok("dismiss_stale_reviews_on_push == true")
+        else:
+            fail(
+                "pull_request rule must have parameters.dismiss_stale_reviews_on_push == true; "
+                f"got {pr_params.get('dismiss_stale_reviews_on_push')!r}"
+            )
+
+    # 5. required_status_checks rule with at least one entry.
+    rsc_rules = [r for r in rules if isinstance(r, dict) and r.get("type") == "required_status_checks"]
+    if not rsc_rules:
+        fail("no 'required_status_checks' rule found — required checks missing")
+    else:
+        rsc_params = rsc_rules[0].get("parameters", {})
+        checks = rsc_params.get("required_status_checks", [])
+        if isinstance(checks, list) and len(checks) >= 1:
+            ok(f"required_status_checks present with {len(checks)} check(s)")
+        else:
+            fail(
+                "required_status_checks rule must list at least one required check; "
+                f"got {checks!r}"
+            )
+
+
+def main() -> int:
+    print(f"Validating: {RULESET_PATH.relative_to(Path(__file__).resolve().parents[2])}")
+    test_ruleset_json()
+    if failures:
+        print(f"\n{len(failures)} failure(s). See above.")
+        return 1
+    print("\nAll checks passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

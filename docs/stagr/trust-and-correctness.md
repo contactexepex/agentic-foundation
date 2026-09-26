@@ -130,6 +130,58 @@ A gate a PR can edit away is not a gate.
   merge, approve its own work, or disable a required check. The `human-merge` label is a hard stop
   the gate always honours.
 
+## Org-ruleset provisioning
+
+### Why org rulesets, not per-repo branch protection
+
+GitHub's per-repo branch protection lives in the repository itself. A PR that edits
+`.github/workflows/` or the branch-protection settings API can weaken or remove the gate from
+within the repository — exactly the threat the "Anti-tamper / enforcement" section above describes.
+
+**Org rulesets** (GitHub REST: `POST /orgs/{org}/rulesets`) are enforced from a place a repo or a PR
+inside the repo cannot edit:
+
+- Only an **org owner or admin** can create, modify, or delete an org ruleset.
+- The ruleset applies across selected (or all) repos without any per-repo config file that a PR
+  could overwrite.
+- Required checks and branch protection rules enforced by an org ruleset are **not bypassable** by
+  a repo-level actor.
+
+This is why the gate's layered guarantee is built on org rulesets rather than a substitute for them
+(see invariant 7 above).
+
+### Required ruleset settings
+
+Three settings are mandatory for the gate to hold:
+
+| Setting | Why it is required |
+|---|---|
+| **Branch protection** (`pull_request` rule) | Prevents direct pushes to the default branch; requires a pull request so the gate has something to evaluate. |
+| **Required status checks** (`required_status_checks` rule) | Forces at least the `Validate` check and the `Publish fast review result` router status to pass before merge, server-side — closing the "delete validate.yml" bypass. |
+| **`dismiss_stale_reviews_on_push`** (parameter in the `pull_request` rule, set to `true`) | A commit pushed after a human approval invalidates that approval, so a human-lane re-approval on the new head is real. Without this, an approval on an old head survives a force-push or additional commit. |
+
+A minimal reference template is at
+[`rulesets/org-branch-protection.json`](rulesets/org-branch-protection.json). It is a **reference
+only** — not executable as-is. Before applying it:
+
+1. Replace `integration_id: null` in each `required_status_checks` entry with the **numeric GitHub
+   App id** of the app that posts each check (the Validate runner and the router status poster).
+   Using the app id prevents a same-named check from a different app from satisfying the requirement
+   (see invariant 5 above).
+2. Scope `repository_name.include` to the repos you want covered (or keep `~ALL` for the whole org).
+3. Apply via the GitHub API (`POST /orgs/{org}/rulesets`) or the org's **Rules → Rulesets** UI, as
+   an org owner.
+
+### What the provisioning step is and is not
+
+stagr is a **control plane**: it declares, initializes, and governs — it does not execute the
+provisioning call itself. Provisioning the org ruleset is a **one-time manual (or scripted) operator
+step** performed by an org admin. The reference JSON is the declaration; applying it is the operator's
+job.
+
+Automated provisioning verification (`doctor` checking that the ruleset is installed with the correct
+settings) is a **[target]** item — see [roadmap.md](roadmap.md).
+
 ## What "done" means for the gate
 
 The gate is correct only when every invariant above holds **and** there is a negative test for
