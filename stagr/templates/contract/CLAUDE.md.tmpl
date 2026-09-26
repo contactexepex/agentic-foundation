@@ -39,6 +39,34 @@ gate once green and reviewer-clean; a PR needing human judgment carries
 
 ## Reviewer handoff
 
-Hand the PR to the independent reviewer (code + security). Fix accepted findings, rerun
-affected checks, commit, push; record an evidence-based reason for any rejected finding.
-Limit the remediation → delta-review loop to two iterations, then escalate.
+Hand the PR to the independent reviewer (code + security). Evaluate each finding — review
+comments require judgment, not blind acceptance.
+
+**Accept** a finding when it identifies a real problem in the actual change:
+- A genuine correctness or logic error reproducible with valid or realistically reachable inputs
+  (including adversarial inputs at untrusted system boundaries).
+- A concrete security risk with a plausible exploit path under realistic operator config.
+- A broken API/schema contract or backward-compatibility issue.
+- A meaningful gap in test coverage for changed code paths or closely related behavior.
+
+**Decline** a finding when it does not meet that bar:
+- **Speculative**: failure requires operator choices no realistic user would make, or that
+  existing schema/validation already prevents.
+- **Over-engineered**: proposed fix adds complexity disproportionate to real-world benefit.
+- **Already enforced**: concern is addressed by schema validation, a test, or a runtime guard.
+  A documented convention alone does not count: documentation describes intent, not enforcement.
+- **Style/cosmetic**: no functional, correctness, or security impact.
+
+**How to decline**: reply once on the thread with a specific evidence-based reason. Do not
+resolve the thread — leave it open for the delta review. One remediation cycle per finding is
+the limit.
+
+When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
+the delta review manually, since no push fires the per-push workflow. If findings remain
+unresolved after the delta review, escalate to a human (apply `{{ human_merge_label }}`) rather
+than looping.
+
+For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. If a push-review
+workflow was generated for this repo, it requests the delta review automatically on push; otherwise
+post `@codex review` manually. Limit the remediation → delta-review loop to two iterations, then
+escalate.
