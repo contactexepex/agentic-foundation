@@ -96,6 +96,30 @@ def check_secret_name_fields(cfg, label: str) -> None:
             )
 
 
+def _collect_extends_base_paths(cfg: dict, base_dir: Path, _seen: set | None = None) -> list[Path]:
+    """Collect all local base file paths in the extends chain (depth-first, no duplicates)."""
+    _seen = _seen or set()
+    ext = cfg.get("extends")
+    if not ext:
+        return []
+    bases: list[str] = [ext] if isinstance(ext, str) else ext if isinstance(ext, list) else []
+    result: list[Path] = []
+    for ref in bases:
+        if isinstance(ref, str) and not ref.startswith(("http://", "https://")):
+            p = (base_dir / ref).resolve()
+            key = str(p)
+            if key not in _seen and p.exists():
+                _seen.add(key)
+                result.append(p)
+                try:
+                    base_cfg = load_yaml(p)
+                    if isinstance(base_cfg, dict):
+                        result.extend(_collect_extends_base_paths(base_cfg, p.parent, _seen))
+                except Exception:  # noqa: BLE001
+                    pass
+    return result
+
+
 def check_stage_graph(cfg, label: str) -> None:
     """Unique ids, resolvable depends_on, and acyclicity — not expressible in JSON Schema."""
     if not isinstance(cfg, dict):
@@ -248,6 +272,16 @@ def main() -> int:
             except render.RenderError as exc:
                 fail(f"{rel}: cannot resolve extends for secret-field check: {exc}")
                 check_secret_name_fields(cfg, rel)
+            # Also check each raw base file individually: resolve_extends() discards fields that
+            # the child overrides, so a literal credential in a base file would be invisible in
+            # the merged config above even though it is committed on disk.
+            for base_path in _collect_extends_base_paths(cfg, path.parent):
+                try:
+                    base_cfg = load_yaml(base_path)
+                    base_rel = str(base_path.relative_to(ROOT))
+                    check_secret_name_fields(base_cfg, f"{rel} extends base {base_rel}")
+                except Exception as exc:  # noqa: BLE001
+                    fail(f"{rel}: cannot check extends base {base_path}: {exc}")
             try:
                 render.validate_config(cfg)
                 print(f"OK  {rel} passes canonical validation (schema + semantics + templating)")
