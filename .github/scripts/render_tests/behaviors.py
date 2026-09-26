@@ -60,7 +60,14 @@ def test_backend_name_seam() -> None:
     # caught: if a provider's derived tool were dropped from the enum, this fails instead of staying
     # green. Also assert every derived name is itself an admitted schema value (the two sides agree).
     known_set = set(known)
-    for provider, expected_tool in render.PROVIDER_TOOL.items():
+    # Pin the two documented provider->tool mappings INDEPENDENTLY of PROVIDER_TOOL. Iterating
+    # PROVIDER_TOOL directly would just stop generating a case if an entry were dropped, so the suite
+    # would still pass and the seam would not actually be locked. Asserting each required entry exists
+    # (and matches) makes an accidental removal FAIL here (AGENTS.md: never weaken a check to pass).
+    required_mappings = {"anthropic": "claude-code-action", "openai": "codex"}
+    for provider, expected_tool in required_mappings.items():
+        check(render.PROVIDER_TOOL.get(provider) == expected_tool,
+              f"backend seam: PROVIDER_TOOL maps required provider '{provider}' to '{expected_tool}'")
         cfg = {**base, "stages": [{"id": "x", "type": "custom", "provider": provider}]}
         expanded = render.expand_stages(cfg)
         derived = (expanded[0].get("backend") or {}).get("name")
