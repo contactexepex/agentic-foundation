@@ -18,6 +18,7 @@ from render_tests.harness import failures
 from render_tests.resolution import test_backend, test_profile_expansion, test_resolution
 from render_tests.structural import test_actions_sha_pinned, test_render_structural
 from render_tests.behaviors import (
+    test_backend_name_seam,
     test_new_behaviors,
     test_round2_fixes,
     test_round3_fixes,
@@ -40,6 +41,7 @@ def main() -> int:
     test_resolution()
     test_profile_expansion()
     test_backend()
+    test_backend_name_seam()
     test_new_behaviors()
     test_round2_fixes()
     test_round3_fixes()
