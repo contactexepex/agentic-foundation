@@ -1,14 +1,9 @@
 name: Claude Code Implementor
 
 # Rendered by the stagr CLI. Do not edit by hand; edit the template and re-render.
-# Entry points: manual workflow_dispatch (any task) and the approved-story issue label trigger.
+# Entry points are derived from the implement stage's `triggers` field (default: both).
 on:
-  workflow_dispatch:
-    inputs:
-      task:
-        description: "Scoped engineering task for the implementer. Be specific."
-        required: true
-        type: string
+{{ workflow_dispatch_trigger_block }}
 {{ issue_labeled_trigger_block }}
 concurrency:
   # Use a per-issue group for issues/labeled events (prevents unrelated label events from
@@ -24,10 +19,9 @@ permissions:
 jobs:
   implement:
     name: Implement on a feature branch
-    # Run on manual dispatch, or when an issue is labeled with the approved-story label.
+    # Run only on the entry points declared by the implement stage's triggers.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.label.name == '{{ approved_story_label }}'
+      {{ implement_job_if }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

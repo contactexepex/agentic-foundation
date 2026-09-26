@@ -95,3 +95,27 @@ def test_approved_story_label_trigger() -> None:
           "label-trigger: issues trigger absent when triggers=[manual] (no issue_labeled)")
     check("workflow_dispatch" in (manual_on or {}),
           "label-trigger: workflow_dispatch still present when triggers=[manual]")
+    manual_job_if = manual_doc["jobs"]["implement"].get("if", "")
+    check("workflow_dispatch" in str(manual_job_if),
+          "label-trigger: job condition covers workflow_dispatch when triggers=[manual]")
+    check("label.name" not in str(manual_job_if),
+          "label-trigger: job condition omits label check when triggers=[manual]")
+
+    # Conditional trigger: when triggers explicitly excludes manual, workflow_dispatch is absent.
+    issue_only_cfg = {
+        **_IMPL_CFG,
+        "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"},
+                    "triggers": ["issue_labeled"]}],
+    }
+    issue_wf = render.render_all(issue_only_cfg, "github")["implementor.yml"]
+    issue_doc = yaml.safe_load(issue_wf)
+    issue_on = issue_doc.get("on", issue_doc.get(True))
+    check("workflow_dispatch" not in (issue_on or {}),
+          "label-trigger: workflow_dispatch absent when triggers=[issue_labeled] (P1 regression guard)")
+    check("issues" in (issue_on or {}),
+          "label-trigger: issues trigger still present when triggers=[issue_labeled]")
+    issue_job_if = issue_doc["jobs"]["implement"].get("if", "")
+    check("label.name" in str(issue_job_if),
+          "label-trigger: job condition covers label check when triggers=[issue_labeled]")
+    check("workflow_dispatch" not in str(issue_job_if),
+          "label-trigger: job condition omits workflow_dispatch arm when triggers=[issue_labeled]")
