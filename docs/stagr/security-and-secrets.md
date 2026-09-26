@@ -64,14 +64,14 @@ can push to the default branch or call the merge API** — the "work on a featur
 - **Never logged or printed.** Secrets are redacted from all observability output
   ([audit-and-provenance.md](audit-and-provenance.md)); model-provider trace/sensitive-data
   inclusion stays disabled unless explicitly justified.
-- **Org-scoped by default.** Keys live as **organization/environment secrets** shared to selected
+- **Org-scoped by default.** Keys live as **organization secrets** shared to selected
   repos, so onboarding a repo needs no per-repo secret setup
   ([onboarding-and-config.md](onboarding-and-config.md)). Non-secret provider metadata
   (`base_url`, `api_version`, `deployment`) may live in config; credentials never do.
 
-## Org/environment secret sharing
+## Org secret sharing
 
-Secrets live at the **org (or environment) scope** and are shared to selected repos. This removes
+Secrets live at the **org scope** and are shared to selected repos. This removes
 per-repo secret setup: any repo covered by the org automatically inherits those secrets with no
 local configuration step.
 
@@ -81,8 +81,7 @@ stagr-rendered pipeline requires. `stagr doctor` prints the names your specific 
 | Secret name | Stage that uses it | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Implement (Claude Code) | Anthropic API key for the implementer |
-| `CODEX_PAT` | Review, Security (Codex) | GitHub PAT for the Codex reviewer identity (PR read + comment write) |
-| `REMEDIATION_TOKEN` | Implement | GitHub PAT for the remediation step (push + PR write for fix commits) |
+| `REMEDIATION_TOKEN` | Review, Security (Codex), Implement | PAT used by Codex for review, thread resolution, and remediation pushes (the `codex_review_secret` default) |
 
 Secrets are **always referenced by name** — `${{ secrets.ANTHROPIC_API_KEY }}` in a rendered
 workflow — and the name is what lives in `.agentic/config.yml`. A secret value never appears in
