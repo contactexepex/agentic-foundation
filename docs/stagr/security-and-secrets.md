@@ -64,10 +64,56 @@ can push to the default branch or call the merge API** — the "work on a featur
 - **Never logged or printed.** Secrets are redacted from all observability output
   ([audit-and-provenance.md](audit-and-provenance.md)); model-provider trace/sensitive-data
   inclusion stays disabled unless explicitly justified.
-- **Org-scoped by default.** Keys live as **organization/environment secrets** shared to selected
+- **Org-scoped by default.** Keys live as **organization secrets** shared to selected
   repos, so onboarding a repo needs no per-repo secret setup
   ([onboarding-and-config.md](onboarding-and-config.md)). Non-secret provider metadata
   (`base_url`, `api_version`, `deployment`) may live in config; credentials never do.
+
+## Org secret sharing
+
+Secrets live at the **org scope** and are shared to selected repos. This removes
+per-repo secret setup: any repo covered by the org automatically inherits those secrets with no
+local configuration step.
+
+**What a standard pipeline needs.** The table below lists the default secret names a standard
+stagr-rendered pipeline requires. `stagr doctor` prints the names your specific config resolves to.
+
+| Secret name | Stage that uses it | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Implement (Claude Code) | Anthropic API key for the implementer |
+| `REMEDIATION_TOKEN` | Review, Security (Codex) | PAT used by Codex for review comments, security review, and thread resolution (the `codex_review_secret` default) |
+
+Secrets are **always referenced by name** — `${{ secrets.ANTHROPIC_API_KEY }}` in a rendered
+workflow — and the name is what lives in `.agentic/config.yml`. A secret value never appears in
+config, templates, logs, or a rendered file.
+
+The default names above are overridable in `.agentic/config.yml`
+(e.g. `providers: { anthropic: { api_key_secret: MY_CLAUDE_KEY } }`). **Caveat:** the shipped
+`implementor.yml` template currently hardcodes `ANTHROPIC_API_KEY`; changing that name in config
+today leaves the rendered job without its credential even though `doctor` succeeds — use the
+default name until the resolved name is wired into the template
+([onboarding-and-config.md](onboarding-and-config.md)).
+
+**Plan requirement.** Organization secrets require **GitHub Team or Enterprise Cloud**.
+On GitHub Free, organization secrets for Actions are not available for private repositories;
+in that case, create the secrets at the repository scope instead (the pipeline reads them the
+same way — only the location changes). Public repositories can use org secrets on any plan.
+
+**How to share at org scope (GitHub).** In your organization's settings under
+*Secrets and variables → Actions*, create each secret and set repository access to
+**Selected repositories** (add only the onboarded repos — not All repositories, which would
+expose these credentials to every repo in the org). The pipeline reads each
+secret by name; no per-repo copy of the value is needed.
+
+**Confirming required names.** `stagr doctor` reports the secret names the config requires (e.g.
+`providers.anthropic.api_key_secret → ANTHROPIC_API_KEY`). It does **not** probe GitHub to verify
+those names are populated at the org scope; confirming that each name resolves is a one-time
+manual step at onboarding ([onboarding-and-config.md](onboarding-and-config.md)).
+
+**Validation.** `validate_config.py` confirms that every secret-name field in the config holds an
+identifier (e.g. `ANTHROPIC_API_KEY`) rather than a literal credential value. A value that does not
+match the identifier format (`[A-Za-z_][A-Za-z0-9_]*`) fails the check, catching a committed secret
+at the pre-merge CI stage (not as a local pre-push hook).
 
 ## Execution stays on the user's side of the line
 

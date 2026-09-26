@@ -16,6 +16,9 @@ Checks:
      if it names a `skill`, that skill dir exists.
   7. Every skill (stagr/templates/skills/*/SKILL.md) has parseable YAML frontmatter with
      the required keys and a `verdict:` line inside a fenced code block.
+  8. Secret-name fields in config files hold valid identifiers (e.g. ANTHROPIC_API_KEY),
+     not literal credential values, and do not use the reserved GITHUB_ prefix that
+     GitHub forbids for user-defined secrets.
 
 Exit code 0 = all pass; non-zero = at least one failure (details on stderr).
 """
@@ -33,6 +36,15 @@ ROOT = Path(__file__).resolve().parents[2]
 SKILL_REQUIRED_KEYS = {"id", "name", "stage_type", "version"}
 errors: list[str] = []
 
+# A GitHub Actions secret name may only contain letters, digits, and underscores,
+# and must start with a letter or underscore.  Any value in a *_secret config field
+# that does not match this pattern is flagged as a potential literal credential value.
+_SECRET_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# GitHub forbids user-defined secrets beginning with GITHUB_ (case-insensitive).
+# Any secret name starting with this prefix cannot be provisioned by an operator.
+_RESERVED_SECRET_PREFIX_RE = re.compile(r"^GITHUB_", re.IGNORECASE)
+
 # Reuse the toolkit's OWN canonical validator (schema + semantic coherence + templating safety) rather
 # than reimplementing those checks here — so CI exercises the same front door `stagr validate` uses.
 sys.path.insert(0, str(ROOT))
@@ -46,6 +58,66 @@ def fail(msg: str) -> None:
 def load_yaml(path: Path):
     with path.open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+def _collect_secret_fields(obj, path: str = "") -> list[tuple[str, str]]:
+    """Recursively collect (field_path, value) for every *_secret key in a config dict."""
+    result: list[tuple[str, str]] = []
+    if isinstance(obj, dict):
+        for key, val in obj.items():
+            child_path = f"{path}.{key}" if path else key
+            if isinstance(key, str) and key.endswith("_secret") and isinstance(val, str):
+                result.append((child_path, val))
+            else:
+                result.extend(_collect_secret_fields(val, child_path))
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            result.extend(_collect_secret_fields(item, f"{path}[{i}]"))
+    return result
+
+
+def check_secret_name_fields(cfg, label: str) -> None:
+    """Check 8: secret-name fields hold valid identifiers, not literal credential values."""
+    if not isinstance(cfg, dict):
+        return
+    for field_path, value in _collect_secret_fields(cfg):
+        if not _SECRET_NAME_RE.fullmatch(value):
+            fail(
+                f"{label}: {field_path}: value looks like a literal credential rather than "
+                f"a secret name (expected an identifier like ANTHROPIC_API_KEY containing "
+                f"only letters, digits, and underscores); secrets must be referenced by "
+                f"name only — never commit a secret value"
+            )
+        elif _RESERVED_SECRET_PREFIX_RE.match(value):
+            fail(
+                f"{label}: {field_path}: secret name starts with the reserved "
+                f"'GITHUB_' prefix — GitHub forbids user-defined secrets beginning with "
+                f"GITHUB_ (case-insensitive); choose a different name"
+            )
+
+
+def _collect_extends_base_paths(cfg: dict, base_dir: Path, _seen: set | None = None) -> list[Path]:
+    """Collect all local base file paths in the extends chain (depth-first, no duplicates)."""
+    _seen = _seen or set()
+    ext = cfg.get("extends")
+    if not ext:
+        return []
+    bases: list[str] = [ext] if isinstance(ext, str) else ext if isinstance(ext, list) else []
+    result: list[Path] = []
+    for ref in bases:
+        if isinstance(ref, str) and not ref.startswith(("http://", "https://")):
+            p = (base_dir / ref).resolve()
+            key = str(p)
+            if key not in _seen and p.exists():
+                _seen.add(key)
+                result.append(p)
+                try:
+                    base_cfg = load_yaml(p)
+                    if isinstance(base_cfg, dict):
+                        result.extend(_collect_extends_base_paths(base_cfg, p.parent, _seen))
+                except Exception:  # noqa: BLE001
+                    pass
+    return result
 
 
 def check_stage_graph(cfg, label: str) -> None:
@@ -189,16 +261,34 @@ def main() -> int:
             continue
         validate(cfg, rel)
         check_stage_graph(cfg, rel)
-        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) + templating
-        # safety (no ${{ }} / breakout char in any operator literal). Same code path as `stagr validate`.
+        # Canonical validation and resolved secret check for the real config; template gets raw check.
         # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g. a
         # <anthropic-default-model>) that a real config replaces and that resolution would reject.
         if rel == ".agentic/config.yml":
+            # Check secret fields on the extends-resolved config so inherited literal credentials
+            # are caught. Fall back to the raw config if resolution fails (failure already reported).
+            try:
+                check_secret_name_fields(render.load_config(path), rel)
+            except render.RenderError as exc:
+                fail(f"{rel}: cannot resolve extends for secret-field check: {exc}")
+                check_secret_name_fields(cfg, rel)
+            # Also check each raw base file individually: resolve_extends() discards fields that
+            # the child overrides, so a literal credential in a base file would be invisible in
+            # the merged config above even though it is committed on disk.
+            for base_path in _collect_extends_base_paths(cfg, path.parent):
+                try:
+                    base_cfg = load_yaml(base_path)
+                    base_rel = str(base_path.relative_to(ROOT))
+                    check_secret_name_fields(base_cfg, f"{rel} extends base {base_rel}")
+                except Exception as exc:  # noqa: BLE001
+                    fail(f"{rel}: cannot check extends base {base_path}: {exc}")
             try:
                 render.validate_config(cfg)
                 print(f"OK  {rel} passes canonical validation (schema + semantics + templating)")
             except render.RenderError as exc:
                 fail(f"{rel}: canonical validation failed: {exc}")
+        else:
+            check_secret_name_fields(cfg, rel)
 
     # 4. Minimal config.
     validate(

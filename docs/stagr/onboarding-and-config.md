@@ -15,7 +15,7 @@ genuinely its own.
 | Concern | How it is one-time |
 |---|---|
 | **App installation + config** | The agent apps (Codex, Claude) are installed once at the org, for all or selected repos. **Installation alone is not enough:** the Codex App must be **configured to auto-run the code review on PR open** (the rendered `request-review.yml` listens to pushes, not PR-open events, so a freshly opened PR relies on the App to start the code review), and its **native security auto-review must be disabled** so it does not race the final-security workflow. Miss either and a PR can go unreviewed or get concurrent code+security reviews. |
-| **Secrets & environment** | Org/environment secrets shared to selected repos — no per-repo secret setup ([security-and-secrets.md](security-and-secrets.md)). |
+| **Secrets & environment** | Org secrets shared to selected repos — no per-repo secret setup ([security-and-secrets.md](security-and-secrets.md)). |
 | **The pipeline** | Org **required/reusable workflows** injected centrally, so a repo needs no copied-in workflow files. |
 | **The gate** | Org **rulesets** enforce branch protection + required checks across repos from a place a repo/PR cannot edit, and **must enable "dismiss stale approvals on push"** so a post-approval commit invalidates the prior human approval (this is what makes the human-lane re-approval rule real — see [edge-cases.md](edge-cases.md)). ([trust-and-correctness.md](trust-and-correctness.md#anti-tamper--enforcement)) |
 
