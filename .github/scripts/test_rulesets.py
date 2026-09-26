@@ -6,8 +6,8 @@ Checks that the JSON at docs/stagr/rulesets/org-branch-protection.json:
   - is an org-level ruleset (target == "branch", enforcement == "active");
   - includes a pull_request rule with dismiss_stale_reviews_on_push == true
     and required_approving_review_count == 0;
-  - includes a required_status_checks rule with strict_required_status_checks_policy == true
-    and contexts exactly {"Validate", "Publish fast review result"}.
+  - includes a required_status_checks rule with strict_required_status_checks_policy == true,
+    do_not_enforce_on_create == true, and contexts exactly {"Validate", "Publish fast review result"}.
 
 Run with: python .github/scripts/test_rulesets.py
 Exit 0 = all checks pass.  Exit 1 = one or more failures (details printed).
@@ -100,6 +100,14 @@ def test_ruleset_json() -> None:
             fail(
                 "required_status_checks rule must have parameters.strict_required_status_checks_policy == true; "
                 f"got {rsc_params.get('strict_required_status_checks_policy')!r}"
+            )
+        if rsc_params.get("do_not_enforce_on_create") is True:
+            ok("do_not_enforce_on_create == true")
+        else:
+            fail(
+                "required_status_checks rule must have parameters.do_not_enforce_on_create == true "
+                "so newly created repositories can push their initial default branch; "
+                f"got {rsc_params.get('do_not_enforce_on_create')!r}"
             )
         checks = rsc_params.get("required_status_checks", [])
         if not isinstance(checks, list):
