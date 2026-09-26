@@ -157,7 +157,7 @@ Profile expansions:
 |---|---|
 | `minimal` | implement, review (advisory; humans merge) |
 | `standard` | implement, review (blocking), security (advisory) |
-| `full` | plan, implement, security, test, integration-test, review, docs |
+| `full` | implement, security, test, integration-test, review |
 | `custom` | none — you define every stage |
 
 ---

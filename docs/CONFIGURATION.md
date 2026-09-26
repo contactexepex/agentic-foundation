@@ -107,7 +107,7 @@ defaults:
 ### `profile`
 | Field | Meaning |
 |---|---|
-| `profile` | Onboarding shortcut that expands to a default stage graph: `minimal` (implement + review), `standard` (implement + review + security), `full` (plan + implement + security + test + integration-test + review + docs), or `custom` (no auto stages). Default `standard`. Stages you list under `stages` are merged on top (same id overrides). |
+| `profile` | Onboarding shortcut that expands to a default stage graph: `minimal` (implement + review), `standard` (implement + review + security), `full` (implement + security + test + integration-test + review), or `custom` (no auto stages). Default `standard`. Stages you list under `stages` are merged on top (same id overrides). |
 
 ### `platform`
 | Field | Meaning |

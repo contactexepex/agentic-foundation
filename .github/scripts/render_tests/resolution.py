@@ -27,6 +27,10 @@ def test_resolution() -> None:
 def test_profile_expansion() -> None:
     ids = [s["id"] for s in render.expand_stages({"profile": "standard"})]
     check(ids == ["implement", "review", "security"], "profile: standard expands to implement/review/security")
+    # #77: the dev-lane `full` profile drops plan/docs (they belong to the Planning/CD sibling toolkits).
+    full_ids = [s["id"] for s in render.expand_stages({"profile": "full"})]
+    check(full_ids == ["implement", "security", "test", "integration-test", "review"],
+          "profile: full expands to the dev-lane graph without plan/docs")
     # override merges onto profile
     merged = render.expand_stages({"profile": "standard", "stages": [{"id": "review", "provider": "openai"}]})
     review = next(s for s in merged if s["id"] == "review")
