@@ -37,6 +37,7 @@ from render_tests.gate_behavior import test_gate_behavior
 from render_tests.protected_paths import test_protected_paths_guard
 from render_tests.isolation import test_implementer_principal_isolation
 from render_tests.permissions import test_least_privilege_permissions
+from render_tests.config_layering import test_config_layering
 
 
 def main() -> int:
@@ -61,6 +62,7 @@ def main() -> int:
     test_render_structural()
     test_actions_sha_pinned()
     test_least_privilege_permissions()
+    test_config_layering()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
         return 1
