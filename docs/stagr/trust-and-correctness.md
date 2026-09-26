@@ -121,8 +121,11 @@ A gate a PR can edit away is not a gate.
 - **The gate's definition and required-check set must live where a PR cannot change them.** The
   strong form is **org rulesets** (required checks + branch protection enforced org-wide from a
   place the repo/PR cannot edit) and **org-injected required/reusable workflows**, so a PR that
-  deletes or edits a per-repo workflow file cannot remove the requirement. See
-  [onboarding-and-config.md](onboarding-and-config.md).
+  **deletes or renames** a per-repo workflow file cannot bypass the required-check gate. A PR can
+  still **replace** the workflow body with a trivially passing job while keeping the same path and
+  check name — the ruleset still accepts it because the check identity (name + App id) matches.
+  Protecting against that requires an org-controlled or base-ref-protected check producer, which is
+  outside this toolkit's current scope. See [onboarding-and-config.md](onboarding-and-config.md).
 - **Trusted authors and same-repo only.** Automation is driven only by trusted
   `author_association` on same-repo branches; **fork PRs never drive automation** and never reach
   a credential.
@@ -152,15 +155,24 @@ This is why the gate's layered guarantee is built on org rulesets rather than a 
 
 ### Required ruleset settings
 
-Three settings are mandatory for the gate to hold:
+The reference template configures the following settings:
 
-| Setting | Why it is required |
-|---|---|
-| **Branch protection** (`pull_request` rule) | Prevents direct pushes to the default branch; requires a pull request so the gate has something to evaluate. |
-| **Required status checks** (`required_status_checks` rule) | Forces at least the `Validate` check and the `Publish fast review result` router status to pass before merge, server-side — closing the "delete validate.yml" bypass. |
-| **`dismiss_stale_reviews_on_push`** (parameter in the `pull_request` rule, set to `true`) | A commit pushed after a human approval invalidates that approval, so a human-lane re-approval on the new head is real. Without this, an approval on an old head survives a force-push or additional commit. |
+| Setting | Value | Why |
+|---|---|---|
+| `pull_request` rule | (present) | Prevents direct pushes to the default branch; requires a pull request so the gate has something to evaluate. |
+| `dismiss_stale_reviews_on_push` | `true` | A commit pushed after a human approval invalidates that approval, so a human-lane re-approval on the new head is real. Without this, an approval on an old head survives a force-push or additional commit. |
+| `required_review_thread_resolution` | `true` | Prevents a race where a review thread is reopened after the gate's final read but before the merge PUT. |
+| `required_status_checks` rule | (present) | Forces at least the `Validate` check and the `Publish fast review result` router status to pass before merge, server-side — preventing the "delete or rename validate.yml" bypass. Note: this prevents bypassing the gate via deletion or rename; it does **not** prevent a trusted author from replacing the workflow body with a trivially passing job (see the anti-tamper note above). |
+| `strict_required_status_checks_policy` | `true` | PRs must be up-to-date with the base branch before merging, preventing a merge against a stale base. |
+| `do_not_enforce_on_create` | `true` | Newly created repositories can push their initial default branch without required status checks blocking the bootstrap push. |
 
-A minimal reference template is at
+> **Foundation-lane note.** The reference template does **not** include
+> `required_approving_review_count`. The foundation lane's auto-merge does not create a human
+> approval, so requiring one would block automated merges. Repos that use the human-gated lane may
+> add `"required_approving_review_count": 1` to the `pull_request` parameters when applying this
+> template.
+
+A reference template is at
 [`rulesets/org-branch-protection.json`](rulesets/org-branch-protection.json). It is a **reference
 only** — not executable as-is. Before applying it:
 
