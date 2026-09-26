@@ -9,6 +9,9 @@ from .harness import REPO_ROOT, check, render
 
 # A pinned third-party/repo action ref ends in `@<40-hex-sha>` (immutable), not `@<tag>`.
 _SHA_PIN = re.compile(r"@[0-9a-f]{40}$")
+# An immutable Docker image ref ends in `@sha256:<64-hex>` — a full digest, not just the marker
+# (`@sha256:` alone, or a truncated/non-hex digest, is not a usable immutable pin).
+_DOCKER_DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
 
 
 def _rendered_workflows() -> dict[str, str]:
@@ -63,8 +66,8 @@ def test_actions_sha_pinned() -> None:
                 continue  # local action / reusable workflow — not a third-party supply-chain surface
             if ref.startswith("docker://"):
                 checked += 1
-                check("@sha256:" in ref,
-                      f"pin: {name} docker image '{ref}' is pinned to an immutable @sha256 digest (not a mutable tag)")
+                check(bool(_DOCKER_DIGEST.search(ref)),
+                      f"pin: {name} docker image '{ref}' is pinned to a full immutable @sha256:<64-hex> digest (not a tag or partial digest)")
                 continue
             checked += 1
             check(bool(_SHA_PIN.search(ref)),
