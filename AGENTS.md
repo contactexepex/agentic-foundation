@@ -24,7 +24,7 @@ gate merges.
 ## Agent roles
 
 - **Claude Code** is the primary implementation agent for authorized tasks: owns the feature branch,
-  focused implementation, tests/validation, commit, PR, and remediation of accepted review findings.
+  focused implementation, tests/validation, commit, PR, and remediation of **accepted** review findings.
 - **Codex** is the independent PR reviewer (code review and security review). It reports actionable
   findings; it does not implement the original task. After Claude addresses findings, Codex reviews
   only the delta.
@@ -34,6 +34,32 @@ gate merges.
   outdated.
 - If a finding cannot be resolved within the bounded review cycles in `CLAUDE.md`, escalate to a
   human rather than looping.
+
+## Evaluating review findings
+
+Review comments require judgment — not every finding requires a fix. Both Claude (as implementor)
+and Codex (as reviewer) must apply this standard:
+
+**A finding is actionable when it describes a real problem in the actual change** — a correctness
+error with realistic inputs, a concrete security risk under normal operator config, a broken contract,
+or a meaningful test gap for changed code.
+
+**A finding should be declined when:**
+- **Speculative**: the failure requires operator choices or config combinations no realistic user
+  would make, or that existing schema validation / runtime enforcement already prevents.
+- **Over-engineered**: the proposed fix adds complexity disproportionate to the real-world risk;
+  the simpler current code is correct for all realistic inputs.
+- **Already enforced**: the concern is addressed by the schema, an existing test, or a documented
+  convention the reviewer did not account for.
+- **Style/cosmetic**: no functional, correctness, or safety impact.
+
+**Codex (reviewer):** report only findings that meet the actionable bar above. A finding that
+requires unrealistic preconditions is noise that slows the pipeline — omit it or mark it `nit` at
+most. Focus on what is actually broken in what the diff actually changes.
+
+**Claude (implementor):** decline non-actionable findings with one evidence-based reply, resolve the
+thread, and move on. Do not loop on a finding you have declined with evidence. One remediation cycle
+per finding is the limit.
 
 ## Core operating loop
 
