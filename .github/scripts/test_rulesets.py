@@ -70,13 +70,6 @@ def test_ruleset_json() -> None:
         fail("no 'pull_request' rule found — branch protection missing")
     else:
         pr_params = pr_rules[0].get("parameters", {})
-        if pr_params.get("dismiss_stale_reviews_on_push") is True:
-            ok("dismiss_stale_reviews_on_push == true")
-        else:
-            fail(
-                "pull_request rule must have parameters.dismiss_stale_reviews_on_push == true; "
-                f"got {pr_params.get('dismiss_stale_reviews_on_push')!r}"
-            )
         if pr_params.get("required_review_thread_resolution") is True:
             ok("required_review_thread_resolution == true")
         else:
@@ -84,6 +77,13 @@ def test_ruleset_json() -> None:
                 "pull_request rule must have parameters.required_review_thread_resolution == true "
                 "so unresolved review threads cannot slip through the gate's read-to-merge window; "
                 f"got {pr_params.get('required_review_thread_resolution')!r}"
+            )
+        if pr_params.get("dismiss_stale_reviews_on_push") is True:
+            ok("dismiss_stale_reviews_on_push == true")
+        else:
+            fail(
+                "pull_request rule must have parameters.dismiss_stale_reviews_on_push == true; "
+                f"got {pr_params.get('dismiss_stale_reviews_on_push')!r}"
             )
         if pr_params.get("required_approving_review_count") == 0:
             ok("required_approving_review_count == 0")
