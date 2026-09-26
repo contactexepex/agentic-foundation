@@ -49,8 +49,9 @@ EXPECTED: dict[str, dict[str, str]] = {
     # No workflow-token scopes: resolve-threads runs every API call on the remediation PAT
     # (GH_TOKEN) and never checks out PR content, so the built-in GITHUB_TOKEN needs nothing.
     "resolve-threads.yml": {},
+    # The router lists PR files (pull-requests: read) and publishes a commit status
+    # (statuses: write); it checks out nothing, so it needs no contents access.
     "review-router.yml": {
-        "contents": "read",
         "pull-requests": "read",
         "statuses": "write",
     },
