@@ -128,8 +128,11 @@ jobs:
             *)
               # GET params via -f so a branch name containing '&', '#', etc. is URL-encoded rather than
               # parsed as query syntax (which would query the wrong base and skip eligible PRs).
+              # Oldest-updated-first so an older ready PR is never repeatedly reached last when many
+              # PRs are open and a single sweep exhausts its run budget (#33).
               mapfile -t PRS < <(gh api --paginate --method GET "repos/$REPO/pulls" \
                 -f state=open -f "base=$DEFAULT_BRANCH" -f per_page=100 \
+                -f sort=updated -f direction=asc \
                 --jq '.[].number') || PRS=() ;;
           esac
 
