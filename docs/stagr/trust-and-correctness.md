@@ -183,8 +183,7 @@ only** — not executable as-is. Before applying it:
    GET https://api.github.com/apps/{app-slug}
    ```
    The `id` field in the response is the numeric App ID. For status checks produced by GitHub
-   Actions workflows the app slug is `github-actions`. Alternatively, visit the app's GitHub
-   settings page — the numeric segment in the URL path is the App ID. Leave `integration_id: null`
+   Actions workflows the app slug is `github-actions`. Leave `integration_id: null`
    if the check producer is not a GitHub App (e.g. a third-party CI service that posts a commit
    status directly via the Statuses API).
 2. Scope `repository_name.include` to the repos you want covered. **Caution with `~ALL`:** applying
