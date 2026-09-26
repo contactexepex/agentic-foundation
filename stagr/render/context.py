@@ -92,6 +92,7 @@ SAFE_LITERAL_TOKENS = frozenset({
     "default_branch",
     "human_merge_label",
     "dispatch_label",
+    "approved_story_label",
     "fast_path_globs_json",
     "fast_path_exclude_json",
     "implementer_model",
@@ -287,6 +288,8 @@ def build_context(cfg: dict[str, Any]) -> RenderContext:
                                           "platform.labels.human_merge")
     dispatch_label = assert_safe_label(str(labels.get("dispatch", "agentic-task")),
                                        "platform.labels.dispatch")
+    approved_story_label = assert_safe_label(str(labels.get("approved_story", "approved-story")),
+                                             "platform.labels.approved_story")
 
     stages = {stage["id"]: stage for stage in expand_stages(cfg)}
     stage_list = list(stages.values())
@@ -321,6 +324,7 @@ def build_context(cfg: dict[str, Any]) -> RenderContext:
         RenderedValue("default_branch", default_branch, "platform.default_branch", True),
         RenderedValue("human_merge_label", human_merge_label, "platform.labels.human_merge", True),
         RenderedValue("dispatch_label", dispatch_label, "platform.labels.dispatch", True),
+        RenderedValue("approved_story_label", approved_story_label, "platform.labels.approved_story", True),
         RenderedValue("codex_review_secret", codex_review_secret, "platform.auth.token_secret", True),
         RenderedValue("implementer_model", implementer_model, "<implement stage model>", True),
         # JSON lists of operator globs / check names — each element validated above / in the resolver.

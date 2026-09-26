@@ -1,7 +1,7 @@
 name: Claude Code Implementor
 
 # Rendered by the stagr CLI. Do not edit by hand; edit the template and re-render.
-# Manual, safe entry point for the implementer agent on a feature branch.
+# Entry points: manual workflow_dispatch (any task) and the approved-story issue label trigger.
 on:
   workflow_dispatch:
     inputs:
@@ -9,6 +9,8 @@ on:
         description: "Scoped engineering task for the implementer. Be specific."
         required: true
         type: string
+  issues:
+    types: [labeled]
 
 concurrency:
   group: claude-code-implementor
@@ -22,6 +24,10 @@ permissions:
 jobs:
   implement:
     name: Implement on a feature branch
+    # Run on manual dispatch, or when an issue is labeled with the approved-story label.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == '{{ approved_story_label }}'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -48,7 +54,7 @@ jobs:
         uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: ${{ github.event.inputs.task }}
+          prompt: ${{ github.event.inputs.task || github.event.issue.html_url }}
           base_branch: "{{ default_branch }}"
           branch_prefix: claude/
           claude_args: |
