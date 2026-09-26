@@ -16,8 +16,9 @@ Checks:
      if it names a `skill`, that skill dir exists.
   7. Every skill (stagr/templates/skills/*/SKILL.md) has parseable YAML frontmatter with
      the required keys and a `verdict:` line inside a fenced code block.
-  8. Secret-name fields in config files hold identifiers (e.g. ANTHROPIC_API_KEY), not
-     literal credential values — secrets are referenced by name only, never by value.
+  8. Secret-name fields in config files hold valid identifiers (e.g. ANTHROPIC_API_KEY),
+     not literal credential values, and do not use the reserved GITHUB_ prefix that
+     GitHub forbids for user-defined secrets.
 
 Exit code 0 = all pass; non-zero = at least one failure (details on stderr).
 """
@@ -39,6 +40,10 @@ errors: list[str] = []
 # and must start with a letter or underscore.  Any value in a *_secret config field
 # that does not match this pattern is flagged as a potential literal credential value.
 _SECRET_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# GitHub forbids user-defined secrets beginning with GITHUB_ (case-insensitive).
+# Any secret name starting with this prefix cannot be provisioned by an operator.
+_RESERVED_SECRET_PREFIX_RE = re.compile(r"^GITHUB_", re.IGNORECASE)
 
 # Reuse the toolkit's OWN canonical validator (schema + semantic coherence + templating safety) rather
 # than reimplementing those checks here — so CI exercises the same front door `stagr validate` uses.
@@ -72,7 +77,7 @@ def _collect_secret_fields(obj, path: str = "") -> list[tuple[str, str]]:
 
 
 def check_secret_name_fields(cfg, label: str) -> None:
-    """Check 8: secret-name fields hold identifiers, not literal credential values."""
+    """Check 8: secret-name fields hold valid identifiers, not literal credential values."""
     if not isinstance(cfg, dict):
         return
     for field_path, value in _collect_secret_fields(cfg):
@@ -82,6 +87,12 @@ def check_secret_name_fields(cfg, label: str) -> None:
                 f"a secret name (expected an identifier like ANTHROPIC_API_KEY containing "
                 f"only letters, digits, and underscores); secrets must be referenced by "
                 f"name only — never commit a secret value"
+            )
+        elif _RESERVED_SECRET_PREFIX_RE.match(value):
+            fail(
+                f"{label}: {field_path}: secret name '{value}' starts with the reserved "
+                f"'GITHUB_' prefix — GitHub forbids user-defined secrets beginning with "
+                f"GITHUB_ (case-insensitive); choose a different name"
             )
 
 
