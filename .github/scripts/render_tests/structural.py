@@ -53,13 +53,19 @@ def test_actions_sha_pinned() -> None:
     """Supply-chain integrity: every third-party action a rendered workflow `uses:` must be pinned
     to an immutable 40-char commit SHA, never a mutable tag/branch (docs/stagr/security-and-secrets.md).
     A local action (`./…`) or reusable-workflow path in the same repo is not a third-party supply-chain
-    surface and is exempt; a `docker://` image ref is out of scope for this SHA rule."""
+    surface and is exempt; a `docker://` image ref must be digest-pinned to an immutable `@sha256:`
+    digest (a mutable tag like `:latest` is rejected)."""
     workflows = _rendered_workflows()
     checked = 0
     for name, content in workflows.items():
         for ref in _iter_uses(yaml.safe_load(content)):
-            if ref.startswith("./") or ref.startswith("docker://"):
-                continue  # local action / container image — not a tag-pinnable third-party ref
+            if ref.startswith("./"):
+                continue  # local action / reusable workflow — not a third-party supply-chain surface
+            if ref.startswith("docker://"):
+                checked += 1
+                check("@sha256:" in ref,
+                      f"pin: {name} docker image '{ref}' is pinned to an immutable @sha256 digest (not a mutable tag)")
+                continue
             checked += 1
             check(bool(_SHA_PIN.search(ref)),
                   f"pin: {name} action '{ref}' is pinned to a 40-char commit SHA (not a mutable tag)")
