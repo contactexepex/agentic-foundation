@@ -80,14 +80,15 @@ finding — review comments require judgment, not blind acceptance.
 
 **How to decline**: reply once on the thread with the specific evidence-based reason (cite the
 existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
-Resolve the thread and move on. Do not loop: a declined finding stays declined unless Codex presents
-new evidence in the delta review. One remediation cycle per finding, maximum.
+Do not resolve the thread — leave it open for the Codex delta review. Do not loop: a declined
+finding stays declined unless Codex presents new evidence in the delta review. One remediation
+cycle per finding, maximum.
 
-For accepted findings: fix, add/adjust checks, rerun validation, commit, push, and post `@codex review`
-for a delta covering only the changed code and any unresolved findings. Limit the total
-remediation → delta-review loop to two iterations; if material findings remain after that, escalate to
-a human rather than looping. If Codex review is unavailable, report the PR as awaiting independent
-review — never substitute self-review for it.
+For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
+workflow requests the delta review automatically. Limit the total remediation → delta-review loop
+to two iterations; if material findings remain after that, escalate to a human rather than looping.
+If Codex review is unavailable, report the PR as awaiting independent review — never substitute
+self-review for it.
 
 ## Resume safely
 
