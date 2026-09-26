@@ -63,8 +63,11 @@ about the sink, endpoint, or format is hardcoded; it adapts to what the org alre
 ### The record must always exist (sink failure handling)
 
 Because "every decision is recorded" and "a merge without a record is defective" must both hold, the
-**platform's native run log is the durable record of record**, written **first and locally**; remote
-emission to a configured sink is **best-effort on top**. Therefore:
+intended design writes to a **durable outbox** and treats remote emission as **best-effort on top**.
+**Caveat [target]:** the platform's native run log is only a *fallback*, and it is **retention-bound
+and deletable** — it is **not** a truly durable record. So the "nothing is lost / always auditable"
+guarantee holds **only once a durable outbox (or a sink delivery-acknowledgement) is implemented**;
+until then it is best-effort. With that outbox in place:
 
 - **No sink configured** → the record lives in the native run log; nothing is lost.
 - **Configured sink unavailable** (webhook down, OTLP collector unreachable, bus rejects) → the

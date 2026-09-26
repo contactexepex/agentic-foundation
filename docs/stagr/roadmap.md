@@ -9,11 +9,11 @@ GitHub first**, and **name the agent-backend seam now, ship one GitHub-native ba
 | Area | Today | This design adds |
 |---|---|---|
 | Dev-lane core | validate, review router, implement, Codex code + security review, thread cleanup, fail-closed gate, merge lanes — **rendered** | Formalizes the **ordered gate** (security/SAST before integration/perf/custom) and the readiness predicate |
-| Trust/correctness | SHA-bound, fail-closed, base-controlled, serialized security review, scheduled sweep — **built** (PR #22/#25/#27) | States them as **invariants with required tests**; adds **anti-tamper via org rulesets** |
+| Trust/correctness | SHA-bound, fail-closed, base-controlled, scheduled sweep — **built** (PR #22/#25/#27). Security review is serialized **within its own workflow** (residual cross-workflow window — see trust doc) | States them as **invariants with required tests**; adds **anti-tamper via org rulesets**; closes the review window + base-retarget binding |
 | Backends | `claude-code-action` (implement), `codex` (review/security) | Names the **agent-backend seam** (cloud/CLI as future adapters) |
 | Governance | budgets/guardrails referenced in the contract (default-disabled) | **[target]** loop caps, cost ceiling, circuit breaker, and **escalation** terminal states — not yet rendered |
-| Audit | decision events in scope | First-class **decision record + provenance** stream and orchestrator seam |
-| Onboarding | per-repo config; `doctor`/`plan`/`apply` on the roadmap | **Org-scoped** provisioning + **org-default/per-repo override** + **schema versioning/migration** |
+| Audit | decision events **in scope but not emitted** (no emitter ships) | First-class **decision record + provenance** stream and orchestrator seam — all **[target]** |
+| Onboarding | per-repo config; **`doctor`/`plan`/`apply` shipped** (in `stagr/cli/`) | **Org-scoped** provisioning + **org-default/per-repo override** + **schema versioning/migration** |
 | Platforms | GitHub renderer | Neutrality kept as a **contract principle**; more renderers later |
 
 ## Phase 1 — Harden the GitHub dev lane (now)
@@ -73,6 +73,15 @@ behaviour and the stated design:
 - **`doctor` environment probes.** Check that required secrets actually exist and the gate/ruleset is
   installed — today `doctor` only resolves config, lists secret names, and renders.
   ([onboarding-and-config.md](onboarding-and-config.md))
+- **Base-retarget evidence binding.** Invalidate/rerun validate + review when a PR is retargeted to a
+  new base (evidence is head-SHA-bound only today). ([trust-and-correctness.md](trust-and-correctness.md))
+- **Provider secret wiring.** Render the resolved `providers.<p>.api_key_secret` name into
+  `implementor.yml` instead of hardcoding `ANTHROPIC_API_KEY`.
+  ([onboarding-and-config.md](onboarding-and-config.md))
+- **Fork build-token hardening.** Prevent a fork PR's `build.commands` from reading even the
+  read-scoped `GITHUB_TOKEN` in Validate. ([security-and-secrets.md](security-and-secrets.md))
+- **Durable audit outbox.** A durable outbox / sink delivery-acknowledgement so a decision record
+  cannot be lost to run-log retention. ([audit-and-provenance.md](audit-and-provenance.md))
 
 ## Phase 2 — Org-scale onboarding & the stage catalogue
 

@@ -31,6 +31,11 @@ to:
    commit crafted to share a reviewed head's short prefix could satisfy the fallback. Removing the
    abbreviated fallback in favour of the full machine-readable marker/object (exact-only binding) is
    an open hardening item ([roadmap.md](roadmap.md)).
+   **Base-retarget gap [target].** Evidence is bound to the **head** SHA only — `validate.yml` and
+   `request-review.yml` do not re-trigger on a **base change** (retarget). So a PR reviewed/validated
+   against one base and then **retargeted to the default branch with the same head** can be merged on
+   **stale evidence** while `mergeable_state == clean`, even though the effective diff changed. Binding
+   evidence to the base revision (or invalidating + rerunning on retarget) is an open hardening item.
 
 3. **Base-controlled definition and execution.** The gate workflow's definition **and** its token
    come from the trusted base branch, never from PR content. The gate **never checks out or

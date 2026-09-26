@@ -66,6 +66,11 @@ See [`../CLI.md`](../CLI.md) for the authoritative command reference; in summary
   workflows. It does **not** probe the environment — it does **not** check whether those secrets
   actually exist, or whether the merge gate/ruleset is installed. Verifying secrets and rulesets is a
   **manual** onboarding step today; automated environment probes are **[target]**.
+  - **Known gap [target]:** for an implement stage, `doctor` reports the configured
+    `providers.anthropic.api_key_secret` name, but the shipped `implementor.yml` **hardcodes
+    `ANTHROPIC_API_KEY`**. Overriding that secret name today leaves the rendered job **without its
+    credential even though `doctor` succeeds** — use the default name until the resolved name is
+    wired into the template.
 - **`stagr plan`** — dry run: show exactly what `apply` **would** write to `.github/workflows/`
   (with `--diff`), marking each workflow.
 - **`stagr apply`** — **writes the rendered workflow files into `.github/workflows/` in the working

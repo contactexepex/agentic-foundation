@@ -16,10 +16,12 @@ Distinct machine principals stay isolated even though one team owns them:
   identity have **different capabilities that must not be conflated**. A stage gets the identity
   its job requires and no other.
 - **Fork PRs never drive the privileged automation** — the agent, review, and merge lanes run only
-  for trusted `author_association` on same-repo branches, and a fork PR never reaches a credential.
-  (**Exception, stated honestly:** the shipped `validate.yml` triggers on `pull_request`, so it *does*
-  run CI — checkout + `build.commands` — for a fork PR, under GitHub's restricted fork token with no
-  secrets. So "forks drive nothing" means the privileged lanes, not Validate/CI.)
+  for trusted `author_association` on same-repo branches, and a fork PR never reaches a **secret or a
+  write/publisher/merge token**. (**Stated honestly:** the shipped `validate.yml` triggers on
+  `pull_request`, so it *does* run CI — checkout + `build.commands` — for a fork PR. That runs under
+  GitHub's **restricted fork token** with **no secrets**, but the fork's `build.commands` can read the
+  **read-scoped `GITHUB_TOKEN`** in that job; hardening the build against even the read token is a
+  consideration. So "forks drive nothing" means the privileged lanes, not Validate/CI.)
 
 ## Least privilege per stage
 
@@ -47,9 +49,12 @@ scoped to the stage:
 
 So the least-privilege, buffered-apply, and minimal-commenting-identity goals above (including
 splitting PAT login/post into separately-scoped steps) are **[target] hardening items**
-([roadmap.md](roadmap.md)), not enforced guarantees today. What *does* hold: the implementer's
-`GITHUB_TOKEN` carries no **merge** scope, the PAT is used by the workflow's shell and **never handed
-to the model**, and **fork PRs drive no privileged lane** (Validate/CI may still run under GitHub's restricted fork token).
+([roadmap.md](roadmap.md)), not enforced guarantees today. **Honest limitation:** the implementer's
+`GITHUB_TOKEN` holds `contents: write` + `pull-requests: write`, so **absent a server-side ruleset it
+can push to the default branch or call the merge API** — the "work on a feature branch" behaviour is
+**prompt-driven, not enforced**; a scoped publisher and/or a required ruleset is **[target]**. What
+*does* hold today: secrets are name-referenced and redacted, the PAT is never handed to the model, and
+**fork PRs drive no privileged lane**.
 
 ## Secrets model
 
@@ -82,9 +87,11 @@ is a first-class selling point, not an implementation detail.
 ## What "secure" means here
 
 A rendered pipeline is secure only when: no stage holds a scope it does not need; the implementer
-principal cannot reach the **merge scope or the remediation/publisher** credential (its own
-branch-write is expected, and buffered-write isolation of that scope is the **[target]** above);
-every secret is name-referenced and redacted; fork PRs drive no privileged lane (Validate/CI aside); and there is a negative test
+principal's write scope is **narrowed so it cannot merge or reach the remediation/publisher
+credential** (**[target]** — today it holds `contents`/`pull-requests: write` and relies on a
+server-side ruleset to prevent a direct merge to the default branch); every secret is
+name-referenced and redacted; fork PRs drive no privileged lane (Validate/CI aside); and there is a
+negative test
 for each of these in
 [edge-cases.md](edge-cases.md) (e.g. a sentinel injected into every untrusted PR field must never
 reach the build/publish step or a credential).
