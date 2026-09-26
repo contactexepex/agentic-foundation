@@ -68,9 +68,9 @@ PRESET_COMMANDS: dict[str, dict[str, str]] = {
     "custom": {},
 }
 
-# Profile stages carry a provider so a profile renders correctly out of the box: implement/plan/docs
-# run Claude Code (anthropic), review/security/test run Codex (openai). Without it, an unprovidered
-# review stage would inherit `defaults.provider` and silently render no Codex lane.
+# Profile stages carry a provider so a profile renders correctly out of the box: implement runs
+# Claude Code (anthropic), review/security/test/integration-test run Codex (openai). Without it, an
+# unprovidered review stage would inherit `defaults.provider` and silently render no Codex lane.
 PROFILE_STAGES: dict[str, list[dict[str, Any]]] = {
     "minimal": [
         {"id": "implement", "type": "implement", "provider": PROVIDER_ANTHROPIC, "gate": GATE_ADVISORY},
