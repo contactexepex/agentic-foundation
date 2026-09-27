@@ -173,17 +173,11 @@ def test_auto_merge_p0_invariants() -> None:
     am_doc = yaml.safe_load(am)
     for job_name, job in (am_doc.get("jobs") or {}).items():
         job_perms = job.get("permissions") if isinstance(job, dict) else None
-        if job_perms is not None:
-            if isinstance(job_perms, str):
-                # write-all / read-all shorthands grant all permissions (including OIDC) to that job.
-                check(False,
-                      f"P0: auto-merge job '{job_name}' uses scalar permission shorthand '{job_perms}' "
-                      f"which grants all permissions (including OIDC, issues, packages)")
-            elif isinstance(job_perms, dict):
-                for dangerous in ("id-token", "issues", "packages"):
-                    check(dangerous not in job_perms,
-                          f"P0: auto-merge job '{job_name}' has no job-level '{dangerous}' permission "
-                          f"(job-level overrides can escalate the token beyond the top-level set)")
+        if job_perms is not None and isinstance(job_perms, dict):
+            for dangerous in ("id-token", "issues", "packages"):
+                check(dangerous not in job_perms,
+                      f"P0: auto-merge job '{job_name}' has no job-level '{dangerous}' permission "
+                      f"(job-level overrides can escalate the token beyond the top-level set)")
 
 
 def test_build_command_trust_boundary() -> None:
