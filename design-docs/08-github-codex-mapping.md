@@ -120,8 +120,9 @@ posted on their own. See `06-runtime-boundary.md` for the reconciliation model.
 ### review stage execution artifact
 
 ```
-Declared trigger (StageTrigger.PR_UPDATED):
-  pull_request_target [synchronize]
+Declared triggers (StageTrigger.PR_OPENED + StageTrigger.PR_UPDATED):
+  pull_request_target [opened, reopened, ready_for_review]  ← PR_OPENED
+  pull_request_target [synchronize]                          ← PR_UPDATED
     → Resolve PR, enforce TrustPolicy, check idempotency, check routing
     → If all pass: post @codex review with in-flight marker
     → Emit StageResultSignal (state=RUNNING, conclusion=UNKNOWN)
@@ -137,12 +138,13 @@ Reconciliation events (implementation detail, not StageTrigger):
 
 ```
 Same structure as review.
-Declared trigger: pull_request_target [synchronize]
+Declared triggers: pull_request_target [opened, reopened, ready_for_review, synchronize]
+  (PR_OPENED → opened/reopened/ready_for_review; PR_UPDATED → synchronize)
 Reconciliation events: issue_comment [created, edited], check_suite [completed]
 ```
 
-Both artifacts trigger independently on the same declared StageTrigger event
-(`PR_UPDATED`). Neither waits for the other.
+Both artifacts trigger independently on the same declared StageTrigger events
+(`PR_OPENED` and `PR_UPDATED`). Neither waits for the other.
 
 ### Codex Evidence path
 
@@ -207,8 +209,8 @@ The bug is entirely in the rendered implementation. The neutral config needs no 
 
 | Item | Change required |
 |---|---|
-| `request-final-security-review.yml` | Remove code-review-completion gate. Add `pull_request_target: synchronize` trigger. Both stages trigger independently. |
-| `request-codex-review-on-push.yml` | Remove 3-minute security-review serialization wait (lines 218–237). Emit `StageResultSignal` after evidence check. |
+| `request-final-security-review.yml` | Remove code-review-completion gate. Add `pull_request_target: [opened, reopened, ready_for_review, synchronize]` triggers (PR_OPENED + PR_UPDATED). Both stages trigger independently. |
+| `request-codex-review-on-push.yml` | Add `pull_request_target: [opened, reopened, ready_for_review]` triggers (PR_OPENED). Remove 3-minute security-review serialization wait (lines 218–237). Emit `StageResultSignal` after evidence check. |
 | Both stage workflows | Add in-flight idempotency marker (`<!-- stagr:stage:<id>:<sha> -->`). Emit `StageResultSignal` to commit status. |
 | `auto-merge-foundation-prs.yml` | Read `StageResultSignal` commit statuses instead of Codex summary comment rows. |
 | New: provider configuration | Add secret alias → platform secret name mapping (TRUSTED_COMMENTER_TOKEN → REMEDIATION_TOKEN) to provider config. |

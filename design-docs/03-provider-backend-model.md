@@ -140,9 +140,9 @@ This block is optional in V1 when convention-based resolution is sufficient (ali
 platform secret name). It becomes required when the platform secret names differ from
 the aliases the backend declares.
 
-> **Open question for V1:** Should provider configuration live in `config.yml` or in
-> a separate `.agentic/providers.yml`? Either works architecturally. This decision
-> does not affect the neutral stage model.
+> **V1 decision:** Provider configuration lives in `config.yml` under the `providers:`
+> block. A separate `.agentic/providers.yml` is not needed in V1. Keeping everything in
+> one file simplifies the operator experience and the Stagr CLI's config loading path.
 
 ---
 

@@ -40,6 +40,25 @@ The config does **not** contain:
 # .agentic/config.yml
 version: "1"
 
+# Profile selects a named preset that supplies default field values for stages.
+# "custom" means no built-in expansion — all stage fields are declared explicitly.
+# See 02-canonical-stage-model.md for available profiles and expansion rules.
+profile: custom
+
+# Platform declaration. Identifies the target CI/CD platform and its settings.
+# Required. The renderer uses this to select the correct PlatformRenderer.
+platform:
+  type: github              # target platform id (e.g. github, gitlab, bitbucket)
+  default_branch: main      # branch the governance artifact targets for merges
+  trusted_roles:            # AuthorRole[] for TrustPolicy
+    - owner
+    - member
+    - collaborator
+  labels:
+    human_merge: human-merge  # label that forces the human-gated lane
+  auth:
+    token_secret: REMEDIATION_TOKEN  # platform secret name for the trusted-user token
+
 # Pipeline-level routing policy.
 # Renderer translates this into a native path classifier.
 routing:
@@ -89,10 +108,14 @@ stages:
 
 An operator need only specify fields that differ from defaults. The renderer and profile
 expansion (see `02-canonical-stage-model.md`) fill in the rest. The minimal valid config
-for a two-stage review pipeline:
+for a two-stage review pipeline using the `standard` profile:
 
 ```yaml
 version: "1"
+profile: standard
+platform:
+  type: github
+  default_branch: main
 modules:
   auto_merge: true
 stages:

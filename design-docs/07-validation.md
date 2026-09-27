@@ -80,8 +80,12 @@ misconfiguration.
 
 ### V-S11 — Routing policy consistency
 
-When `routing.fast_path.enabled: false`, no `match.paths` or `stages` keys are present
-(dead configuration).
+When `routing.fast_path.enabled: false`, the presence of `match.paths` or `stages` keys
+is **allowed but produces a warning** ("dormant route configuration — fast_path is
+disabled; routing keys are present but will not be evaluated"). This is not a static
+error. Operators may intentionally keep a routing config dormant (e.g., preparing for
+future activation without enabling it yet), and treating it as an error would force
+unnecessary edits when toggling `enabled`.
 
 ### V-S12 — Secret alias resolution
 

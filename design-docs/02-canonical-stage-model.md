@@ -27,6 +27,7 @@ The kind of work a stage performs. Determines which BackendRenderer handles the 
 | `TEST` | Automated test run. Completes when tests finish; conclusion is PASS only when all tests pass. |
 | `DEPLOY` | Deployment step. Environment-specific semantics. |
 | `CUSTOM` | Operator-defined. Semantics declared by the referenced skill. |
+| `IMPLEMENT` | Agentic implementation step. An AI agent (e.g., Claude Code, Codex) reads the task and produces code changes. Completes when the agent finishes its implementation run. Unlike `REVIEW` and `SECURITY`, findings are not expected — the output is a commit or PR update, not a report. |
 
 ### StageGate
 
@@ -49,6 +50,7 @@ When a stage's execution is requested.
 | `PR_OPENED` | Fires when a PR transitions to an open, non-draft state. |
 | `PR_UPDATED` | Fires on every push to an open, non-draft PR. |
 | `MANUAL` | Fires only when explicitly triggered (e.g., a human command). |
+| `ISSUE_LABELED` | Fires when a specific label is applied to an issue. Used to trigger agentic implementation from an issue queue (e.g., applying a `codex-engineering` dispatch label). |
 
 > **V1 scope:** `SCHEDULED` is excluded from V1. It requires a `ScheduleSpec` on
 > `NormalizedStage` (cron expression, timezone, etc.) that is not yet modeled. Any
@@ -200,6 +202,15 @@ stages:
     triggers: [PR_OPENED, PR_UPDATED]
     dependencies: []
 ```
+
+### `custom`
+
+The identity profile — no expansion. A stage that declares `profile: custom` (or a
+config that declares `profile: custom` at the top level) receives no default field
+injection from any built-in preset. Every field the stage requires must be declared
+explicitly by the operator. This is the correct choice for operators who need stage types
+or trigger patterns not covered by `minimal` or `standard` (e.g., `IMPLEMENT` stages
+with `ISSUE_LABELED` triggers).
 
 > **Note:** Profile field values (especially `provider`, `backend`, `model`) are
 > documented here as the V1 default resolution. Operators may override any field per

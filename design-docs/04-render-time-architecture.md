@@ -15,9 +15,10 @@ platform.
 
 ## Render pipeline
 
-The pipeline has two independent paths:
+The pipeline runs in two ordered phases. Phase 1 must complete for all stages before
+Phase 2 begins, because Phase 2 consumes outputs produced by Phase 1.
 
-### Path 1 — Per-stage execution artifacts
+### Phase 1 — Per-stage: BackendRenderer → PlatformRenderer
 
 For each `NormalizedStage` in `RenderContext.stages`:
 
@@ -28,21 +29,27 @@ NormalizedStage
 BackendRenderer(provider, backend)
       │  produces
       ▼
-ExecutionPlan { invocation, requiredSecrets, evidence }
+ExecutionPlan { stageId, invocation, requiredSecrets, evidence, gateDisposition }
       │
       ▼
 PlatformRenderer
-      │  writes
-      ▼
-Stage execution artifact (e.g., one GitHub Actions workflow file per stage)
+      │  produces
+      ├── Stage execution artifact (e.g., one GitHub Actions workflow file per stage)
+      └── StageResultSpec  (how this stage signals its result at run time)
 ```
 
-### Path 2 — Pipeline governance artifacts
+Each `(ExecutionPlan, NormalizedStage)` pair is processed independently. The
+PlatformRenderer writes the stage execution artifact **and** produces a `StageResultSpec`
+describing the platform-native signal location where the artifact will publish
+`StageResultSignal` values.
 
-Once per config, using `RenderContext.routingPolicy` and `RenderContext.mergePolicy`:
+### Phase 2 — Pipeline: governance artifacts from collected StageResultSpecs
+
+After all stages in Phase 1 are processed, the collected `StageResultSpec[]` are
+available. Phase 2 uses them along with the pipeline policies:
 
 ```
-RoutingPolicy + MergePolicy + StageResultSpec[]
+RoutingPolicy + MergePolicy + TrustPolicy + StageResultSpec[]
       │
       ▼
 PlatformRenderer
@@ -51,26 +58,31 @@ PlatformRenderer
 Routing artifact + Governance/merge artifact
 ```
 
-**Separation rule:** Path 1 renderers never read routing or merge policy. Path 2
-renderers never read stage `ExecutionPlan` objects. However, Path 2 **does** receive
-a `StageResultSpec[]` — a summary of how each blocking stage's completion will be
-signalled at run time. See [StageResultSignal and StageResultSpec](#stageresultsignal-and-stageresultspec) below.
+**Why two phases?** The governance artifact must know **where** each blocking stage will
+publish its `StageResultSignal` at run time. This is determined by the PlatformRenderer
+during Phase 1 (not by the BackendRenderer and not from `RenderContext` inputs). Phase 2
+therefore cannot begin until all Phase 1 `StageResultSpec` outputs are collected.
+
+**Separation rule:** Phase 1 renderers never read routing or merge policy. Phase 2
+renderers never read stage `ExecutionPlan` objects directly — they receive only the
+`StageResultSpec[]` summary produced by Phase 1.
 
 ---
 
 ## RenderContext
 
-Everything a renderer receives. Passed by the Stagr CLI; never derived by the renderer.
+Everything a renderer receives as **input**. Passed by the Stagr CLI; never derived by
+the renderer. Note: `StageResultSpec[]` is **not** an input — it is produced by Phase 1
+and collected by the CLI before Phase 2 begins.
 
 ```
 RenderContext {
-  stages:           NormalizedStage[]
-  stageResultSpecs: StageResultSpec[]      // one per blocking stage; for Path 2
-  routingPolicy:    RoutingPolicy
-  mergePolicy:      MergePolicy
-  trustPolicy:      TrustPolicy
-  platform:         string                 // e.g. "github", "gitlab", "bitbucket"
-  configVersion:    string
+  stages:        NormalizedStage[]
+  routingPolicy: RoutingPolicy
+  mergePolicy:   MergePolicy
+  trustPolicy:   TrustPolicy
+  platform:      string                 // e.g. "github", "gitlab", "bitbucket"
+  configVersion: string
 }
 ```
 
@@ -89,8 +101,13 @@ ExecutionPlan {
   invocation:      Invocation
   requiredSecrets: SecretRef[]
   evidence:        EvidenceSpec[]
+  gateDisposition: GateDispositionSpec   // how to determine PASS vs BLOCKED at run time
 }
 ```
+
+`gateDisposition` is required. It separates "when is the backend done?" (answered by
+`evidence`) from "given it is done, is the result PASS or BLOCKED?" (answered by
+`gateDisposition`). See `06-runtime-boundary.md` for `GateDispositionSpec` definitions.
 
 ### Invocation
 

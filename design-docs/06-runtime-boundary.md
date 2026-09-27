@@ -124,6 +124,32 @@ GateDispositionSpec {
 | `EXPLICIT_PASS_MARKER` | PASS if a specific completion marker is present in the backend's output | A comment containing `stagr:pass:<stageId>` |
 | `ALWAYS_PASS` | PASS whenever the evidence condition is met (no separate gate check) | Build/test stages: success = PASS |
 
+```
+GateDispositionSpec {
+  kind:     GateDispositionKind
+  selector: string              // backend-defined; opaque to neutral contract
+  scope:    FindingScopeSpec | null  // required for NO_OPEN_THREADS; null otherwise
+}
+```
+
+### FindingScopeSpec
+
+`FindingScopeSpec` constrains which review threads count as "open threads linked to this
+stage's invocation" for `NO_OPEN_THREADS`. Without it, the governance artifact would
+count all unresolved threads on the PR — including threads from other stages or
+pre-existing discussions unrelated to this stage's run.
+
+```
+FindingScopeSpec {
+  createdBy: string    // only count threads from comments posted by this account/identity
+  headSha:   boolean   // true = only count threads linked to the current head SHA
+}
+```
+
+Example: for the Codex review stage, `createdBy` would be set to the Codex bot's identity
+and `headSha: true` so that only threads from the Codex review of the current head commit
+are counted.
+
 The BackendRenderer supplies both `EvidenceSpec` (when done?) and `GateDispositionSpec`
 (PASS or BLOCKED?). The PlatformRenderer uses both to write the observation logic inside
 the stage execution artifact.
@@ -189,9 +215,27 @@ check run conclusion = failure  →  state = COMPLETED, conclusion = FAILED
 ### Signal emission
 
 The stage execution artifact emits the `StageResultSignal` to a well-known, per-stage
-platform location. On GitHub, this is a commit status with context
-`stagr/stage/<stageId>` or an equivalent check run. The governance artifact reads this
+platform location declared in the `StageResultSpec`. The governance artifact reads this
 location to evaluate merge eligibility.
+
+**Provenance requirement.** A `StageResultSignal` is a trust boundary: the governance
+artifact uses it to decide whether to auto-merge. If any actor with `statuses: write`
+permission could publish or overwrite these signals, the merge gate is forgeable. The
+signal must be published using a platform mechanism that carries authenticated publisher
+identity.
+
+On GitHub:
+- **Recommended: Check Runs.** A check run is associated with the GitHub App that creates
+  it. The governance artifact can verify the App identity before trusting the result.
+  Commit statuses can be created by any token with `statuses: write` and carry no App
+  identity — they are forgeable in this threat model.
+- Stage execution artifacts should create check runs (not commit statuses) for
+  `StageResultSignal` emission. The `StageResultSpec.signalKind` value `CHECK_RUN` is
+  the correct choice.
+
+The `StageResultSignalKind` values reflect this distinction: `CHECK_RUN` (authenticated
+App identity), `COMMIT_STATUS` (any `statuses: write` actor — use only when Check Runs
+are not available for the target backend), `WORKFLOW_OUTPUT`.
 
 ---
 
@@ -220,8 +264,29 @@ On each reconciliation event, the stage execution artifact:
 3. If yes, evaluates the `GateDispositionSpec` — PASS or BLOCKED?
 4. Emits an updated `StageResultSignal` (`state = COMPLETED, conclusion = PASS|BLOCKED`)
 
-Reconciliation is idempotent: if the signal already shows `COMPLETED` for the current
-head SHA, the artifact skips re-evaluation.
+**Reconciliation termination rule.** A stage execution artifact stops re-evaluating a
+signal only when it reaches a terminal state that cannot change without a new push:
+
+- `COMPLETED + PASS` — the gate condition is satisfied; re-evaluation adds no value.
+- `FAILED` (irrecoverable) — infrastructure failure, dependency failure, or similar
+  non-recoverable condition.
+
+**`COMPLETED + BLOCKED` is not terminal for reconciliation.** A BLOCKED conclusion means
+the backend finished but found blocking issues. Those issues can be resolved (e.g.,
+threads closed, findings addressed) without a new push. The stage execution artifact
+**must** continue re-evaluating on each reconciliation event to detect when the BLOCKED
+condition clears and a PASS can be emitted.
+
+**Recovery rule for expired in-flight markers.** When the reconciliation sweep runs and
+all of the following hold, the artifact may post a fresh invocation:
+1. A stage invocation was previously posted for the current head SHA (in-flight marker
+   exists for this head SHA).
+2. No completion evidence exists for this head SHA (the backend has not responded).
+3. The in-flight marker's expiry timestamp has passed.
+
+In this case, the artifact treats the marker as absent and re-posts the invocation,
+setting a new expiry. This recovers from backend outages or dropped invocations without
+requiring a new push.
 
 ### Why reconciliation is separate from StageTrigger
 
