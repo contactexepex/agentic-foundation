@@ -13,7 +13,9 @@ from typing import Any
 from .enums import (
     AuthorRole,
     EvidenceKind,
+    EvidenceSuccessCondition,
     ForkPolicy,
+    GateDispositionKind,
     InvocationKind,
     MergeMode,
     StageGate,
@@ -75,41 +77,53 @@ class GateDispositionSpec:
     """How to determine PASS vs BLOCKED at run time.
 
     Separates "is the stage done?" (EvidenceSpec) from "given it is done, is
-    the result PASS or BLOCKED?". Backend-defined; opaque to the neutral contract
-    beyond this structure. `kind` identifies the disposition strategy; `params`
-    carries backend-specific details.
+    the result PASS or BLOCKED?". `kind` identifies the disposition strategy;
+    `selector` is backend-defined and opaque to the neutral contract.
+    `scope` is required when kind is NO_OPEN_THREADS; None otherwise.
     """
 
-    kind: str                         # e.g. "conclusion_field", "exit_code"
-    params: dict[str, Any] = field(default_factory=dict)
+    kind: GateDispositionKind
+    selector: str                                # backend-defined; opaque to neutral contract
+    scope: "FindingScopeSpec | None" = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "params", dict(self.params))
+        if self.kind is GateDispositionKind.NO_OPEN_THREADS and self.scope is None:
+            raise ValueError(
+                f"GateDispositionSpec with kind NO_OPEN_THREADS requires scope to be set"
+            )
 
 
 @dataclass(frozen=True)
 class CorrelationSpec:
-    """How a piece of evidence is correlated to a specific stage invocation.
+    """How a piece of evidence is correlated to the correct head commit.
 
-    `field` names a backend-supplied discriminator that the GitHub API actually
-    exposes (e.g., pull_request_review_id). `value` is the expected value.
-    Both are backend-defined and opaque to the neutral contract.
+    Prevents a stale evidence item from satisfying a check on a newer commit.
+    `head_sha`: True = evidence must be correlated to the current head SHA.
+    `sha_field`: which field within the evidence item carries the SHA value
+                 (backend-defined; opaque to the neutral contract).
     """
 
-    field: str
-    value: str
+    head_sha: bool
+    sha_field: str
 
 
 @dataclass(frozen=True)
-class EvidenceSuccessCondition:
-    """What raw backend output counts as the stage having processed a head commit.
+class FindingScopeSpec:
+    """Constrains which review threads count as open findings for a NO_OPEN_THREADS gate.
 
-    `operator` is one of: "equals", "contains", "matches_regex", "present".
-    `value` is the expected value or pattern (None when operator is "present").
+    Without scope, the governance artifact would count all unresolved threads on the PR,
+    including threads from other stages or pre-existing discussions.
+
+    `created_by`: only count threads from comments posted by this identity.
+    `head_sha`: True = only count threads linked to the current head SHA.
+    `invocation_correlation`: per-invocation discriminator when two stages share the same
+                              bot identity and head SHA (backend-defined; opaque).
+                              None when created_by + head_sha are sufficient.
     """
 
-    operator: str
-    value: str | None = None
+    created_by: str
+    head_sha: bool
+    invocation_correlation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,12 +133,13 @@ class EvidenceSpec:
     Backend-supplied; consumed by the PlatformRenderer writing the stage
     execution artifact. Uses semantic vocabulary — not platform-object names.
     `selector` is backend-defined and opaque to the neutral contract.
+    `success_condition` is an EvidenceSuccessCondition enum value.
     """
 
     kind: EvidenceKind
-    selector: str                         # backend-defined, opaque
+    selector: str                              # backend-defined, opaque
     correlation: CorrelationSpec
-    success_condition: EvidenceSuccessCondition
+    success_condition: EvidenceSuccessCondition  # enum: COMPLETED, SUCCESS, MATCH_FOUND
 
 
 @dataclass(frozen=True)

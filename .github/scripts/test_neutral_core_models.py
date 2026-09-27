@@ -37,7 +37,9 @@ def test_enum_string_values() -> None:
     from stagr.core.enums import (
         AuthorRole,
         EvidenceKind,
+        EvidenceSuccessCondition,
         ForkPolicy,
+        GateDispositionKind,
         InvocationKind,
         MergeMode,
         StageGate,
@@ -87,6 +89,16 @@ def test_enum_string_values() -> None:
     assert StageResultSignalKind("check_run") is StageResultSignalKind.CHECK_RUN
     assert StageResultSignalKind("commit_status") is StageResultSignalKind.COMMIT_STATUS
 
+    # EvidenceSuccessCondition — enum, not dataclass
+    assert EvidenceSuccessCondition("completed") is EvidenceSuccessCondition.COMPLETED
+    assert EvidenceSuccessCondition("success") is EvidenceSuccessCondition.SUCCESS
+    assert EvidenceSuccessCondition("match_found") is EvidenceSuccessCondition.MATCH_FOUND
+
+    # GateDispositionKind
+    assert GateDispositionKind("no_open_threads") is GateDispositionKind.NO_OPEN_THREADS
+    assert GateDispositionKind("explicit_pass_marker") is GateDispositionKind.EXPLICIT_PASS_MARKER
+    assert GateDispositionKind("always_pass") is GateDispositionKind.ALWAYS_PASS
+
     # StageResultState
     assert StageResultState("completed") is StageResultState.COMPLETED
     assert StageResultState("failed") is StageResultState.FAILED
@@ -97,10 +109,17 @@ def test_enum_string_values() -> None:
     assert StageResultConclusion("failed") is StageResultConclusion.FAILED
     assert StageResultConclusion("unknown") is StageResultConclusion.UNKNOWN
 
+    # EvidenceKind — semantic names, not platform-object names
+    assert EvidenceKind("review_result") is EvidenceKind.REVIEW_RESULT
+    assert EvidenceKind("comment_match") is EvidenceKind.COMMENT_MATCH
+    assert EvidenceKind("check_result") is EvidenceKind.CHECK_RESULT
+    assert EvidenceKind("workflow_result") is EvidenceKind.WORKFLOW_RESULT
+
     # No platform-specific names in enum values
     for enum_cls in [StageKind, StageGate, StageTrigger, AuthorRole, ForkPolicy,
                      MergeMode, InvocationKind, StageResultSignalKind,
-                     StageResultState, StageResultConclusion, EvidenceKind]:
+                     StageResultState, StageResultConclusion, EvidenceKind,
+                     EvidenceSuccessCondition, GateDispositionKind]:
         for member in enum_cls:
             val = member.value
             for forbidden in ["pull_request_target", "workflow_dispatch_event",
@@ -182,10 +201,10 @@ def test_execution_plan_requires_gate_disposition() -> None:
 def test_execution_plan_valid() -> None:
     """ExecutionPlan with all required fields constructs and has no platform-specific fields."""
     from stagr.core.models import ExecutionPlan, GateDispositionSpec, Invocation, SecretRef
-    from stagr.core.enums import InvocationKind
+    from stagr.core.enums import GateDispositionKind, InvocationKind
 
     inv = Invocation(kind=InvocationKind.PR_COMMENT, params={"comment_template": "review me"})
-    gate = GateDispositionSpec(kind="conclusion_field", params={"field": "conclusion"})
+    gate = GateDispositionSpec(kind=GateDispositionKind.ALWAYS_PASS, selector="build-complete")
     plan = ExecutionPlan(
         stage_id="review",
         invocation=inv,
@@ -212,29 +231,56 @@ def test_evidence_spec_construction() -> None:
     from stagr.core.models import (
         CorrelationSpec,
         EvidenceSpec,
-        EvidenceSuccessCondition,
+        FindingScopeSpec,
         GateDispositionSpec,
         SecretRef,
     )
-    from stagr.core.enums import EvidenceKind
+    from stagr.core.enums import (
+        EvidenceKind,
+        EvidenceSuccessCondition,
+        GateDispositionKind,
+    )
 
     secret = SecretRef(alias="API_KEY", env_name="OPENAI_API_KEY")
     assert secret.alias == "API_KEY"
 
-    corr = CorrelationSpec(field="pull_request_review_id", value="42")
-    cond = EvidenceSuccessCondition(operator="contains", value="Completed")
+    # CorrelationSpec: head_sha + sha_field (not field + value)
+    corr = CorrelationSpec(head_sha=True, sha_field="first_code_block_sha")
+    assert corr.head_sha is True
+
+    # EvidenceSuccessCondition is an enum, not a dataclass
+    cond = EvidenceSuccessCondition.COMPLETED
     ev = EvidenceSpec(
-        kind=EvidenceKind.PR_COMMENT,
-        selector="pr_comment:codex_review",
+        kind=EvidenceKind.REVIEW_RESULT,
+        selector="codex_review:stagr",
         correlation=corr,
         success_condition=cond,
     )
-    assert ev.kind is EvidenceKind.PR_COMMENT
-    assert ev.selector == "pr_comment:codex_review"
+    assert ev.kind is EvidenceKind.REVIEW_RESULT
+    assert ev.selector == "codex_review:stagr"
+    assert ev.success_condition is EvidenceSuccessCondition.COMPLETED
 
-    # GateDispositionSpec separate from EvidenceSpec
-    gate = GateDispositionSpec(kind="exit_code", params={"success": 0})
-    assert gate.kind == "exit_code"
+    # GateDispositionSpec with ALWAYS_PASS needs no scope
+    gate = GateDispositionSpec(kind=GateDispositionKind.ALWAYS_PASS, selector="")
+    assert gate.kind is GateDispositionKind.ALWAYS_PASS
+    assert gate.scope is None
+
+    # GateDispositionSpec with NO_OPEN_THREADS requires scope
+    scope = FindingScopeSpec(created_by="codex-bot", head_sha=True, invocation_correlation="review-run-id")
+    gate_scoped = GateDispositionSpec(
+        kind=GateDispositionKind.NO_OPEN_THREADS,
+        selector="",
+        scope=scope,
+    )
+    assert gate_scoped.scope is not None
+    assert gate_scoped.scope.created_by == "codex-bot"
+
+    # NO_OPEN_THREADS without scope raises ValueError
+    try:
+        GateDispositionSpec(kind=GateDispositionKind.NO_OPEN_THREADS, selector="")
+        assert False, "Should have raised ValueError"
+    except ValueError as exc:
+        assert "NO_OPEN_THREADS" in str(exc) or "scope" in str(exc)
 
 
 # ---------------------------------------------------------------------------
