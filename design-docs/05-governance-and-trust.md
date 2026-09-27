@@ -1,0 +1,220 @@
+# Stagr Neutral Core — Governance and Trust
+
+**Status:** Design phase — not yet implemented
+
+---
+
+## Overview
+
+This document defines the three policy objects that govern pipeline eligibility,
+routing, and merge decisions: **TrustPolicy**, **RoutingPolicy**, and **MergePolicy**.
+All three are derived at normalization time and passed to the PlatformRenderer in
+`RenderContext`. None of them is re-derived at run time.
+
+---
+
+## TrustPolicy
+
+`TrustPolicy` declares who and what Stagr-generated automation may act on behalf of.
+It is security-critical: Stagr generates workflows that post comments using
+trusted-user credentials and run in privileged CI contexts (e.g., GitHub's
+`pull_request_target`). The TrustPolicy ensures these privileges are never exercised
+on behalf of untrusted or fork-sourced work.
+
+```
+TrustPolicy {
+  trustedRoles:      AuthorRole[]   // e.g. [OWNER, MEMBER, COLLABORATOR]
+  requireSameRepo:   boolean        // true = fork PRs never drive automation
+  allowForks:        boolean        // false = explicit hard block on fork PRs
+  privilegedStages:  string[]       // which stage ids may access secret-bearing tokens
+  humanMergeLabel:   string         // label name that forces the human-gated lane
+                                    // (e.g. "human-merge"); never auto-merged when present
+}
+```
+
+### AuthorRole
+
+| Value | Meaning (GitHub mapping) |
+|---|---|
+| `OWNER` | Repository owner |
+| `MEMBER` | Organization member |
+| `COLLABORATOR` | Explicit collaborator |
+| `CONTRIBUTOR` | First-time or external contributor (NOT trusted by default) |
+
+### TrustPolicy rules
+
+1. **Fork PRs never drive automation.** When `allowForks: false` (the default), any PR
+   where the head branch originates from a forked repository must not trigger any
+   privileged stage execution artifact.
+
+2. **Untrusted authors never drive automation.** A PR author whose `author_association`
+   is not in `trustedRoles` must not trigger any privileged stage.
+
+3. **Privileged workflows require explicit declaration.** A stage that requires a
+   secret-bearing token (e.g., a PAT used to post comments) must appear in
+   `privilegedStages`. A PlatformRenderer must verify that privileged workflows use
+   `pull_request_target` (not `pull_request`) and never check out or execute PR head
+   content inside a privileged job.
+
+4. **The human-merge label is a hard stop.** When the label named in `humanMergeLabel`
+   is present on a PR, the governance artifact must refuse to auto-merge regardless of
+   all other conditions. This is not configurable per-PR at run time; it is rendered
+   into the governance artifact as a fixed hard stop.
+
+### GitHub `pull_request_target` safety
+
+GitHub's `pull_request_target` event gives a workflow access to repository secrets and
+write-capable tokens, even when triggered by a fork PR. This is a known
+repository-compromise vector. The PlatformRenderer **must** enforce the following when
+generating workflows that use `pull_request_target` with secrets:
+
+- The workflow must verify `author_association` is in `trustedRoles` before using any
+  secret.
+- The workflow must verify the PR head is from the same repository (`head.repo.full_name
+  == GITHUB_REPOSITORY`) before proceeding.
+- The workflow must never check out, execute, or evaluate PR head content inside a job
+  that holds secrets.
+- All of the above checks must be enforced in-script (a `pull_request_target` job-level
+  `if:` cannot safely guard these conditions because the PR fields are not available for
+  all trigger events).
+
+---
+
+## RoutingPolicy
+
+`RoutingPolicy` declares how changed file paths are classified into route classes, and
+which stages apply to each route.
+
+```
+RoutingPolicy {
+  fastPath: FastPathPolicy | null   // null when fast_path.enabled: false
+}
+
+FastPathPolicy {
+  match: PathMatchSpec
+  stages: RouteStageMap
+}
+
+PathMatchSpec {
+  paths: string[]   // glob patterns; a change set matching ALL paths = FAST route
+}
+
+RouteStageMap {
+  fast:   string[]   // stage ids that run on the FAST route
+  normal: string[]   // stage ids that run on the NORMAL route
+}
+```
+
+### Route classification
+
+At run time, the routing artifact classifies a PR head commit into one of two routes:
+
+| Route | Meaning |
+|---|---|
+| `FAST` | All changed files match the `fastPath.match.paths` patterns. The `fast` stage subset applies. |
+| `NORMAL` | One or more changed files do not match the patterns (or fast_path is disabled). The `normal` stage subset applies (all eligible stages). |
+
+### V1 routing constraint: deterministic classification only
+
+In V1, routing is **deterministic** — classification is based solely on which file
+paths changed, using the declared glob patterns. AI-driven or probabilistic
+classification is not permitted in V1. This ensures routing is reproducible, auditable,
+and free of external API dependencies.
+
+### Dependency-closure validation
+
+The stage set declared for each route must be **dependency-closed**: if a stage S is
+in the route's set and S has a declared dependency D, then D must also be in the set.
+A route that contains `integration-test` while omitting `build` (on which
+`integration-test` depends) is invalid.
+
+Stagr must enforce this at normalization time as a static validation error (V-S09 in
+`07-validation.md`).
+
+### RouteClassification runtime signal
+
+At run time, the routing artifact emits a `RouteClassification` signal:
+
+```
+RouteClassification {
+  route:   FAST | NORMAL
+  headSha: string
+}
+```
+
+Head SHA binding is mandatory. A `RouteClassification` without a `headSha` cannot be
+safely consumed because a stale FAST classification for a prior commit could cause the
+governance artifact to skip blocking stages for a new commit.
+
+---
+
+## MergePolicy
+
+`MergePolicy` declares merge eligibility requirements. It is derived entirely at
+normalization time from the config and the TrustPolicy. It is never re-derived at run
+time.
+
+```
+MergePolicy {
+  mode:              MergeMode
+  blockingStageIds:  string[]   // derived: all stages where gate == BLOCKING
+  requireZeroUnresolved: boolean // true = zero unresolved review threads required
+  requireHeadBound:  boolean    // true = all StageResultSignals must match current headSha
+}
+```
+
+### MergeMode
+
+| Value | Meaning |
+|---|---|
+| `AUTO` | Foundation lane: the governance artifact merges automatically when all conditions are met. No human approval required. |
+| `MANUAL` | Human-gated lane: the governance artifact enforces all conditions but does not merge. A human must merge. |
+
+### Two merge lanes
+
+**Foundation lane (`mode: AUTO`):** For PRs that build or maintain the toolkit itself.
+Merges automatically once all of the following are true:
+- PR is open, non-draft, same-repo, targets the default branch
+- Author association is in `TrustPolicy.trustedRoles`
+- `TrustPolicy.humanMergeLabel` is NOT present on the PR
+- No merge conflict
+- All CI checks and commit statuses are green (including the routing status)
+- `StageResultSignal` for every `blockingStageId` shows `conclusion = PASS` for the
+  current head SHA
+- `requireZeroUnresolved` is met (zero unresolved review threads)
+- `RouteClassification.headSha` matches the current head SHA
+
+**Human-gated lane (`mode: MANUAL`):** Any PR that carries `TrustPolicy.humanMergeLabel`
+is automatically placed in the human-gated lane, regardless of `mode`. This is a hard
+stop: the governance artifact enforces all conditions but does not auto-merge. A human
+must perform the merge.
+
+> When in doubt, apply the human-merge label. The foundation lane is an optimization
+> for well-understood, provably-safe merges; anything that requires human judgment
+> must carry the label.
+
+### MergePolicy derivation
+
+`blockingStageIds` is derived at normalization time as:
+
+```
+blockingStageIds = [stage.id for stage in normalizedStages if stage.gate == BLOCKING]
+```
+
+This list is fixed at render time. The governance artifact receives it as a constant;
+it never evaluates stage gate values at run time.
+
+### Merge gate conditions (complete list)
+
+The governance artifact passes if and only if all of the following hold:
+
+1. PR is open, non-draft, same-repo, targeting the default branch
+2. PR author association ∈ `TrustPolicy.trustedRoles`
+3. `TrustPolicy.humanMergeLabel` is NOT present
+4. No merge conflict
+5. Every commit status and check run is in a green (passing) terminal state
+6. Routing status (`RouteClassification`) is published and terminal for the current `headSha`
+7. For every `stageId` in `MergePolicy.blockingStageIds`: a `StageResultSignal` with
+   `headSha = currentHead` and `conclusion = PASS` exists
+8. `requireZeroUnresolved`: zero unresolved review threads
+9. `mode = AUTO` (if `MANUAL`, stop here and require human merge)
