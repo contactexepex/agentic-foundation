@@ -74,10 +74,10 @@ def test_default_token_secret_fallback() -> None:
     # renames the rendered secret reference — breaking this test explicitly and forcing a
     # deliberate update of both the constant and the operators who rely on this PAT name.
     rendered = render.render_all(_base, "github")
-    check("secrets.REMEDIATION_TOKEN" in rendered["request-review.yml"],
+    check(bool(re.search(r"\bsecrets\.REMEDIATION_TOKEN\b", rendered["request-review.yml"])),
           f"default_token_secret: omitting auth uses DEFAULT_TOKEN_SECRET ('REMEDIATION_TOKEN') in request-review")
     # With an explicit token_secret: the operator value is used, not the default.
     _with_auth = {**_base, "platform": {**_base["platform"], "auth": {"token_secret": "MY_CUSTOM_PAT"}}}
     rendered_custom = render.render_all(_with_auth, "github")
-    check("secrets.MY_CUSTOM_PAT" in rendered_custom["request-review.yml"],
+    check(bool(re.search(r"\bsecrets\.MY_CUSTOM_PAT\b", rendered_custom["request-review.yml"])),
           "default_token_secret: explicit token_secret overrides the default")
