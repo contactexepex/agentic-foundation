@@ -100,6 +100,9 @@ def test_render_structural() -> None:
     if "review-router.yml" in rendered:
         router_doc = yaml.safe_load(rendered["review-router.yml"])
         router_env = (router_doc or {}).get("env") or {}
-        check(router_env.get("REVIEW_STATUS_CONTEXT") == render.REVIEW_STATUS_CONTEXT,
-              f"render: review-router.yml top-level env.REVIEW_STATUS_CONTEXT equals "
-              f"REVIEW_STATUS_CONTEXT ({render.REVIEW_STATUS_CONTEXT!r})")
+        # Expected value is a literal, not the constant itself, so that renaming the constant
+        # (which changes both the rendered env var and render.REVIEW_STATUS_CONTEXT) breaks this
+        # test explicitly and forces a deliberate operator-communication update.
+        check(router_env.get("REVIEW_STATUS_CONTEXT") == "Publish fast review result",
+              "render: review-router.yml top-level env.REVIEW_STATUS_CONTEXT equals "
+              "'Publish fast review result'")
