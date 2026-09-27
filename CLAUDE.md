@@ -88,6 +88,17 @@ finding — review comments require judgment, not blind acceptance.
   *shipped artifact* conforms to its own contract; it does not pre-emptively guard against every way
   an operator could later break conformance.
 
+**Evaluate before accepting.** Apply the decline criteria explicitly for every finding — blind
+acceptance is the same failure as blind rejection. Ask: "Is this a real problem in what the
+renderer actually produces today, or is it guarding against a hypothetical future change to a
+controlled source artifact?" If the latter, decline with evidence.
+
+**Every finding must have a reply, accepted or declined.** A thread without a reply appears
+unaddressed. Post one brief reply on every thread:
+- **Accepted**: name what changed and in which commit (one or two sentences).
+- **Declined**: state the specific reason — the existing guard, the unrealistic precondition,
+  or why the complexity cost exceeds the benefit. Plain language.
+
 **How to decline**: reply once on the thread with the specific evidence-based reason (cite the
 existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
 Do not resolve the thread — leave it open for the Codex delta review. Do not loop: a declined

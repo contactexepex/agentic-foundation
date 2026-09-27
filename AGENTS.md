@@ -69,9 +69,18 @@ meaningful test gap for changed code.
 requires unrealistic preconditions is noise that slows the pipeline — omit it entirely.
 Focus on what is actually broken in what the diff actually changes.
 
-**Claude (implementor):** decline non-actionable findings with one evidence-based reply. Do not
-resolve the thread — leave it open for the Codex delta review. Do not loop on a finding you have
-declined with evidence. One remediation cycle per finding is the limit.
+**Claude (implementor):** evaluate every finding before accepting it — apply the decline criteria
+above explicitly; blind acceptance is the same failure as blind rejection. Decline non-actionable
+findings with one evidence-based reply. Do not resolve the thread — leave it open for the Codex
+delta review. Do not loop on a finding you have declined with evidence. One remediation cycle per
+finding is the limit.
+
+**Every finding must have a reply, accepted or declined.** A thread without a reply looks
+unaddressed to any reader of the PR. Before moving on, post one brief reply on every thread:
+- **Accepted**: name what changed and in which commit (one or two sentences).
+- **Declined**: give the specific reason concisely — the existing guard, the unrealistic
+  precondition, or the disproportionate complexity. Plain language; anyone should understand
+  without extra context.
 
 ## Core operating loop
 
