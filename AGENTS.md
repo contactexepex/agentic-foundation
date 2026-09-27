@@ -67,20 +67,27 @@ meaningful test gap for changed code.
 
 **Codex (reviewer):** report only findings that meet the actionable bar above. A finding that
 requires unrealistic preconditions is noise that slows the pipeline — omit it entirely.
-Focus on what is actually broken in what the diff actually changes.
+Focus on what is actually broken in what the diff actually changes. If Claude declines a finding,
+Codex may reply on the same thread with new evidence; if the evidence changes the picture, Claude
+re-evaluates. This back-and-forth is the expected review dialogue.
 
 **Claude (implementor):** evaluate every finding before accepting it — apply the decline criteria
-above explicitly; blind acceptance is the same failure as blind rejection. Decline non-actionable
-findings with one evidence-based reply. Do not resolve the thread — leave it open for the Codex
-delta review. Do not loop on a finding you have declined with evidence. One remediation cycle per
-finding is the limit.
+above explicitly; blind acceptance is the same failure as blind rejection. When declining, reply
+with clear, evidence-based reasoning so Codex can assess whether new evidence changes the picture.
+Do not resolve the thread — leave it open so Codex can respond. If Codex replies with new evidence,
+re-evaluate; if the assessment still holds, post another decline reply with the same reasoning.
+Track the number of decline replies Claude has posted on each thread. At **three decline replies**
+on the same thread without agreement, stop: apply the `human-merge` label, leave the thread open,
+and do not engage further on it — a human must decide.
 
 **Every finding must have a reply, accepted or declined.** A thread without a reply looks
 unaddressed to any reader of the PR. Before moving on, post one brief reply on every thread:
 - **Accepted**: name what changed and in which commit (one or two sentences).
 - **Declined**: give the specific reason concisely — the existing guard, the unrealistic
-  precondition, or the disproportionate complexity. Plain language; anyone should understand
-  without extra context.
+  precondition, or the disproportionate complexity. Plain language so Codex can assess whether new
+  evidence changes the picture.
+- **Before triggering the next delta review**: resolve every thread where the accepted fix is
+  already committed and pushed, so Codex focuses only on the open disputes.
 
 ## Core operating loop
 
