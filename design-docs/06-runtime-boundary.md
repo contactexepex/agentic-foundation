@@ -153,16 +153,32 @@ FindingScopeSpec {
 `invocationCorrelation` is necessary when two stages share the same bot identity and head
 SHA. For example, when both `review` and `security` are posted by the same Codex bot on
 the same head commit, `createdBy + headSha` alone cannot distinguish their threads.
-`invocationCorrelation` provides the discriminator — typically the stageId-bearing
-in-flight marker text embedded in the invocation comment (e.g.,
-`stagr:stage:review:<sha>` vs `stagr:stage:security:<sha>`). The PlatformRenderer uses
-it to filter threads by ancestry or proximity to the specific invocation comment that
-contains this marker. When null, `createdBy + headSha` is sufficient (applies when
-stages use distinct bot identities).
+`invocationCorrelation` provides the discriminator — a backend-defined, opaque string that
+the PlatformRenderer uses to identify which platform objects (threads, review objects, or
+other finding artifacts) belong to this specific stage's invocation.
 
-Example: for the Codex review stage, `createdBy` would be set to the Codex bot's
-identity, `headSha: true`, and `invocationCorrelation` set to the stage-specific
-in-flight marker prefix so that only threads from this stage's invocation are counted.
+The concrete binding of `invocationCorrelation` to a platform-observable primitive is a
+BackendRenderer + PlatformRenderer implementation detail, not a neutral-contract concern.
+Candidate bindings on GitHub:
+- A `pull_request_review_id` — if the backend creates a formal GitHub PR Review object
+  per stage invocation, threads associated with that review share a stable review ID that
+  the PlatformRenderer can filter on.
+- A backend-emitted correlation marker included in every finding comment body — the
+  PlatformRenderer filters threads whose body contains the marker string.
+- A backend-specific task or invocation identifier exposed in the backend's completion
+  artifact and echoed into each finding.
+
+**Binding requirement:** the chosen binding must be reliably observable through the
+platform's review-thread API. For `NO_OPEN_THREADS` to be safe on GitHub, the binding
+must unambiguously associate each review thread with its originating stage invocation
+using a field the GitHub review-thread API actually exposes (e.g., `pull_request_review_id`,
+not a back-reference to the triggering issue comment, which the API does not provide).
+If no reliable platform binding can be demonstrated for a given backend, `NO_OPEN_THREADS`
+must not be used as the `GateDispositionKind` for that stage — the BackendRenderer must
+choose an alternative kind (e.g., `EXPLICIT_PASS_MARKER`) instead.
+
+When `invocationCorrelation` is null, `createdBy + headSha` is sufficient (applies when
+stages use distinct bot identities).
 
 The BackendRenderer supplies both `EvidenceSpec` (when done?) and `GateDispositionSpec`
 (PASS or BLOCKED?). The PlatformRenderer uses both to write the observation logic inside
