@@ -31,7 +31,12 @@ Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifac
 ### V-S01 — Config schema validity
 
 All required fields are present; all field values are recognized enum members or valid
-strings; no unrecognized top-level keys.
+strings. Unrecognized top-level keys are silently ignored — operators may co-locate
+non-Stagr CI configuration (e.g., `build:`, `deploy:`) alongside the Stagr contract in
+`.agentic/config.yml`. Stagr validates only its own recognized key namespace: `version`,
+`profile`, `platform`, `defaults`, `routing`, `modules`, `stages`, and `providers`.
+Any other top-level key is not read, not validated, and does not produce an error or
+warning. See `01-neutral-config-contract.md` for the full list of recognized keys.
 
 ### V-S02 — Schema version support
 
