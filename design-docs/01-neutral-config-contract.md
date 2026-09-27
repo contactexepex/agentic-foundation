@@ -84,9 +84,10 @@ routing:
       fast:   []            # stage ids that run on the FAST route
       normal: []            # stage ids that run on the NORMAL route (all eligible stages)
 
-# Module flags enable optional Stagr-managed components.
+# Module flags enable optional Stagr-managed or Stagr-observed components.
 modules:
   auto_merge: true          # enable the auto-merge governance component
+  # sonar: true             # observe SonarCloud as an external gate (V1: fail-open when absent)
 
 # Stage declarations.
 stages:
@@ -122,6 +123,21 @@ stages:
     triggers:
       - issue_labeled
 ```
+
+### Module flags
+
+The `modules:` key enables optional Stagr-managed or Stagr-observed components. All
+flags default to `false`. Recognized V1 module flags:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `auto_merge` | `false` | Enables the auto-merge governance component. The governance artifact merges automatically when all merge gate conditions are satisfied. |
+| `sonar` | `false` | Declares SonarCloud as an observed external security gate. When `true`, the governance artifact includes the `sonarqubecloud` check run in its merge gate evaluation. **V1 semantics:** when the check run is present on the current head SHA, it must be in a passing terminal state; when absent, the gate tolerates the absence (fail-open). Full requiredPresence and provenance verification are V2 scope. See `05-governance-and-trust.md`. |
+
+Sub-fields of `modules:` not listed above are unrecognized and produce a validation
+error. The "silently ignored" rule for unrecognized keys applies only to unknown
+**top-level** keys (see "Non-Stagr keys" below); it does not extend to sub-fields of
+a recognized Stagr namespace.
 
 ### Non-Stagr keys
 
