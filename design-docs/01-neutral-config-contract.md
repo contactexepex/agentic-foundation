@@ -102,6 +102,15 @@ stages:
       - pr_opened
       - pr_updated
     dependencies: []        # independent of 'review' — both start on every push
+
+  # A stage with enabled: false is excluded before normalization — not rendered,
+  # not in the dependency graph, not in blockingStageIds. See 02-canonical-stage-model.md.
+  - id: implement-codex
+    type: implement
+    provider: openai
+    enabled: false          # optional; true by default
+    triggers:
+      - issue_labeled
 ```
 
 ---

@@ -78,18 +78,61 @@ NormalizedStage {
 }
 ```
 
+`NormalizedStage` does **not** carry an `enabled` field. Disabled stages are removed
+during preprocessing — before this object is produced. See "Stage activation and the
+`enabled` field" below.
+
 See `03-provider-backend-model.md` for how `provider`, `backend`, and `model` relate
 and how defaults are resolved.
 
 ---
 
+## Stage activation and the `enabled` field
+
+The config-level `enabled` field controls whether a stage participates in normalization.
+It is a pre-normalization annotation, not a `NormalizedStage` field.
+
+```yaml
+# Example: stage defined but inactive
+- id: implement-codex
+  type: implement
+  provider: openai
+  enabled: false          # optional; default is true
+  triggers: [issue_labeled]
+```
+
+**Preprocessing rule:** Stagr removes all stages with `enabled: false` from the active
+stage set before normalization begins. A disabled stage does not appear in
+`NormalizedStage[]`, is not included in the dependency graph, does not contribute to
+`MergePolicy.blockingStageIds`, is not subject to routing-closure validation, and is
+not rendered into any artifact.
+
+**Schema validation still applies** to a disabled stage's declared fields. A malformed
+disabled stage (e.g., an invalid `type` or unrecognized field) is a static validation
+error regardless of `enabled: false`. The operator receives the same schema feedback
+they would receive if the stage were active.
+
+**Dependency rule:** An active stage must not declare a dependency on a disabled stage
+id. If stage B has `dependencies: [A]` and stage A has `enabled: false`, Stagr reports
+a schema error (V-S02 reference validity) at render time. The operator must either
+re-enable A, remove B's dependency on A, or also disable B.
+
+**Rationale:** Defining `enabled: false` as a pre-normalization exclusion (rather than
+a renderer hint) ensures that the `NormalizedStage[]` array is always the complete,
+authoritative list of active stages. No renderer needs to check `enabled`; the field
+has been fully consumed before any renderer sees the stage list.
+
+---
+
 ## Stage graph and dependency normalization
 
-After parsing and profile expansion, all stages are placed into a directed acyclic graph
-(DAG) where edges represent `dependencies`. The graph is validated for:
+After parsing, profile expansion, and disabled-stage removal, all active stages are
+placed into a directed acyclic graph (DAG) where edges represent `dependencies`. The
+graph is validated for:
 
 1. **Acyclicity** — no circular dependency chains
-2. **Reference validity** — every id in any `dependencies` array exists as a stage id
+2. **Reference validity** — every id in any `dependencies` array exists as an active
+   stage id (disabled stages do not satisfy this check — see "Stage activation" above)
 3. **Dependency-closure of routes** — when RoutingPolicy declares a stage subset for a
    route, that subset must include all transitive dependencies of every stage it contains
    (see `05-governance-and-trust.md`)
@@ -178,7 +221,7 @@ stages:
     provider: openai
     backend: codex
     model: null          // backend default
-    skill: review        // .agentic/skills/review/SKILL.md
+    skill: code-review   // .agentic/skills/code-review/SKILL.md
     gate: BLOCKING
     triggers: [PR_OPENED, PR_UPDATED]
     dependencies: []
@@ -197,7 +240,7 @@ stages:
     provider: openai
     backend: codex
     model: null
-    skill: review
+    skill: code-review     // .agentic/skills/code-review/SKILL.md
     gate: BLOCKING
     triggers: [PR_OPENED, PR_UPDATED]
     dependencies: []
@@ -207,7 +250,7 @@ stages:
     provider: openai
     backend: codex
     model: null
-    skill: security
+    skill: security-review // .agentic/skills/security-review/SKILL.md
     gate: BLOCKING
     triggers: [PR_OPENED, PR_UPDATED]
     dependencies: []
