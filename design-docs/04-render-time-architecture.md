@@ -161,6 +161,22 @@ GitHub App installation ID or a stable workflow identity that created the Check 
 governance artifact must reject any signal whose publisher identity does not match the
 rendered `provenance` value.
 
+**How `signalKind == CHECK_RUN` flows to platform capabilities.** When the
+PlatformRenderer selects `CHECK_RUN` as `signalKind`, it must:
+
+1. Include `checks: write` in the generated stage execution artifact's `permissions:`
+   block (GitHub V1). This is a PlatformRenderer implementation responsibility — it is
+   not declared as a field in `ExecutionPlan` because `checks: write` is a GitHub-specific
+   permission name that belongs in the PlatformRenderer, not in the neutral intermediate
+   representation produced by the BackendRenderer.
+2. Do the same for the routing artifact, which also emits an authenticated Check Run
+   (`RouteClassification`).
+
+`stagr doctor` V-E03 validates that the repository has the permissions these generated
+`permissions:` blocks require. V-E02 validates that the backend App/integration is
+installed with the capabilities to create those Check Runs. These two doctor checks are
+the verification layer; `ExecutionPlan` does not duplicate them as data model fields.
+
 The BackendRenderer produces the `EvidenceSpec[]` (how to detect raw completion).
 The PlatformRenderer for a stage execution artifact uses those `EvidenceSpec` entries to
 observe the backend's raw output. The PlatformRenderer **also produces the
