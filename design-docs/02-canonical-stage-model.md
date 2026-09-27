@@ -150,7 +150,7 @@ receives as part of `RenderContext`.
 
 ## V1 shipped profiles
 
-Stagr V1 ships three built-in profiles. Operators reference them by id in their config.
+Stagr V1 ships two built-in profiles. Operators reference them by id in their config.
 Each profile is a named preset; an operator can override any field it sets.
 
 ### `minimal`
@@ -201,55 +201,16 @@ stages:
     dependencies: []
 ```
 
-### `extended`
-
-Intended for repositories that also need automated build and test validation alongside
-AI review. Adds `build` and `test` stages; `test` depends on `build`.
-
-Normalized output:
-```
-stages:
-  - id: review
-    kind: REVIEW
-    provider: openai
-    backend: codex
-    model: null
-    skill: review
-    gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
-    dependencies: []
-
-  - id: security
-    kind: SECURITY
-    provider: openai
-    backend: codex
-    model: null
-    skill: security
-    gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
-    dependencies: []
-
-  - id: build
-    kind: BUILD
-    provider: openai
-    backend: codex
-    model: null
-    skill: build
-    gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
-    dependencies: []
-
-  - id: test
-    kind: TEST
-    provider: openai
-    backend: codex
-    model: null
-    skill: test
-    gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
-    dependencies: [build]
-```
-
 > **Note:** Profile field values (especially `provider`, `backend`, `model`) are
 > documented here as the V1 default resolution. Operators may override any field per
 > stage in their config.
+
+### Why no `extended` profile in V1
+
+`BUILD`, `TEST`, and `DEPLOY` stages require operator-specific CI configuration —
+shell commands, test runners, build scripts, deployment targets — that cannot have
+meaningful defaults at the neutral layer. Supplying a profile with `provider: openai,
+backend: codex` for a build or test stage would be wrong: those stage kinds are
+CI-native operations, not AI review invocations. Operators that need BUILD/TEST/DEPLOY
+stages declare them directly in their config with the appropriate provider and backend
+for their environment. A third profile is deferred until a CI-native backend is modeled.
