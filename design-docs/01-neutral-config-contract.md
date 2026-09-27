@@ -61,6 +61,16 @@ platform:
   auth:
     token_secret: REMEDIATION_TOKEN  # platform secret name for the trusted-user token
 
+# Pipeline-level defaults for provider and model (optional).
+# Provides fallback values for stages that do not declare provider or model explicitly.
+# Applied during backend/model default resolution (see 02-canonical-stage-model.md),
+# after profile expansion and before per-provider backend defaults from the registry.
+defaults:
+  provider: anthropic         # fallback provider id for stages with no provider field
+  models:
+    anthropic:
+      default: claude-opus-5-5  # fallback model for this provider; null = backend default
+
 # Pipeline-level routing policy.
 # Renderer translates this into a native path classifier.
 routing:
@@ -112,6 +122,27 @@ stages:
     triggers:
       - issue_labeled
 ```
+
+### Non-Stagr keys
+
+`.agentic/config.yml` is owned by the operator, not exclusively by Stagr. Operators may
+include additional top-level keys alongside the Stagr contract to co-locate CI or tooling
+configuration in a single file. For example:
+
+```yaml
+# Operator CI configuration — not part of the Stagr contract.
+# Stagr ignores this key during validation and rendering.
+build:
+  preset: custom
+  commands:
+    test: "python .github/scripts/validate_config.py"
+```
+
+Stagr validates only the keys it defines (`version`, `profile`, `platform`, `defaults`,
+`routing`, `modules`, `stages`, and `providers`). Any unrecognized top-level key is
+silently ignored by `stagr plan` and `stagr apply`. This lets operators co-locate build
+tool, test runner, or other CI configuration in `.agentic/config.yml` without breaking
+Stagr validation.
 
 ---
 
