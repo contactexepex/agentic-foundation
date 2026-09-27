@@ -90,13 +90,6 @@ resolvable: either an explicit mapping exists in provider configuration, or the 
 equals the platform secret name by convention. Static resolution means the alias is
 registered; run-time presence is checked by `stagr doctor`.
 
-### V-S13 — Dependency semantics consistency
-
-If any `dependencies` array is non-empty, validate that the dependency semantics rule
-is satisfiable: no stage depends on a `NON_BLOCKING` stage for blocking-gate purposes
-(a `NON_BLOCKING` stage can never produce `conclusion = PASS` in the sense required for
-a dependent `BLOCKING` stage to start — warn if this pattern is detected).
-
 ---
 
 ## Environment validation (`stagr doctor`)
@@ -132,6 +125,11 @@ will cause every PR to be skipped.
 ---
 
 ## Notes
+
+**V-S13 (NON_BLOCKING dependency warning) has been removed.** `NON_BLOCKING` controls
+merge-gate participation, not what conclusion a stage can produce. A `NON_BLOCKING`
+stage can produce `conclusion = PASS` and is a perfectly valid dependency for any stage,
+including `BLOCKING` ones. The original rule was based on a false premise.
 
 **V-E04 from the previous draft (Codex concurrency constraint) has been removed.**
 The claim that the Codex backend errors on concurrent code + security reviews has not

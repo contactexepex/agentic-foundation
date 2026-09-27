@@ -101,36 +101,48 @@ architecture or the generated artifacts.**
 Under the correct architecture, both stage execution artifacts trigger independently on
 every push to an eligible PR.
 
+### Declared StageTriggers vs reconciliation events
+
+There is an important distinction in the GitHub implementation between two categories of
+workflow triggers:
+
+| Category | GitHub event | What it means |
+|---|---|---|
+| **Declared StageTrigger** | `pull_request_target: [synchronize]` | Maps to `StageTrigger.PR_UPDATED`; starts a new invocation |
+| **Reconciliation event** | `issue_comment: [created, edited]` | Wakes the workflow to check if a pending invocation has completed |
+| **Reconciliation event** | `check_suite: [completed]` | Wakes the workflow to check if a pending invocation has completed |
+
+`issue_comment` and `check_suite` events do **not** map to any `StageTrigger` value.
+They are renderer-internal wakeups used by the reconciliation loop to observe backend
+completion after an invocation has been posted. They never cause a new invocation to be
+posted on their own. See `06-runtime-boundary.md` for the reconciliation model.
+
 ### review stage execution artifact
 
 ```
-Triggers: pull_request_target [synchronize], issue_comment [edited],
-          check_suite [completed]
+Declared trigger (StageTrigger.PR_UPDATED):
+  pull_request_target [synchronize]
+    → Resolve PR, enforce TrustPolicy, check idempotency, check routing
+    → If all pass: post @codex review with in-flight marker
+    → Emit StageResultSignal (state=RUNNING, conclusion=UNKNOWN)
 
-On each eligible event:
-  1. Resolve PR number from event
-  2. Enforce TrustPolicy (open, non-draft, same-repo, trusted author)
-  3. Check completion idempotency: REVIEW_RESULT evidence for headSha exists → skip
-  4. Check in-flight idempotency: marker <!-- stagr:stage:review:<sha> --> present → skip
-  5. Wait for routing artifact to publish RouteClassification (bounded; fail-open)
-  6. Skip if RouteClassification.route == FAST and 'review' not in fast.stages
-  7. Post @codex review with in-flight marker
-  8. Emit StageResultSignal (state=RUNNING, conclusion=UNKNOWN) for headSha
+Reconciliation events (implementation detail, not StageTrigger):
+  issue_comment [created, edited] OR check_suite [completed]
+    → Resolve PR, check EvidenceSpec for headSha
+    → If evidence found: evaluate GateDispositionSpec, emit updated StageResultSignal
+    → (state=COMPLETED, conclusion=PASS|BLOCKED)
 ```
 
 ### security stage execution artifact
 
 ```
-Triggers: pull_request_target [synchronize], issue_comment [edited],
-          check_suite [completed]
-
-On each eligible event:
-  1–6: Same as review (resolve, trust, idempotency, routing)
-  7. Post @codex security review with in-flight marker
-  8. Emit StageResultSignal (state=RUNNING, conclusion=UNKNOWN) for headSha
+Same structure as review.
+Declared trigger: pull_request_target [synchronize]
+Reconciliation events: issue_comment [created, edited], check_suite [completed]
 ```
 
-Both artifacts trigger on the same events. Neither waits for the other.
+Both artifacts trigger independently on the same declared StageTrigger event
+(`PR_UPDATED`). Neither waits for the other.
 
 ### Codex Evidence path
 

@@ -100,6 +100,36 @@ and verify it matches the current head SHA before accepting the evidence as vali
 
 ---
 
+## GateDispositionSpec — PASS vs BLOCKED logic
+
+`EvidenceSpec` models raw completion detection. It answers: "Did the backend finish
+processing?" It cannot answer: "Did the backend finish with no blocking findings?" These
+are distinct questions that require distinct specifications.
+
+`GateDispositionSpec` answers the second question: given that evidence of completion
+exists, is the result PASS or BLOCKED?
+
+```
+GateDispositionSpec {
+  kind:     GateDispositionKind
+  selector: string   // backend-defined; opaque to neutral contract
+}
+```
+
+### GateDispositionKind
+
+| Value | Meaning | Example |
+|---|---|---|
+| `NO_OPEN_THREADS` | PASS if the platform reports zero unresolved review threads linked to this stage's invocation | Codex review with all threads resolved |
+| `EXPLICIT_PASS_MARKER` | PASS if a specific completion marker is present in the backend's output | A comment containing `stagr:pass:<stageId>` |
+| `ALWAYS_PASS` | PASS whenever the evidence condition is met (no separate gate check) | Build/test stages: success = PASS |
+
+The BackendRenderer supplies both `EvidenceSpec` (when done?) and `GateDispositionSpec`
+(PASS or BLOCKED?). The PlatformRenderer uses both to write the observation logic inside
+the stage execution artifact.
+
+---
+
 ## StageResultSignal — normalized runtime result
 
 The `StageResultSignal` is the normalized result that stage execution artifacts emit and
@@ -165,6 +195,44 @@ location to evaluate merge eligibility.
 
 ---
 
+## Reconciliation model
+
+After an invocation is posted and an initial `StageResultSignal` is emitted
+(`state = RUNNING, conclusion = UNKNOWN`), the backend processes the request
+asynchronously. The stage execution artifact must update the signal when the backend
+completes — this is the **reconciliation loop**.
+
+### Reconciliation triggers
+
+Reconciliation events are platform-level wakeups that re-evaluate pending stage signals.
+They are **not** declared `StageTrigger` values; they are renderer-internal mechanism.
+
+| Event (GitHub) | When it fires |
+|---|---|
+| `issue_comment` (created/edited) | When a new comment appears on the PR — the backend may have posted its result |
+| `check_suite` (completed) | When a CI check suite finishes — covers check-run–based backends |
+| Scheduled sweep | Periodic re-evaluation to recover from missed events (e.g., cron every 5 minutes) |
+
+On each reconciliation event, the stage execution artifact:
+
+1. Resolves the PR and head SHA
+2. Checks the `EvidenceSpec` for the current head SHA — has the backend produced evidence?
+3. If yes, evaluates the `GateDispositionSpec` — PASS or BLOCKED?
+4. Emits an updated `StageResultSignal` (`state = COMPLETED, conclusion = PASS|BLOCKED`)
+
+Reconciliation is idempotent: if the signal already shows `COMPLETED` for the current
+head SHA, the artifact skips re-evaluation.
+
+### Why reconciliation is separate from StageTrigger
+
+`StageTrigger` values (`PR_OPENED`, `PR_UPDATED`, `MANUAL`) declare when a stage's
+*invocation* is requested. They are part of the neutral config and appear in
+`NormalizedStage.triggers`. Reconciliation events are implementation details of how a
+stage execution artifact *observes* backend completion after the invocation has been
+posted. They are not visible in the neutral config.
+
+---
+
 ## RouteClassification — routing runtime signal
 
 ```
@@ -215,6 +283,22 @@ posting account already contains this marker for the current head SHA. If yes, s
 This guard covers the window between posting the invocation and the backend updating
 its evidence (before the completion guard can pass).
 
+### In-flight marker expiry (lease semantics)
+
+An in-flight marker without expiry can permanently strand a PR if the backend never
+accepts the invocation (network failure, backend outage, malformed request). To prevent
+this, each invocation comment must include an expiry timestamp alongside the marker:
+
+```
+<!-- stagr:stage:<stageId>:<headSha>:expires:<ISO8601-timestamp> -->
+```
+
+Before treating an existing marker as valid, the stage execution artifact checks whether
+the expiry has passed. If expired, the marker is treated as absent and a fresh invocation
+is posted. The expiry window is a per-backend configuration value rendered into the stage
+execution artifact at render time (e.g., 30 minutes for a typical review backend).
+
 The two guards are complementary:
 - Completion guard: steady state — already done, don't re-invoke
 - In-flight marker: transient window — invocation posted, backend not yet responding
+  (expires after the configured lease window; re-invocation happens on next eligible event)

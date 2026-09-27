@@ -129,10 +129,13 @@ StageResultSpec {
 
 `StageResultSignalKind` values: `COMMIT_STATUS`, `CHECK_RUN`, `WORKFLOW_OUTPUT`
 
-The BackendRenderer produces the `EvidenceSpec[]` (how to detect raw completion) and
-the `StageResultSpec` (how the governance artifact finds the normalized result). The
-PlatformRenderer for a stage execution artifact writes the observation logic that
-converts raw evidence into a `StageResultSignal` (see `06-runtime-boundary.md`).
+The BackendRenderer produces the `EvidenceSpec[]` (how to detect raw completion).
+The PlatformRenderer for a stage execution artifact uses those `EvidenceSpec` entries to
+observe the backend's raw output. The PlatformRenderer **also produces the
+`StageResultSpec`** — declaring the platform-native signal location where it will publish
+results (e.g., the commit-status context `stagr/stage/<stageId>`). Signal locations are
+platform primitives; they are determined by the PlatformRenderer, not the BackendRenderer.
+See `06-runtime-boundary.md` for `StageResultSignal` and signal emission details.
 
 ### EvidenceSpec
 

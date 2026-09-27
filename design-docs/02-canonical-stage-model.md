@@ -145,3 +145,111 @@ Raw config YAML
 
 The output is a fully concrete `NormalizedStage[]`. This array is what every renderer
 receives as part of `RenderContext`.
+
+---
+
+## V1 shipped profiles
+
+Stagr V1 ships three built-in profiles. Operators reference them by id in their config.
+Each profile is a named preset; an operator can override any field it sets.
+
+### `minimal`
+
+Intended for documentation-only repositories or small utilities that need only a
+lightweight review pass.
+
+Normalized output:
+```
+stages:
+  - id: review
+    kind: REVIEW
+    provider: openai
+    backend: codex
+    model: null          // backend default
+    skill: review        // .agentic/skills/review/SKILL.md
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: []
+```
+
+### `standard`
+
+Intended for application code repositories. Adds a security review stage that runs
+independently of the code review.
+
+Normalized output:
+```
+stages:
+  - id: review
+    kind: REVIEW
+    provider: openai
+    backend: codex
+    model: null
+    skill: review
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: []
+
+  - id: security
+    kind: SECURITY
+    provider: openai
+    backend: codex
+    model: null
+    skill: security
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: []
+```
+
+### `extended`
+
+Intended for repositories that also need automated build and test validation alongside
+AI review. Adds `build` and `test` stages; `test` depends on `build`.
+
+Normalized output:
+```
+stages:
+  - id: review
+    kind: REVIEW
+    provider: openai
+    backend: codex
+    model: null
+    skill: review
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: []
+
+  - id: security
+    kind: SECURITY
+    provider: openai
+    backend: codex
+    model: null
+    skill: security
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: []
+
+  - id: build
+    kind: BUILD
+    provider: openai
+    backend: codex
+    model: null
+    skill: build
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: []
+
+  - id: test
+    kind: TEST
+    provider: openai
+    backend: codex
+    model: null
+    skill: test
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: [build]
+```
+
+> **Note:** Profile field values (especially `provider`, `backend`, `model`) are
+> documented here as the V1 default resolution. Operators may override any field per
+> stage in their config.

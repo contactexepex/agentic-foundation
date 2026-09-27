@@ -23,14 +23,20 @@ on behalf of untrusted or fork-sourced work.
 
 ```
 TrustPolicy {
-  trustedRoles:      AuthorRole[]   // e.g. [OWNER, MEMBER, COLLABORATOR]
-  requireSameRepo:   boolean        // true = fork PRs never drive automation
-  allowForks:        boolean        // false = explicit hard block on fork PRs
-  privilegedStages:  string[]       // which stage ids may access secret-bearing tokens
-  humanMergeLabel:   string         // label name that forces the human-gated lane
-                                    // (e.g. "human-merge"); never auto-merged when present
+  trustedRoles:    AuthorRole[]   // e.g. [OWNER, MEMBER, COLLABORATOR]
+  requireSameRepo: boolean        // true = fork PRs never drive automation
+  allowForks:      boolean        // false = explicit hard block on fork PRs
+  humanMergeLabel: string         // label name that forces the human-gated lane
+                                  // (e.g. "human-merge"); never auto-merged when present
 }
 ```
+
+> **`privilegedStages` is derived, not operator-declared.** A stage is privileged if and
+> only if its `ExecutionPlan.requiredSecrets` is non-empty (determined by the
+> BackendRenderer at render time). Stagr derives this set automatically; the operator
+> does not need to, and must not, duplicate this information in the config. Operator
+> duplication would create a second source of truth that can drift from the actual
+> secrets requirements.
 
 ### AuthorRole
 
@@ -50,11 +56,10 @@ TrustPolicy {
 2. **Untrusted authors never drive automation.** A PR author whose `author_association`
    is not in `trustedRoles` must not trigger any privileged stage.
 
-3. **Privileged workflows require explicit declaration.** A stage that requires a
-   secret-bearing token (e.g., a PAT used to post comments) must appear in
-   `privilegedStages`. A PlatformRenderer must verify that privileged workflows use
-   `pull_request_target` (not `pull_request`) and never check out or execute PR head
-   content inside a privileged job.
+3. **Privileged workflows are identified automatically.** A stage is privileged when its
+   `ExecutionPlan.requiredSecrets` is non-empty. A PlatformRenderer must verify that
+   privileged workflows use `pull_request_target` (not `pull_request`) and never check
+   out or execute PR head content inside a privileged job.
 
 4. **The human-merge label is a hard stop.** When the label named in `humanMergeLabel`
    is present on a PR, the governance artifact must refuse to auto-merge regardless of
@@ -156,10 +161,11 @@ time.
 
 ```
 MergePolicy {
-  mode:              MergeMode
-  blockingStageIds:  string[]   // derived: all stages where gate == BLOCKING
-  requireZeroUnresolved: boolean // true = zero unresolved review threads required
-  requireHeadBound:  boolean    // true = all StageResultSignals must match current headSha
+  mode:                 MergeMode
+  blockingStageIds:     string[]   // derived: all stages where gate == BLOCKING
+  requireZeroUnresolved: boolean   // true = zero unresolved review threads required
+                                   // (checked via platform API, separate from StageResultSignal)
+  requireHeadBound:     boolean    // true = all StageResultSignals must match current headSha
 }
 ```
 
@@ -178,10 +184,13 @@ Merges automatically once all of the following are true:
 - Author association is in `TrustPolicy.trustedRoles`
 - `TrustPolicy.humanMergeLabel` is NOT present on the PR
 - No merge conflict
-- All CI checks and commit statuses are green (including the routing status)
-- `StageResultSignal` for every `blockingStageId` shows `conclusion = PASS` for the
-  current head SHA
-- `requireZeroUnresolved` is met (zero unresolved review threads)
+- All CI checks and commit statuses for **blocking stages** are green; `NON_BLOCKING`
+  stage statuses are informational and do not hold the gate
+- `StageResultSignal` for every stage in `RequiredStageIds` shows `conclusion = PASS`
+  for the current head SHA, where:
+  `RequiredStageIds = ApplicableStages(RouteClassification.route) ∩ blockingStageIds`
+- `requireZeroUnresolved` is met (zero unresolved review threads, checked directly via
+  platform API — this is a separate governance condition from `StageResultSignal`)
 - `RouteClassification.headSha` matches the current head SHA
 
 **Human-gated lane (`mode: MANUAL`):** Any PR that carries `TrustPolicy.humanMergeLabel`
@@ -212,9 +221,14 @@ The governance artifact passes if and only if all of the following hold:
 2. PR author association ∈ `TrustPolicy.trustedRoles`
 3. `TrustPolicy.humanMergeLabel` is NOT present
 4. No merge conflict
-5. Every commit status and check run is in a green (passing) terminal state
+5. Every commit status and check run for **BLOCKING stages** is in a green (passing)
+   terminal state. `NON_BLOCKING` stage statuses are reported but do not hold the gate.
 6. Routing status (`RouteClassification`) is published and terminal for the current `headSha`
-7. For every `stageId` in `MergePolicy.blockingStageIds`: a `StageResultSignal` with
-   `headSha = currentHead` and `conclusion = PASS` exists
-8. `requireZeroUnresolved`: zero unresolved review threads
+7. For every `stageId` in `RequiredStageIds`: a `StageResultSignal` with
+   `headSha = currentHead` and `conclusion = PASS` exists, where:
+   `RequiredStageIds = ApplicableStages(RouteClassification.route) ∩ MergePolicy.blockingStageIds`
+   Stages not applicable to the current route are excluded — their absence is not a blocker.
+8. `requireZeroUnresolved`: zero unresolved review threads (checked directly via platform
+   thread API — this is a separate platform-layer governance condition, not derived from
+   `StageResultSignal`)
 9. `mode = AUTO` (if `MANUAL`, stop here and require human merge)
