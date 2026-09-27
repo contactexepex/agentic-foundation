@@ -134,10 +134,11 @@ def test_enum_string_values() -> None:
 
 
 def test_normalized_stage_construction() -> None:
-    """NormalizedStage round-trips correctly; no enabled field; model may be None."""
+    """NormalizedStage round-trips correctly; no enabled field; model and skill may be None."""
     from stagr.core.models import NormalizedStage
     from stagr.core.enums import StageKind, StageGate, StageTrigger
 
+    # Stage with a skill (e.g. review stage)
     stage = NormalizedStage(
         id="review",
         kind=StageKind.REVIEW,
@@ -150,9 +151,24 @@ def test_normalized_stage_construction() -> None:
         model=None,
     )
     assert stage.id == "review"
+    assert stage.skill == "code-review"
     assert stage.model is None
     assert stage.gate is StageGate.BLOCKING
     assert len(stage.triggers) == 2
+
+    # IMPLEMENT-type stage: skill is None, gate is NON_BLOCKING
+    implement_stage = NormalizedStage(
+        id="implement-claude",
+        kind=StageKind.IMPLEMENT,
+        provider="anthropic",
+        backend="claude-code",
+        skill=None,
+        gate=StageGate.NON_BLOCKING,
+        triggers=(StageTrigger.MANUAL,),
+        dependencies=(),
+    )
+    assert implement_stage.skill is None
+    assert implement_stage.gate is StageGate.NON_BLOCKING
 
     # No `enabled` field
     assert not hasattr(stage, "enabled"), "NormalizedStage must not have an `enabled` field"

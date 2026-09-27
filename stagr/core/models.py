@@ -43,7 +43,7 @@ class NormalizedStage:
     kind: StageKind
     provider: str
     backend: str
-    skill: str
+    skill: str | None              # None = stage does not require a methodology skill
     gate: StageGate
     triggers: tuple[StageTrigger, ...]
     dependencies: tuple[str, ...]  # stage ids; validity enforced by V-S05
