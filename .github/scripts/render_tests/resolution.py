@@ -70,9 +70,12 @@ def test_default_token_secret_fallback() -> None:
         ],
     }
     # With no auth block: the fallback constant value is used in the rendered workflow.
+    # The expected value is pinned as a literal so that renaming DEFAULT_TOKEN_SECRET also
+    # renames the rendered secret reference — breaking this test explicitly and forcing a
+    # deliberate update of both the constant and the operators who rely on this PAT name.
     rendered = render.render_all(_base, "github")
-    check(f"secrets.{render.DEFAULT_TOKEN_SECRET}" in rendered["request-review.yml"],
-          f"default_token_secret: omitting auth uses DEFAULT_TOKEN_SECRET ({render.DEFAULT_TOKEN_SECRET!r}) in request-review")
+    check("secrets.REMEDIATION_TOKEN" in rendered["request-review.yml"],
+          f"default_token_secret: omitting auth uses DEFAULT_TOKEN_SECRET ('REMEDIATION_TOKEN') in request-review")
     # With an explicit token_secret: the operator value is used, not the default.
     _with_auth = {**_base, "platform": {**_base["platform"], "auth": {"token_secret": "MY_CUSTOM_PAT"}}}
     rendered_custom = render.render_all(_with_auth, "github")

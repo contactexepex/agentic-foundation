@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 
 from render_tests.harness import failures
-from render_tests.resolution import test_backend, test_profile_expansion, test_resolution
+from render_tests.resolution import test_backend, test_default_token_secret_fallback, test_profile_expansion, test_resolution
 from render_tests.structural import test_actions_sha_pinned, test_render_structural
 from render_tests.behaviors import (
     test_backend_name_seam,
@@ -44,6 +44,7 @@ def main() -> int:
     test_resolution()
     test_profile_expansion()
     test_backend()
+    test_default_token_secret_fallback()
     test_backend_name_seam()
     test_new_behaviors()
     test_round2_fixes()

@@ -92,9 +92,14 @@ def test_render_structural() -> None:
         check(not re.search(r"sk-[A-Za-z0-9]{8,}|ghp_[A-Za-z0-9]{8,}", content), f"render: {name} inlines no secret value")
     # deterministic
     check(render.render_all(cfg, "github") == rendered, "render: deterministic / idempotent")
-    # REVIEW_STATUS_CONTEXT: the constant value must appear in the rendered review-router workflow.
-    # The gate stub reads this same constant from the env; if the constant changes and the structural
-    # check is not updated, the rendered workflow and the gate stub would diverge silently.
+    # REVIEW_STATUS_CONTEXT: the top-level env.REVIEW_STATUS_CONTEXT in the rendered review-router
+    # workflow must equal the constant. The gate stub reads this same env var; if the constant
+    # changes and this check is not updated, the rendered workflow and the gate stub diverge silently.
+    # Parse the YAML and check the env block directly — a raw text search would pass even if the
+    # constant only appeared in a comment or a dead shell block.
     if "review-router.yml" in rendered:
-        check(render.REVIEW_STATUS_CONTEXT in rendered["review-router.yml"],
-              f"render: review-router.yml contains the REVIEW_STATUS_CONTEXT value ({render.REVIEW_STATUS_CONTEXT!r})")
+        router_doc = yaml.safe_load(rendered["review-router.yml"])
+        router_env = (router_doc or {}).get("env") or {}
+        check(router_env.get("REVIEW_STATUS_CONTEXT") == render.REVIEW_STATUS_CONTEXT,
+              f"render: review-router.yml top-level env.REVIEW_STATUS_CONTEXT equals "
+              f"REVIEW_STATUS_CONTEXT ({render.REVIEW_STATUS_CONTEXT!r})")
