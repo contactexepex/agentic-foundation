@@ -25,9 +25,11 @@ The config declares:
 
 The config does **not** contain:
 
-- Provider API endpoints or authentication details
-- Secret names or values (secrets are resolved by the renderer from environment
-  configuration — see `03-provider-backend-model.md`)
+- Provider API endpoints
+- Secret **values** — the actual credential material is never in the config. Secret
+  **names/aliases** (references that tell the renderer which secret to look up) are
+  allowed; for example `auth.token_secret: REMEDIATION_TOKEN` names the platform secret
+  without revealing its value. See `03-provider-backend-model.md` for the alias model.
 - CI event names (`pull_request_target`, `issue_comment`, etc.)
 - Comment formats or platform-specific selectors
 - Any implementation detail that is specific to one platform or one provider version

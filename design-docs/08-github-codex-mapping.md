@@ -24,8 +24,8 @@ and defines what the correct implementation looks like.
 | `InvocationKind.PR_COMMENT` | `gh pr comment <pr> --body-file <file>` via CODEX_PAT |
 | `EvidenceKind.REVIEW_RESULT` | Codex bot comment containing `codex-pull-request-review-summary` |
 | `EvidenceKind.COMMENT_MATCH` | PR comment from the PAT account containing the in-flight marker |
-| `StageResultSignal` | Commit status with context `stagr/stage/<stageId>` (target) |
-| `RouteClassification` | Commit status with context `Publish fast review result` (current) |
+| `StageResultSignal` | Check Run created by the Stagr GitHub App with name `stagr/stage/<stageId>` (target); commit status not permitted on GitHub V1 |
+| `RouteClassification` | Check Run created by the Stagr GitHub App (target); commit status with context `Publish fast review result` (current — to be migrated) |
 | `TrustPolicy.trustedRoles` | `author_association` ∈ `["OWNER","MEMBER","COLLABORATOR"]` |
 | `TrustPolicy.requireSameRepo` | `head.repo.full_name == GITHUB_REPOSITORY` check |
 | `TrustPolicy.humanMergeLabel` | `human-merge` label |
@@ -178,10 +178,12 @@ rows instead of normalized signals.
 
 To conform to the architecture:
 
-1. Each stage execution artifact must emit a `StageResultSignal` as a commit status
-   (or check run) after evaluating its EvidenceSpec.
-2. The governance artifact (`auto-merge-foundation-prs.yml`) must read these commit
-   statuses instead of Codex comment rows.
+1. Each stage execution artifact must emit a `StageResultSignal` as a **Check Run**
+   (not a commit status) after evaluating its EvidenceSpec. The Check Run carries the
+   Stagr GitHub App's publisher identity; the governance artifact verifies the App ID
+   matches `StageResultSpec.provenance.publisherIdentity` before trusting the result.
+2. The governance artifact (`auto-merge-foundation-prs.yml`) must read these Check Runs
+   (verifying publisher identity) instead of Codex comment rows.
 3. This decouples the governance artifact from Codex-specific output formats and makes
    it work correctly with any future backend.
 
@@ -211,7 +213,7 @@ The bug is entirely in the rendered implementation. The neutral config needs no 
 |---|---|
 | `request-final-security-review.yml` | Remove code-review-completion gate. Add `pull_request_target: [opened, reopened, ready_for_review, synchronize]` triggers (PR_OPENED + PR_UPDATED). Both stages trigger independently. |
 | `request-codex-review-on-push.yml` | Add `pull_request_target: [opened, reopened, ready_for_review]` triggers (PR_OPENED). Remove 3-minute security-review serialization wait (lines 218–237). Emit `StageResultSignal` after evidence check. |
-| Both stage workflows | Add in-flight idempotency marker (`<!-- stagr:stage:<id>:<sha> -->`). Emit `StageResultSignal` to commit status. |
-| `auto-merge-foundation-prs.yml` | Read `StageResultSignal` commit statuses instead of Codex summary comment rows. |
+| Both stage workflows | Add in-flight idempotency marker (`<!-- stagr:stage:<id>:<sha> -->`). Emit `StageResultSignal` as Check Run (not commit status); verify publisher App identity in governance. |
+| `auto-merge-foundation-prs.yml` | Read `StageResultSignal` Check Runs (verify publisher identity) instead of Codex summary comment rows. Routing signal also migrated to Check Run. |
 | New: provider configuration | Add secret alias → platform secret name mapping (TRUSTED_COMMENTER_TOKEN → REMEDIATION_TOKEN) to provider config. |
 | Verify empirically | Test whether `@codex security review` PR comment reliably updates the Codex summary Security Review row before implementing the EvidenceSpec. |

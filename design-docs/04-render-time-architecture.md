@@ -141,17 +141,32 @@ StageResultSpec {
   stageId:        string
   signalKind:     StageResultSignalKind   // how the signal is published at run time
   signalSelector: string                  // platform-specific locator for the signal
+  provenance:     StageResultProvenance   // expected publisher identity for governance verification
+}
+
+StageResultProvenance {
+  publisherIdentity: string   // platform-specific identity of the expected signal publisher
+                              // (e.g., GitHub App installation ID, workflow file path)
 }
 ```
 
-`StageResultSignalKind` values: `COMMIT_STATUS`, `CHECK_RUN`, `WORKFLOW_OUTPUT`
+`StageResultSignalKind` values on GitHub V1: `CHECK_RUN` (required — authenticated App
+identity), `WORKFLOW_OUTPUT`. `COMMIT_STATUS` is available as a fallback only for
+platforms where Check Runs do not exist; on GitHub V1 it must not be used for
+`StageResultSignal` because it is forgeable by any `statuses: write` actor.
+
+`provenance.publisherIdentity` is used by the governance artifact to verify the signal
+came from the expected publisher before trusting its conclusion. On GitHub, this is the
+GitHub App installation ID or a stable workflow identity that created the Check Run. The
+governance artifact must reject any signal whose publisher identity does not match the
+rendered `provenance` value.
 
 The BackendRenderer produces the `EvidenceSpec[]` (how to detect raw completion).
 The PlatformRenderer for a stage execution artifact uses those `EvidenceSpec` entries to
 observe the backend's raw output. The PlatformRenderer **also produces the
-`StageResultSpec`** — declaring the platform-native signal location where it will publish
-results (e.g., the commit-status context `stagr/stage/<stageId>`). Signal locations are
-platform primitives; they are determined by the PlatformRenderer, not the BackendRenderer.
+`StageResultSpec`** — declaring the platform-native signal location, kind, and expected
+publisher identity where it will publish results. Signal locations are platform
+primitives; they are determined by the PlatformRenderer, not the BackendRenderer.
 See `06-runtime-boundary.md` for `StageResultSignal` and signal emission details.
 
 ### EvidenceSpec

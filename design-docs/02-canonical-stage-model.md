@@ -99,15 +99,22 @@ After parsing and profile expansion, all stages are placed into a directed acycl
 ## Dependency semantics — precise rule
 
 > **A dependent stage becomes eligible to start only when all of its declared
-> dependencies have reached a terminal state with `conclusion = PASS`.**
->
-> If any declared dependency reaches a terminal state with `conclusion = BLOCKED` or
-> `conclusion = FAILED`, the dependent stage does **not** start and its own conclusion
-> is set to `FAILED` (dependency failure propagation).
+> dependencies have reached `conclusion = PASS`.**
 
-This is the V1 rule. There is no conditional dependency ("run even if upstream failed")
-in V1. Stages with `dependencies: []` are unconditionally independent — they start
-whenever their declared `triggers` fire.
+**While any dependency is `BLOCKED`:** The dependent stage remains `PENDING`. It does
+not start, and its own conclusion is not set. `BLOCKED` is a mutable state — the
+upstream stage may reconcile to `PASS` when findings are resolved without a new push
+(see `06-runtime-boundary.md`). The dependent stage re-evaluates eligibility on each
+reconciliation event that updates an upstream signal.
+
+**When any dependency reaches irrecoverable `FAILED`:** The dependent stage does not
+start and its own conclusion is set to `FAILED` (dependency failure propagation).
+`FAILED` is terminal — it indicates an infrastructure failure, timeout, or unrecoverable
+error that cannot clear without a new push.
+
+There is no conditional dependency ("run even if upstream failed") in V1. Stages with
+`dependencies: []` are unconditionally independent — they start whenever their declared
+`triggers` fire.
 
 ### Example
 
@@ -118,7 +125,10 @@ test   (dependencies: [build])
 
 - `build` starts on PR_UPDATED.
 - `test` starts only after `build` concludes PASS.
-- If `build` concludes FAILED, `test` does not start.
+- If `build` is `COMPLETED/BLOCKED` (e.g., a lint finding), `test` stays PENDING and
+  re-evaluates when `build` reconciles.
+- If `build` reaches irrecoverable `FAILED` (e.g., infrastructure error), `test` does
+  not start and is itself set to FAILED.
 
 ---
 
