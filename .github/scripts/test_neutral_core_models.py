@@ -76,6 +76,7 @@ from neutral_core_tests.test_defaults import (
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
     test_defaults_explicit_model_binding_normalized_to_string,
+    test_defaults_provider_model_binding_with_tiers_preserved,
     test_defaults_mixed_binding_with_tiers_preserved,
     test_defaults_tier_only_binding_preserved,
 )
@@ -130,6 +131,7 @@ _TESTS = [
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
     test_defaults_explicit_model_binding_normalized_to_string,
+    test_defaults_provider_model_binding_with_tiers_preserved,
     test_defaults_mixed_binding_with_tiers_preserved,
     test_defaults_tier_only_binding_preserved,
 ]

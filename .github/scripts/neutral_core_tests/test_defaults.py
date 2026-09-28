@@ -145,6 +145,28 @@ def test_defaults_explicit_model_binding_normalized_to_string() -> None:
     )
 
 
+def test_defaults_provider_model_binding_with_tiers_preserved() -> None:
+    """When defaults.models[provider] contains tiers, the full binding is applied to the stage.
+
+    Only extracting the default string would discard explicit provider-level tier overrides,
+    violating #181's resolution chain for tiered provider defaults.
+    """
+    from stagr.core.defaults import resolve_defaults
+
+    provider_binding = {"default": "gpt-base", "tiers": {"complex": "gpt-strong"}}
+    active_stages = [{"id": "review", "type": "review", "provider": "openai"}]
+    defaults_cfg = {
+        "models": {
+            "openai": provider_binding,
+        },
+    }
+    result = resolve_defaults(active_stages, defaults_cfg)
+
+    assert result[0]["model"] == provider_binding, (
+        f"Provider model binding with tiers must be preserved in full: got {result[0].get('model')}"
+    )
+
+
 def test_defaults_mixed_binding_with_tiers_preserved() -> None:
     """A modelBinding with both default and tiers is preserved unchanged.
 
