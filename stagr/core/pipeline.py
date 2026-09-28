@@ -108,18 +108,33 @@ def _resolve_stage_kind(raw_type: str | None, stage_id: str) -> StageKind:
         )
 
 
-def _extract_model_string(model_value: Any) -> str | None:
+def _extract_model_string(model_value: Any, stage_id: str) -> str | None:
     """Return a plain model string from a raw stage model value, or None.
 
-    ``resolve_defaults`` may preserve a tiered ``modelBinding`` dict (one
-    containing ``tiers``) for downstream tier-selection steps.  This function
-    extracts the ``default`` string from such a binding if present, or returns
-    ``None`` when no plain string can be determined.  A model value that is
-    already a string is returned as-is.
+    A model value that is already a string is returned as-is.  A
+    ``modelBinding`` dict without ``tiers`` returns its ``default`` string.
+
+    A binding that contains ``tiers`` is NOT silently collapsed: ``resolve_defaults``
+    (#181) deliberately preserves such bindings so a downstream tier-selection step
+    can choose the right model string.  ``NormalizedStage.model`` is ``str | None``
+    and cannot represent an unresolved tier binding, so encountering one here means
+    the pipeline was invoked before tier-selection was applied.  A ``ValueError`` is
+    raised so the caller receives a clear signal rather than silently losing the
+    operator's tier configuration.
+
+    Raises:
+        ValueError: when ``model_value`` is a ``modelBinding`` dict containing a
+            ``tiers`` key (unresolved tier binding).
     """
     if isinstance(model_value, str):
         return model_value or None
     if isinstance(model_value, dict):
+        if "tiers" in model_value:
+            raise ValueError(
+                f"stage '{stage_id}': model binding contains 'tiers' and cannot be "
+                "normalized to str|None — tier-selection must run before NormalizedStage "
+                "construction.  Resolve or remove the tier binding first."
+            )
         default = model_value.get("default")
         return default if isinstance(default, str) and default else None
     return None
@@ -155,7 +170,7 @@ def _stage_dict_to_normalized(stage: dict[str, Any]) -> NormalizedStage:
         gate=_resolve_gate(stage),
         triggers=_resolve_triggers(stage),
         dependencies=tuple(stage.get("depends_on") or []),
-        model=_extract_model_string(stage.get("model")),
+        model=_extract_model_string(stage.get("model"), stage_id),
     )
 
 

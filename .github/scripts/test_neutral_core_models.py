@@ -98,7 +98,7 @@ from neutral_core_tests.test_pipeline_edge_cases import (
     test_pipeline_gate_defaults_to_non_blocking_when_absent,
     test_pipeline_advisory_gate_maps_to_non_blocking,
     test_pipeline_dependencies_tuple_from_depends_on,
-    test_pipeline_tiered_model_binding_extracts_default_string,
+    test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
 )
 
 _TESTS = [
@@ -169,7 +169,7 @@ _TESTS = [
     test_pipeline_gate_defaults_to_non_blocking_when_absent,
     test_pipeline_advisory_gate_maps_to_non_blocking,
     test_pipeline_dependencies_tuple_from_depends_on,
-    test_pipeline_tiered_model_binding_extracts_default_string,
+    test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
 ]
 
 if __name__ == "__main__":

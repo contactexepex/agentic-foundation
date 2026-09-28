@@ -181,8 +181,14 @@ def test_pipeline_dependencies_tuple_from_depends_on() -> None:
     )
 
 
-def test_pipeline_tiered_model_binding_extracts_default_string() -> None:
-    """A tiered modelBinding is resolved to the default string for NormalizedStage.model."""
+def test_pipeline_tiered_model_binding_raises_not_silently_collapsed() -> None:
+    """A tiered modelBinding must not be silently collapsed — normalize_config raises ValueError.
+
+    resolve_defaults (#181) preserves modelBinding dicts containing tiers so a downstream
+    tier-selection step can use them.  NormalizedStage.model is str|None and cannot represent
+    an unresolved tier binding, so the pipeline must raise ValueError rather than silently
+    discarding the operator's tier configuration.
+    """
     from stagr.core.pipeline import normalize_config
 
     config = {
@@ -195,8 +201,19 @@ def test_pipeline_tiered_model_binding_extracts_default_string() -> None:
             },
         },
     }
-    result = normalize_config(config)
 
-    assert isinstance(result[0].model, (str, type(None))), (
-        f"NormalizedStage.model must be str|None, got {type(result[0].model).__name__}"
+    raised = False
+    try:
+        normalize_config(config)
+    except ValueError as exc:
+        raised = True
+        assert "tier" in str(exc).lower(), (
+            f"ValueError must mention 'tier': {exc}"
+        )
+        assert "review" in str(exc), (
+            f"ValueError must name the stage id: {exc}"
+        )
+    assert raised, (
+        "Expected ValueError when normalize_config encounters an unresolved tier binding; "
+        "must not silently collapse the tier configuration"
     )
