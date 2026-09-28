@@ -130,6 +130,7 @@ from neutral_core_tests.test_policy_merge_blocking import (
     test_merge_policy_non_blocking_excluded,
     test_merge_policy_empty_stages_produces_empty_blocking_ids,
     test_merge_policy_mixed_gates_only_blocking_included,
+    test_merge_policy_unknown_module_key_raises_schema_error,
 )
 from neutral_core_tests.test_policy_merge_derivation import (
     test_merge_policy_mode_auto_when_auto_merge_true,
@@ -240,6 +241,7 @@ _TESTS = [
     test_merge_policy_non_blocking_excluded,
     test_merge_policy_empty_stages_produces_empty_blocking_ids,
     test_merge_policy_mixed_gates_only_blocking_included,
+    test_merge_policy_unknown_module_key_raises_schema_error,
     test_merge_policy_mode_auto_when_auto_merge_true,
     test_merge_policy_mode_manual_when_auto_merge_false,
     test_merge_policy_mode_manual_when_modules_absent,
