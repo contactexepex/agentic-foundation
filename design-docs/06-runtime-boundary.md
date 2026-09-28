@@ -173,12 +173,25 @@ platform's review-thread API. For `NO_OPEN_THREADS` to be safe on GitHub, the bi
 must unambiguously associate each review thread with its originating stage invocation
 using a field the GitHub review-thread API actually exposes (e.g., `pull_request_review_id`,
 not a back-reference to the triggering issue comment, which the API does not provide).
-If no reliable platform binding can be demonstrated for a given backend, `NO_OPEN_THREADS`
-must not be used as the `GateDispositionKind` for that stage — the BackendRenderer must
-choose an alternative kind (e.g., `EXPLICIT_PASS_MARKER`) instead.
 
-When `invocationCorrelation` is null, `createdBy + headSha` is sufficient (applies when
-stages use distinct bot identities).
+**V1 conservative fallback (shared-scope mode).** When a spike investigation demonstrates
+that no reliable per-invocation binding is available for a given backend — for example,
+Spike B found that the GitHub API does not expose a reliably observable field that
+unambiguously associates individual review threads with their originating stage invocation
+when two reviews run under the same Codex bot identity on the same head commit — the
+BackendRenderer may use `NO_OPEN_THREADS` with `invocationCorrelation=null` as a
+conservative V1 fallback. In this mode the gate is scoped only by `createdBy + headSha`:
+all unresolved threads from that bot identity on the current head must be resolved before
+any stage using this disposition passes. The intentional consequence is **cross-stage
+blocking**: a finding from the REVIEW stage will keep the SECURITY stage BLOCKED, and
+vice versa. This is fail-closed behavior, not a bug. The BackendRenderer's module
+docstring must explicitly document this V1 shared-scope mode and the Spike finding that
+motivates it. The V1 fallback is not a general licence to omit `invocationCorrelation`;
+it requires documented spike evidence that no reliable binding exists for this specific
+backend.
+
+When `invocationCorrelation` is null without a documented spike, `createdBy + headSha` is
+sufficient only when stages use distinct bot identities.
 
 The BackendRenderer supplies both `EvidenceSpec` (when done?) and `GateDispositionSpec`
 (PASS or BLOCKED?). The PlatformRenderer uses both to write the observation logic inside
