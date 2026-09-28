@@ -185,6 +185,8 @@ from neutral_core_tests.test_openai_codex_backend_renderer import (
     test_codex_renderer_review_stage_evidence_success_condition_is_completed,
     test_codex_renderer_security_stage_evidence_is_comment_match,
     test_codex_renderer_security_stage_evidence_success_condition_is_match_found,
+    test_codex_renderer_security_stage_evidence_selector_is_verified_marker,
+    test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
     test_codex_renderer_unsupported_stage_kind_raises_value_error,
 )
 
@@ -327,6 +329,8 @@ _TESTS = [
     test_codex_renderer_review_stage_evidence_success_condition_is_completed,
     test_codex_renderer_security_stage_evidence_is_comment_match,
     test_codex_renderer_security_stage_evidence_success_condition_is_match_found,
+    test_codex_renderer_security_stage_evidence_selector_is_verified_marker,
+    test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
     test_codex_renderer_unsupported_stage_kind_raises_value_error,
 ]
 

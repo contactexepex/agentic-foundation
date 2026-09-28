@@ -266,6 +266,38 @@ def test_codex_renderer_security_stage_evidence_success_condition_is_match_found
     )
 
 
+def test_codex_renderer_security_stage_evidence_selector_is_verified_marker() -> None:
+    """SECURITY stage EvidenceSpec.selector is the codex-security-review:v1 machine-readable marker.
+
+    Empirically grounded: auto-merge.yml.tmpl uses this marker as the preferred
+    detection path for security review completion.
+    """
+    renderer = _build_renderer()
+    security_stage = _build_security_normalized_stage()
+
+    execution_plan = renderer.render(security_stage)
+
+    evidence_spec = execution_plan.evidence[0]
+    assert evidence_spec.selector == "codex-security-review:v1", (
+        f"Expected evidence selector 'codex-security-review:v1' (empirically verified "
+        f"marker from auto-merge.yml.tmpl); got {evidence_spec.selector!r}"
+    )
+
+
+def test_codex_renderer_security_stage_evidence_sha_field_is_head_sha() -> None:
+    """SECURITY stage CorrelationSpec.sha_field is 'headSha' (the JSON field in the codex-security-review:v1 blob)."""
+    renderer = _build_renderer()
+    security_stage = _build_security_normalized_stage()
+
+    execution_plan = renderer.render(security_stage)
+
+    correlation = execution_plan.evidence[0].correlation
+    assert correlation.sha_field == "headSha", (
+        f"Expected evidence correlation sha_field 'headSha' (field within the "
+        f"codex-security-review:v1 JSON blob); got {correlation.sha_field!r}"
+    )
+
+
 def test_codex_renderer_unsupported_stage_kind_raises_value_error() -> None:
     """render() raises ValueError for stage kinds other than REVIEW and SECURITY."""
     from stagr.core.enums import StageGate, StageKind, StageTrigger

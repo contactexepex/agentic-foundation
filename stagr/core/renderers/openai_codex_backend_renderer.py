@@ -29,9 +29,12 @@ Evidence kinds by stage kind:
   for review stages — it means "the reviewer finished processing," regardless
   of findings. Findings are handled separately by ``GateDispositionSpec``.
 - SECURITY stages use ``EvidenceKind.COMMENT_MATCH`` with ``MATCH_FOUND``:
-  the security review completion is detected from a comment match rather than
-  a formal review object. The selector and SHA field are distinct from the
-  code-review summary to allow independent evidence tracking.
+  Codex embeds a machine-readable marker ``<!-- codex-security-review:v1
+  {"headSha":"<full40>","status":"completed"} -->`` inside the existing
+  review-summary comment (``codex-pull-request-review-summary``). The selector
+  ``codex-security-review:v1`` and SHA field ``headSha`` are grounded in the
+  empirically observed format documented in ``auto-merge.yml.tmpl`` (the
+  preferred/authoritative detection path used by the deployed auto-merge gate).
 
 Open design question: ``EXPLICIT_PASS_MARKER`` with a selector that is always
 present on completion (the "Completed" summary row) emits PASS even when
@@ -86,13 +89,15 @@ _CODEX_REVIEW_SUMMARY_SELECTOR = "codex-pull-request-review-summary"
 # SHA (the backtick-formatted SHA in the Code Review row).
 _REVIEW_SUMMARY_SHA_FIELD = "review_summary_sha"
 
-# Backend-defined selector for the Codex security-review completion comment,
-# distinct from the code-review summary to allow independent evidence tracking.
-_CODEX_SECURITY_REVIEW_COMMENT_SELECTOR = "codex-security-review-completion-comment"
+# Machine-readable marker embedded by Codex inside the review-summary comment
+# when the security review completes. Format (empirically observed in
+# auto-merge.yml.tmpl, the authoritative detection path of the deployed gate):
+#   <!-- codex-security-review:v1 {"headSha":"<full40>","status":"completed"} -->
+_CODEX_SECURITY_REVIEW_MARKER_SELECTOR = "codex-security-review:v1"
 
-# The field within the Codex security-review completion comment that carries
-# the head SHA of the reviewed commit.
-_SECURITY_REVIEW_COMMENT_SHA_FIELD = "security_review_sha"
+# The JSON field within the codex-security-review:v1 blob that carries the
+# full 40-character head SHA of the reviewed commit.
+_SECURITY_REVIEW_MARKER_SHA_FIELD = "headSha"
 
 # Backend-defined selectors that identify the "Completed" pass-marker for each
 # review kind within the Codex summary comment.
@@ -166,10 +171,10 @@ class OpenAICodexBackendRenderer:
         if stage_kind is StageKind.SECURITY:
             return EvidenceSpec(
                 kind=EvidenceKind.COMMENT_MATCH,
-                selector=_CODEX_SECURITY_REVIEW_COMMENT_SELECTOR,
+                selector=_CODEX_SECURITY_REVIEW_MARKER_SELECTOR,
                 correlation=CorrelationSpec(
                     head_sha=True,
-                    sha_field=_SECURITY_REVIEW_COMMENT_SHA_FIELD,
+                    sha_field=_SECURITY_REVIEW_MARKER_SHA_FIELD,
                 ),
                 success_condition=EvidenceSuccessCondition.MATCH_FOUND,
             )
