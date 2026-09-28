@@ -152,6 +152,16 @@ from neutral_core_tests.test_backend_renderer import (
     test_backend_renderer_gate_disposition_set,
     test_backend_renderer_no_platform_fields,
 )
+from neutral_core_tests.test_anthropic_claude_backend_renderer import (
+    test_anthropic_renderer_invocation_kind,
+    test_anthropic_renderer_invocation_params_action,
+    test_anthropic_renderer_invocation_params_secret_inputs,
+    test_anthropic_renderer_secret_alias_only,
+    test_anthropic_renderer_gate_disposition_always_pass,
+    test_anthropic_renderer_no_evidence_spec,
+    test_anthropic_renderer_protocol_conformance,
+    test_anthropic_renderer_provider_and_backend,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -264,6 +274,14 @@ _TESTS = [
     test_backend_renderer_secret_alias_only,
     test_backend_renderer_gate_disposition_set,
     test_backend_renderer_no_platform_fields,
+    test_anthropic_renderer_invocation_kind,
+    test_anthropic_renderer_invocation_params_action,
+    test_anthropic_renderer_invocation_params_secret_inputs,
+    test_anthropic_renderer_secret_alias_only,
+    test_anthropic_renderer_gate_disposition_always_pass,
+    test_anthropic_renderer_no_evidence_spec,
+    test_anthropic_renderer_protocol_conformance,
+    test_anthropic_renderer_provider_and_backend,
 ]
 
 if __name__ == "__main__":
