@@ -293,3 +293,54 @@ def test_unrouted_stage_absent_from_generated_script() -> None:
         "Stage absent from both routes.fast and routes.normal must be omitted from the "
         "generated governance script; it must not be evaluated unconditionally"
     )
+
+
+def test_stage_check_run_query_uses_filter_all() -> None:
+    """Stage signal check-run query includes filter=all to detect duplicates across suites."""
+    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.models import (
+        DiscussionPolicy,
+        MergePolicy,
+        RenderContext,
+        RoutingPolicy,
+        StageResultProvenance,
+        StageResultSpec,
+        TrustPolicy,
+    )
+    from stagr.platforms.github._governance import generate_governance_workflow_yaml
+
+    render_ctx = RenderContext(
+        stages=(),
+        merge_policy=MergePolicy(
+            mode=MergeMode.AUTO,
+            blocking_stage_ids=("lint",),
+            require_head_bound=True,
+            discussion_policy=DiscussionPolicy(require_resolved=False),
+        ),
+        routing_policy=RoutingPolicy(fast_path=None),
+        trust_policy=TrustPolicy(
+            trusted_roles=(AuthorRole.OWNER,),
+            fork_policy=ForkPolicy.DENY,
+            human_merge_label="human-merge",
+        ),
+        platform="github",
+        config_version="2",
+    )
+    result_specs = (
+        StageResultSpec(
+            stage_id="lint",
+            signal_kind=StageResultSignalKind.CHECK_RUN,
+            signal_selector="stagr/lint",
+            provenance=StageResultProvenance(publisher_identity="42"),
+        ),
+    )
+    yaml_content = generate_governance_workflow_yaml(
+        publisher_app_id="42",
+        publisher_private_key_secret="STAGR_KEY",
+        result_specs=result_specs,
+        render_context=render_ctx,
+    )
+    assert "filter=all" in yaml_content, (
+        "Stage check-run query must include filter=all; GitHub's default filter=latest "
+        "returns only the most recent run per suite, defeating duplicate detection"
+    )

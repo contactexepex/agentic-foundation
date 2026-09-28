@@ -146,7 +146,7 @@ def _build_route_reading_block() -> str:
     return (
         "# Read route classification to restrict stage evaluation to applicable stages.\n"
         "route_check_runs_json=\"$(gh api \\\n"
-        "  \\\"repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs?check_name=stagr/route-classification&per_page=2\\\" \\\n"
+        "  \\\"repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs?check_name=stagr/route-classification&filter=all&per_page=2\\\" \\\n"
         "  --jq '.check_runs' 2>&1)\" || {\n"
         "  echo \"::error::Failed to query RouteClassification Check Run for SHA '${PR_HEAD_SHA}'.\"\n"
         "  exit 1\n"
@@ -283,7 +283,7 @@ evaluate_stage_signal() {
   # Locate the single Check Run for this stage on the current head SHA.
   local check_runs_json
   check_runs_json="$(gh api \\
-    "repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs?check_name=${signal_selector}&per_page=10" \\
+    "repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs?check_name=${signal_selector}&filter=all&per_page=10" \\
     --jq '[.check_runs[]]' 2>&1)" || {
     echo "::error::Failed to query Check Runs for stage '${stage_id}'" \\
       "on SHA '${PR_HEAD_SHA}': ${check_runs_json}"

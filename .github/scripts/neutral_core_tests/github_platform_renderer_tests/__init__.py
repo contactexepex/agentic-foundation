@@ -74,6 +74,7 @@ from neutral_core_tests.github_platform_renderer_tests.test_governance_structure
     test_governance_route_publisher_authentication_rejects_forged_app,
     test_non_blocking_stage_call_has_or_true_suffix,
     test_unrouted_stage_absent_from_generated_script,
+    test_stage_check_run_query_uses_filter_all,
 )
 
 GITHUB_PLATFORM_RENDERER_TESTS = [
@@ -140,6 +141,7 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_governance_route_publisher_authentication_rejects_forged_app,
     test_non_blocking_stage_call_has_or_true_suffix,
     test_unrouted_stage_absent_from_generated_script,
+    test_stage_check_run_query_uses_filter_all,
 ]
 
 __all__ = [
@@ -207,4 +209,5 @@ __all__ = [
     "test_governance_route_publisher_authentication_rejects_forged_app",
     "test_non_blocking_stage_call_has_or_true_suffix",
     "test_unrouted_stage_absent_from_generated_script",
+    "test_stage_check_run_query_uses_filter_all",
 ]
