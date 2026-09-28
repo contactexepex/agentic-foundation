@@ -146,6 +146,12 @@ from neutral_core_tests.test_policy_merge_derivation import (
     test_merge_policy_returns_merge_policy_instance,
     test_merge_policy_result_is_frozen,
 )
+from neutral_core_tests.test_backend_renderer import (
+    test_backend_renderer_protocol_conformance,
+    test_backend_renderer_secret_alias_only,
+    test_backend_renderer_gate_disposition_set,
+    test_backend_renderer_no_platform_fields,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -254,6 +260,10 @@ _TESTS = [
     test_merge_policy_sonar_absent_no_external_gate,
     test_merge_policy_returns_merge_policy_instance,
     test_merge_policy_result_is_frozen,
+    test_backend_renderer_protocol_conformance,
+    test_backend_renderer_secret_alias_only,
+    test_backend_renderer_gate_disposition_set,
+    test_backend_renderer_no_platform_fields,
 ]
 
 if __name__ == "__main__":
