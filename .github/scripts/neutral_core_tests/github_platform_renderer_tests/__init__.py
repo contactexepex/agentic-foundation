@@ -69,6 +69,8 @@ from neutral_core_tests.github_platform_renderer_tests.test_governance_structure
     test_governance_workflow_marks_non_blocking_stage_as_non_blocking,
     test_governance_workflow_has_merge_eligible_message,
     test_governance_workflow_handles_missing_check_run,
+    test_governance_workflow_non_blocking_stage_missing_check_run_does_not_gate_merge,
+    test_governance_workflow_fast_path_only_evaluates_fast_route_stages,
 )
 
 GITHUB_PLATFORM_RENDERER_TESTS = [
@@ -130,6 +132,8 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_governance_workflow_marks_non_blocking_stage_as_non_blocking,
     test_governance_workflow_has_merge_eligible_message,
     test_governance_workflow_handles_missing_check_run,
+    test_governance_workflow_non_blocking_stage_missing_check_run_does_not_gate_merge,
+    test_governance_workflow_fast_path_only_evaluates_fast_route_stages,
 ]
 
 __all__ = [
@@ -192,4 +196,6 @@ __all__ = [
     "test_governance_workflow_marks_non_blocking_stage_as_non_blocking",
     "test_governance_workflow_has_merge_eligible_message",
     "test_governance_workflow_handles_missing_check_run",
+    "test_governance_workflow_non_blocking_stage_missing_check_run_does_not_gate_merge",
+    "test_governance_workflow_fast_path_only_evaluates_fast_route_stages",
 ]

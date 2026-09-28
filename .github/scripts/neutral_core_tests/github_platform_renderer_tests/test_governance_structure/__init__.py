@@ -1,0 +1,64 @@
+"""Governance workflow structure test sub-package.
+
+Re-exports all test functions for use by the parent package and the top-level
+test runner.
+"""
+from __future__ import annotations
+
+from neutral_core_tests.github_platform_renderer_tests.test_governance_structure.test_token_and_publisher import (
+    test_governance_file_written_at_correct_path,
+    test_governance_workflow_references_private_key_secret,
+    test_governance_workflow_references_publisher_app_id_in_token_step,
+    test_governance_workflow_app_token_step_uses_pinned_sha,
+    test_governance_workflow_has_app_token_step_with_id,
+    test_governance_workflow_embeds_stagr_app_id_as_literal_for_verification,
+    test_governance_workflow_has_publisher_identity_rejection_logic,
+)
+from neutral_core_tests.github_platform_renderer_tests.test_governance_structure.test_signal_evaluation import (
+    test_governance_workflow_has_blocked_conclusion_findings_message,
+    test_governance_workflow_has_failed_conclusion_did_not_complete_message,
+    test_governance_workflow_has_duplicate_check_run_detection,
+    test_governance_workflow_validates_schema_version,
+    test_governance_workflow_uses_schema_version_one,
+    test_governance_workflow_reads_signal_from_output_summary,
+    test_governance_workflow_reads_state_from_payload,
+    test_governance_workflow_reads_conclusion_from_payload,
+    test_governance_workflow_has_head_sha_binding_check,
+    test_governance_workflow_has_merge_eligible_message,
+    test_governance_workflow_handles_missing_check_run,
+)
+from neutral_core_tests.github_platform_renderer_tests.test_governance_structure.test_stage_routing import (
+    test_governance_workflow_contains_stage_signal_selector,
+    test_governance_workflow_contains_multiple_stage_selectors,
+    test_governance_workflow_marks_blocking_stage_as_blocking,
+    test_governance_workflow_marks_non_blocking_stage_as_non_blocking,
+    test_governance_workflow_non_blocking_stage_missing_check_run_does_not_gate_merge,
+    test_governance_workflow_fast_path_only_evaluates_fast_route_stages,
+)
+
+__all__ = [
+    "test_governance_file_written_at_correct_path",
+    "test_governance_workflow_references_private_key_secret",
+    "test_governance_workflow_references_publisher_app_id_in_token_step",
+    "test_governance_workflow_app_token_step_uses_pinned_sha",
+    "test_governance_workflow_has_app_token_step_with_id",
+    "test_governance_workflow_embeds_stagr_app_id_as_literal_for_verification",
+    "test_governance_workflow_has_publisher_identity_rejection_logic",
+    "test_governance_workflow_has_blocked_conclusion_findings_message",
+    "test_governance_workflow_has_failed_conclusion_did_not_complete_message",
+    "test_governance_workflow_has_duplicate_check_run_detection",
+    "test_governance_workflow_validates_schema_version",
+    "test_governance_workflow_uses_schema_version_one",
+    "test_governance_workflow_reads_signal_from_output_summary",
+    "test_governance_workflow_reads_state_from_payload",
+    "test_governance_workflow_reads_conclusion_from_payload",
+    "test_governance_workflow_has_head_sha_binding_check",
+    "test_governance_workflow_has_merge_eligible_message",
+    "test_governance_workflow_handles_missing_check_run",
+    "test_governance_workflow_contains_stage_signal_selector",
+    "test_governance_workflow_contains_multiple_stage_selectors",
+    "test_governance_workflow_marks_blocking_stage_as_blocking",
+    "test_governance_workflow_marks_non_blocking_stage_as_non_blocking",
+    "test_governance_workflow_non_blocking_stage_missing_check_run_does_not_gate_merge",
+    "test_governance_workflow_fast_path_only_evaluates_fast_route_stages",
+]

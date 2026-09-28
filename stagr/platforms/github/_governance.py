@@ -136,6 +136,41 @@ def _indent_script_for_yaml(script: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _build_route_reading_block() -> str:
+    """Return shell code that reads the RouteClassification Check Run for the current PR.
+
+    The block queries the stagr/route-classification Check Run, validates that
+    exactly one exists for the current head SHA, and sets current_route to
+    either "FAST" or "NORMAL". Any deviation fails closed with an explicit error.
+    """
+    return (
+        "# Read route classification to restrict stage evaluation to applicable stages.\n"
+        "route_check_runs_json=\"$(gh api \\\n"
+        "  \\\"repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs?check_name=stagr/route-classification&per_page=2\\\" \\\n"
+        "  --jq '.check_runs' 2>&1)\" || {\n"
+        "  echo \"::error::Failed to query RouteClassification Check Run for SHA '${PR_HEAD_SHA}'.\"\n"
+        "  exit 1\n"
+        "}\n"
+        "route_run_count=\"$(echo \"${route_check_runs_json}\" | jq 'length')\"\n"
+        "if [[ \"${route_run_count}\" -eq 0 ]]; then\n"
+        "  echo \"::error::No RouteClassification Check Run found for SHA '${PR_HEAD_SHA}'.\"\n"
+        "  echo \"::error::Merge blocked until the routing workflow completes.\"\n"
+        "  exit 1\n"
+        "fi\n"
+        "if [[ \"${route_run_count}\" -gt 1 ]]; then\n"
+        "  echo \"::error::Duplicate RouteClassification Check Runs found for SHA '${PR_HEAD_SHA}'.\"\n"
+        "  exit 1\n"
+        "fi\n"
+        "route_title=\"$(echo \"${route_check_runs_json}\" | jq -r '.[0].output.title // \"\"')\"\n"
+        "current_route=\"${route_title#RouteClassification=}\"\n"
+        "if [[ \"${current_route}\" != \"FAST\" && \"${current_route}\" != \"NORMAL\" ]]; then\n"
+        "  echo \"::error::Unrecognised route '${current_route}' for SHA '${PR_HEAD_SHA}'.\"\n"
+        "  exit 1\n"
+        "fi\n"
+        "\n"
+    )
+
+
 def _build_evaluation_script(
     result_specs: tuple[StageResultSpec, ...],
     render_context: RenderContext,
@@ -143,9 +178,14 @@ def _build_evaluation_script(
     """Return the complete shell script body for the evaluate-signals step."""
     stage_call_lines = _build_stage_evaluation_call_lines(result_specs, render_context)
 
+    route_reading_block = ""
+    if render_context.routing_policy.fast_path is not None:
+        route_reading_block = _build_route_reading_block()
+
     return (
         _EVALUATE_SIGNAL_FUNCTION_BODY
         + "\n"
+        + route_reading_block
         + "overall_pass=true\n"
         + stage_call_lines
         + "\n"
@@ -164,20 +204,50 @@ def _build_stage_evaluation_call_lines(
 ) -> str:
     """Return shell lines that call evaluate_stage_signal for each stage spec.
 
-    Each stage marked as blocking in MergePolicy.blocking_stage_ids is passed
-    the 'blocking' gate argument; all other stages receive 'non_blocking'.
+    Blocking stages set overall_pass=false on failure; non-blocking stages are
+    observed for informational purposes only and never affect merge eligibility.
+    When routing_policy.fast_path is set, each stage call is wrapped in a route
+    conditional so only route-applicable stages are evaluated.
     """
     blocking_stage_ids = set(render_context.merge_policy.blocking_stage_ids)
+    fast_path = render_context.routing_policy.fast_path
+
+    fast_stage_ids: set[str] = set()
+    normal_stage_ids: set[str] = set()
+    if fast_path is not None:
+        fast_stage_ids = set(fast_path.stages.fast)
+        normal_stage_ids = set(fast_path.stages.normal)
+
     lines: list[str] = []
     for spec in result_specs:
-        gate_argument = "blocking" if spec.stage_id in blocking_stage_ids else "non_blocking"
-        lines.append(
+        is_blocking = spec.stage_id in blocking_stage_ids
+        gate_argument = "blocking" if is_blocking else "non_blocking"
+        fail_suffix = " || overall_pass=false" if is_blocking else ""
+        eval_call = (
             f'evaluate_stage_signal'
             f' "{spec.stage_id}"'
             f' "{spec.signal_selector}"'
             f' "{gate_argument}"'
-            f" || overall_pass=false\n"
+            f'{fail_suffix}'
         )
+
+        if fast_path is None:
+            lines.append(eval_call + "\n")
+        else:
+            in_fast = spec.stage_id in fast_stage_ids
+            in_normal = spec.stage_id in normal_stage_ids
+            if in_fast and in_normal:
+                lines.append(eval_call + "\n")
+            elif in_fast:
+                lines.append(f'if [[ "${{current_route}}" == "FAST" ]]; then\n')
+                lines.append(f'  {eval_call}\n')
+                lines.append(f'fi\n')
+            elif in_normal:
+                lines.append(f'if [[ "${{current_route}}" == "NORMAL" ]]; then\n')
+                lines.append(f'  {eval_call}\n')
+                lines.append(f'fi\n')
+            else:
+                lines.append(eval_call + "\n")
     return "".join(lines)
 
 
