@@ -196,6 +196,14 @@ class SecretRef:
     alias: str
     env_name: str | None = None
 
+    def __post_init__(self) -> None:
+        if not self.alias:
+            raise ValueError(
+                "SecretRef.alias must not be empty; a backend declared a secret "
+                "requirement with no alias name, which would produce a malformed "
+                "environment-variable reference when resolved by the Phase 1 loop."
+            )
+
 
 @dataclass(frozen=True)
 class ExecutionPlan:

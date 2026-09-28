@@ -141,6 +141,32 @@ defaults:
 | `providers.<provider>.deployment` | Deployment name, where applicable (e.g. Azure). |
 | `providers.<provider>.api_key_secret` | **Name** of the secret holding the API key. Lets you use your own secret naming. Never the key value. |
 | `providers.<provider>.extra_headers_secret` | **Name** of a secret holding extra headers (e.g. a gateway token). |
+| `providers.<provider>.secrets.<alias>` | Maps a semantic alias used by the backend (e.g. `PROVIDER_API_KEY`, `TRUSTED_COMMENTER_TOKEN`) to the actual repository secret name. See **Secret alias resolution** below. |
+
+#### Secret alias resolution
+
+When the Phase 1 render loop emits `env:` entries into generated workflow YAML it resolves each
+backend-declared alias to a concrete CI secret name using the following precedence (first match wins):
+
+1. **Explicit map** — `providers.<provider>.secrets.<alias>` in your config.
+2. **Established defaults** — two semantic aliases are resolved from existing config fields before the
+   convention applies:
+   - `PROVIDER_API_KEY` → `providers.<provider>.api_key_secret` if set, otherwise the provider's built-in
+     default (`ANTHROPIC_API_KEY` for `anthropic`, `OPENAI_API_KEY` for `openai`, etc.).
+   - `TRUSTED_COMMENTER_TOKEN` → `platform.auth.token_secret` if set, otherwise `REMEDIATION_TOKEN`.
+3. **Convention** — any other alias is used as the secret name directly (alias == secret name).
+
+Example — rename the Anthropic key secret and use a custom PAT:
+
+```yaml
+providers:
+  anthropic:
+    secrets:
+      PROVIDER_API_KEY: MY_ANTHROPIC_KEY   # overrides the ANTHROPIC_API_KEY default
+platform:
+  auth:
+    token_secret: MY_GITHUB_PAT            # overrides the REMEDIATION_TOKEN default
+```
 
 ### `skills` (optional — methodology registry)
 A **skill** is the reusable methodology/content for a stage (checklist, rubric, output format),

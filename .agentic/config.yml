@@ -22,6 +22,19 @@ defaults:
     # Override via repo variable vars.AGENTIC_IMPLEMENTER_MODEL in the workflow.
     anthropic: { default: claude-sonnet-5 }
 
+providers:
+  # Secret alias maps: each key is a SecretRef.alias used in the BackendRenderer's ExecutionPlan;
+  # each value is the environment-variable name where the actual secret lives at run time.
+  # The values here are secret NAMES (never values); the runtime reads them from the environment.
+  anthropic:
+    secrets:
+      PROVIDER_API_KEY: ANTHROPIC_API_KEY
+      TRUSTED_COMMENTER_TOKEN: REMEDIATION_TOKEN
+  openai:
+    secrets:
+      PROVIDER_API_KEY: OPENAI_API_KEY
+      TRUSTED_COMMENTER_TOKEN: REMEDIATION_TOKEN
+
 stages:
   # Implementer: Claude Code, manual/safe entry point (workflow_dispatch).
   - id: implement-claude
