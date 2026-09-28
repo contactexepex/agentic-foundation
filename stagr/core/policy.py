@@ -171,7 +171,7 @@ def derive_routing_policy(config: dict[str, Any]) -> RoutingPolicy:
 def derive_merge_policy(
     config: dict[str, Any],
     normalized_stages: tuple[NormalizedStage, ...],
-    trust_policy: TrustPolicy,  # noqa: ARG001 — reserved for V2 human-gate integration
+    trust_policy: TrustPolicy,  # reserved for V2 human-gate integration; not consumed in V1
 ) -> MergePolicy:
     """Derive a ``MergePolicy`` from the config and the normalized stage list.
 
