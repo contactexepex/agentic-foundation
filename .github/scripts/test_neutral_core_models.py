@@ -124,6 +124,25 @@ from neutral_core_tests.test_policy_trust import (
     test_trust_policy_returns_trust_policy_instance,
     test_trust_policy_result_is_frozen,
 )
+from neutral_core_tests.test_policy_merge import (
+    test_merge_policy_dogfood_config,
+    test_merge_policy_blocking_stages_included,
+    test_merge_policy_non_blocking_excluded,
+    test_merge_policy_empty_stages_produces_empty_blocking_ids,
+    test_merge_policy_mixed_gates_only_blocking_included,
+    test_merge_policy_mode_auto_when_auto_merge_true,
+    test_merge_policy_mode_manual_when_auto_merge_false,
+    test_merge_policy_mode_manual_when_modules_absent,
+    test_merge_policy_require_head_bound_always_true,
+    test_merge_policy_discussion_policy_absent_is_none,
+    test_merge_policy_discussion_policy_require_resolved_true,
+    test_merge_policy_discussion_policy_require_resolved_false,
+    test_merge_policy_sonar_true_adds_external_gate,
+    test_merge_policy_sonar_false_no_external_gate,
+    test_merge_policy_sonar_absent_no_external_gate,
+    test_merge_policy_returns_merge_policy_instance,
+    test_merge_policy_result_is_frozen,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -214,6 +233,23 @@ _TESTS = [
     test_trust_policy_empty_trusted_roles,
     test_trust_policy_returns_trust_policy_instance,
     test_trust_policy_result_is_frozen,
+    test_merge_policy_dogfood_config,
+    test_merge_policy_blocking_stages_included,
+    test_merge_policy_non_blocking_excluded,
+    test_merge_policy_empty_stages_produces_empty_blocking_ids,
+    test_merge_policy_mixed_gates_only_blocking_included,
+    test_merge_policy_mode_auto_when_auto_merge_true,
+    test_merge_policy_mode_manual_when_auto_merge_false,
+    test_merge_policy_mode_manual_when_modules_absent,
+    test_merge_policy_require_head_bound_always_true,
+    test_merge_policy_discussion_policy_absent_is_none,
+    test_merge_policy_discussion_policy_require_resolved_true,
+    test_merge_policy_discussion_policy_require_resolved_false,
+    test_merge_policy_sonar_true_adds_external_gate,
+    test_merge_policy_sonar_false_no_external_gate,
+    test_merge_policy_sonar_absent_no_external_gate,
+    test_merge_policy_returns_merge_policy_instance,
+    test_merge_policy_result_is_frozen,
 ]
 
 if __name__ == "__main__":

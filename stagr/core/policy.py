@@ -6,20 +6,29 @@ accepts the raw config dict and returns a frozen, validated policy dataclass.
 Issue #184: derive_trust_policy — who and what Stagr-generated automation
 may act on behalf of.
 Issue #185: derive_routing_policy — fast-path routing policy.
+Issue #186: derive_merge_policy — merge eligibility requirements.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from .enums import AuthorRole, ForkPolicy
+from .enums import AuthorRole, ForkPolicy, MergeMode, StageGate
 from .models import (
+    DiscussionPolicy,
+    ExternalGate,
     FastPathPolicy,
+    MergePolicy,
+    NormalizedStage,
     PathMatchSpec,
     RouteStageMap,
     RoutingPolicy,
     StaticValidationError,
     TrustPolicy,
 )
+
+_SONAR_CHECK_RUN_NAME = "sonarqubecloud"
+_SONAR_REQUIRED_PRESENCE = "when_present"
+_SONAR_REQUIRED_CONCLUSION = "success"
 
 _DEFAULT_HUMAN_MERGE_LABEL = "human-merge"
 _DEFAULT_TRUSTED_ROLES: tuple[AuthorRole, ...] = (
@@ -157,3 +166,99 @@ def derive_routing_policy(config: dict[str, Any]) -> RoutingPolicy:
         stages=RouteStageMap(fast=fast_stage_ids, normal=normal_stage_ids),
     )
     return RoutingPolicy(fast_path=fast_path)
+
+
+def derive_merge_policy(
+    config: dict[str, Any],
+    normalized_stages: tuple[NormalizedStage, ...],
+    trust_policy: TrustPolicy,  # noqa: ARG001 — reserved for V2 human-gate integration
+) -> MergePolicy:
+    """Derive a ``MergePolicy`` from the config and the normalized stage list.
+
+    Derivation rules
+    ----------------
+    - ``blocking_stage_ids``: ids of every stage whose ``gate`` is
+      :attr:`~stagr.core.enums.StageGate.BLOCKING`.  Stages with
+      ``gate == NON_BLOCKING`` and any disabled stage (removed before
+      normalization) are absent.
+    - ``mode``: :attr:`~stagr.core.enums.MergeMode.AUTO` when
+      ``modules.auto_merge: true``; :attr:`~stagr.core.enums.MergeMode.MANUAL`
+      when the key is absent or ``false``.
+    - ``require_head_bound``: always ``True`` in V1.
+    - ``discussion_policy``: derived from ``merge.discussions.require_resolved``
+      when the key is present; ``None`` otherwise.
+    - ``external_gates``: when ``modules.sonar: true``, a single
+      :class:`~stagr.core.models.ExternalGate` for ``sonarqubecloud`` is
+      included (``required_presence="when_present"``,
+      ``required_conclusion="success"``).  Absent check runs are tolerated
+      in V1 (fail-open).
+
+    V-S10 (non-empty ``blocking_stage_ids`` when ``auto_merge: true``) is NOT
+    enforced here; it belongs in the static validation pass.
+
+    Parameters
+    ----------
+    config:
+        The raw YAML config dict (top-level, as loaded by ``yaml.safe_load``).
+    normalized_stages:
+        Tuple of :class:`~stagr.core.models.NormalizedStage` objects produced
+        by the normalization pipeline.  Disabled stages have already been
+        removed before this function is called.
+    trust_policy:
+        The derived :class:`~stagr.core.models.TrustPolicy` for this config.
+        Accepted for future use; not consumed in V1.
+
+    Returns
+    -------
+    MergePolicy
+        An immutable merge-policy dataclass.
+    """
+    blocking_stage_ids = _derive_blocking_stage_ids(normalized_stages)
+    mode = _derive_merge_mode(config)
+    discussion_policy = _derive_discussion_policy(config)
+    external_gates = _derive_external_gates(config)
+
+    return MergePolicy(
+        mode=mode,
+        blocking_stage_ids=blocking_stage_ids,
+        require_head_bound=True,
+        discussion_policy=discussion_policy,
+        external_gates=external_gates,
+    )
+
+
+def _derive_blocking_stage_ids(
+    normalized_stages: tuple[NormalizedStage, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        stage.id for stage in normalized_stages if stage.gate == StageGate.BLOCKING
+    )
+
+
+def _derive_merge_mode(config: dict[str, Any]) -> MergeMode:
+    modules_cfg: dict[str, Any] = config.get("modules", {}) or {}
+    if modules_cfg.get("auto_merge", False):
+        return MergeMode.AUTO
+    return MergeMode.MANUAL
+
+
+def _derive_discussion_policy(config: dict[str, Any]) -> DiscussionPolicy | None:
+    merge_cfg: dict[str, Any] = config.get("merge", {}) or {}
+    discussions_cfg: dict[str, Any] = merge_cfg.get("discussions", {}) or {}
+    if "require_resolved" not in discussions_cfg:
+        return None
+    return DiscussionPolicy(require_resolved=bool(discussions_cfg["require_resolved"]))
+
+
+def _derive_external_gates(config: dict[str, Any]) -> tuple[ExternalGate, ...]:
+    modules_cfg: dict[str, Any] = config.get("modules", {}) or {}
+    gates: list[ExternalGate] = []
+    if modules_cfg.get("sonar", False):
+        gates.append(
+            ExternalGate(
+                check_run_name=_SONAR_CHECK_RUN_NAME,
+                required_presence=_SONAR_REQUIRED_PRESENCE,
+                required_conclusion=_SONAR_REQUIRED_CONCLUSION,
+            )
+        )
+    return tuple(gates)
