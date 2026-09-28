@@ -221,6 +221,15 @@ motivates it. The V1 fallback is not a general licence to omit `invocationCorrel
 it requires documented spike evidence that no reliable binding exists for this specific
 backend.
 
+**Gate-semantics constraint:** the V1 fallback is only valid when **all** stages that
+share the bot identity and head SHA are configured with `BLOCKING` gate semantics. If
+any co-sharing stage is configured `NON_BLOCKING` (advisory), the shared scope silently
+causes that stage's unresolved findings to block every `BLOCKING` stage in the shared
+scope, contradicting the user's explicit advisory-gate intent. In that situation the
+BackendRenderer must not apply `NO_OPEN_THREADS` with shared scope to either the
+advisory stage or any blocking stage sharing its identity; an alternative disposition
+must be chosen instead.
+
 When `invocationCorrelation` is null without a documented spike, `createdBy + headSha` is
 sufficient only when stages use distinct bot identities.
 
