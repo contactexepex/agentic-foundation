@@ -34,6 +34,15 @@ from neutral_core_tests.test_render_context import (
     test_render_context_construction,
     test_render_context_is_immutable,
 )
+from neutral_core_tests.test_normalize import (
+    test_expand_profile_defaults_standard_fills_missing_fields,
+    test_expand_profile_defaults_custom_adds_no_fields,
+    test_expand_profile_defaults_explicit_fields_override_profile,
+    test_expand_profile_defaults_unrecognized_profile_raises,
+    test_expand_profile_defaults_is_idempotent,
+    test_expand_profile_defaults_does_not_mutate_input,
+    test_expand_profile_defaults_standard_includes_all_profile_stages,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -48,6 +57,13 @@ _TESTS = [
     test_stage_result_spec_construction,
     test_render_context_construction,
     test_render_context_is_immutable,
+    test_expand_profile_defaults_standard_fills_missing_fields,
+    test_expand_profile_defaults_custom_adds_no_fields,
+    test_expand_profile_defaults_explicit_fields_override_profile,
+    test_expand_profile_defaults_unrecognized_profile_raises,
+    test_expand_profile_defaults_is_idempotent,
+    test_expand_profile_defaults_does_not_mutate_input,
+    test_expand_profile_defaults_standard_includes_all_profile_stages,
 ]
 
 if __name__ == "__main__":
