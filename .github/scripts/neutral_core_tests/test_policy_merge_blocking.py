@@ -47,6 +47,14 @@ def test_merge_policy_dogfood_config() -> None:
     assert policy.mode == MergeMode.AUTO, (
         f"Dogfood config has auto_merge: true, expected AUTO, got {policy.mode}"
     )
+    assert len(policy.external_gates) == 1, (
+        f"Dogfood config has sonar: true; expected exactly 1 external gate, "
+        f"got {len(policy.external_gates)}"
+    )
+    assert policy.external_gates[0].check_run_name == "sonarqubecloud", (
+        f"Expected dogfood external gate check_run_name='sonarqubecloud', "
+        f"got {policy.external_gates[0].check_run_name!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -125,4 +133,33 @@ def test_merge_policy_mixed_gates_only_blocking_included() -> None:
     )
     assert len(policy.blocking_stage_ids) == 2, (
         f"Expected exactly 2 blocking ids, got {policy.blocking_stage_ids}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Schema enforcement
+# ---------------------------------------------------------------------------
+
+def test_merge_policy_unknown_module_key_raises_schema_error() -> None:
+    """modules.unknown_flag: true → jsonschema.ValidationError (additionalProperties: false)."""
+    import json
+    from pathlib import Path
+    import jsonschema
+    from neutral_core_tests.harness import REPO_ROOT
+
+    schema_path = Path(REPO_ROOT) / "stagr" / "config.schema.json"
+    with schema_path.open() as schema_file:
+        loaded_schema = json.load(schema_file)
+
+    invalid_config = {"version": 2, "modules": {"unknown_flag": True}}
+
+    raised_validation_error = False
+    try:
+        jsonschema.validate(instance=invalid_config, schema=loaded_schema)
+    except jsonschema.ValidationError:
+        raised_validation_error = True
+
+    assert raised_validation_error, (
+        "modules.unknown_flag: true must raise jsonschema.ValidationError; "
+        "the schema declares additionalProperties: false for the modules object"
     )
