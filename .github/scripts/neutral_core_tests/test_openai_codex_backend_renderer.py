@@ -267,10 +267,12 @@ def test_codex_renderer_security_stage_evidence_success_condition_is_match_found
 
 
 def test_codex_renderer_security_stage_evidence_selector_is_verified_marker() -> None:
-    """SECURITY stage EvidenceSpec.selector is the codex-security-review:v1 machine-readable marker.
+    """SECURITY stage EvidenceSpec.selector is the compound completed-marker expression.
 
-    Empirically grounded: auto-merge.yml.tmpl uses this marker as the preferred
-    detection path for security review completion.
+    Empirically grounded: auto-merge.yml.tmpl and gate_behavior.py both require the
+    marker prefix AND "status":"completed" — a marker with status="running" must not
+    satisfy MATCH_FOUND (gate_behavior.py: "gate: a security review still running blocks").
+    The compound selector encodes both requirements: marker prefix + status=completed.
     """
     renderer = _build_renderer()
     security_stage = _build_security_normalized_stage()
@@ -278,9 +280,10 @@ def test_codex_renderer_security_stage_evidence_selector_is_verified_marker() ->
     execution_plan = renderer.render(security_stage)
 
     evidence_spec = execution_plan.evidence[0]
-    assert evidence_spec.selector == "codex-security-review:v1", (
-        f"Expected evidence selector 'codex-security-review:v1' (empirically verified "
-        f"marker from auto-merge.yml.tmpl); got {evidence_spec.selector!r}"
+    assert evidence_spec.selector == "codex-security-review:v1 status=completed", (
+        f"Expected evidence selector 'codex-security-review:v1 status=completed' "
+        f"(compound expression requiring marker prefix AND status=completed; "
+        f"a running-state marker must not match); got {evidence_spec.selector!r}"
     )
 
 

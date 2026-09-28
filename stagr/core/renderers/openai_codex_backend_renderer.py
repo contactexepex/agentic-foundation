@@ -29,12 +29,25 @@ Evidence kinds by stage kind:
   for review stages — it means "the reviewer finished processing," regardless
   of findings. Findings are handled separately by ``GateDispositionSpec``.
 - SECURITY stages use ``EvidenceKind.COMMENT_MATCH`` with ``MATCH_FOUND``:
-  Codex embeds a machine-readable marker ``<!-- codex-security-review:v1
-  {"headSha":"<full40>","status":"completed"} -->`` inside the existing
-  review-summary comment (``codex-pull-request-review-summary``). The selector
-  ``codex-security-review:v1`` and SHA field ``headSha`` are grounded in the
-  empirically observed format documented in ``auto-merge.yml.tmpl`` (the
-  preferred/authoritative detection path used by the deployed auto-merge gate).
+  Codex embeds a machine-readable marker inside the existing review-summary
+  comment (``codex-pull-request-review-summary``):
+  ``<!-- codex-security-review:v1 {"blockingSeverityThreshold":"P0",
+  "headSha":"<full40>","status":"completed"} -->``
+  The marker format is empirically documented in ``auto-merge.yml.tmpl`` and
+  ``gate_behavior.py`` (the authoritative detection paths used by the deployed
+  auto-merge gate). ``gate_behavior.py`` explicitly tests that
+  ``status="running"`` blocks the gate.
+
+  Compound selector convention: the ``selector`` field for COMMENT_MATCH
+  evidence on the Codex backend is a space-separated compound expression.
+  The first token is the marker-type prefix (literal string match in the
+  comment body). Subsequent ``key=value`` tokens specify JSON field value
+  requirements evaluated by the PlatformRenderer against the parsed marker
+  JSON blob. All predicates must be satisfied for MATCH_FOUND to succeed.
+  The selector ``codex-security-review:v1 status=completed`` therefore
+  requires both the marker prefix and ``"status":"completed"`` in the parsed
+  JSON — it does NOT match a marker with ``"status":"running"``. The
+  ``CorrelationSpec.sha_field`` handles the headSha check separately.
 
 Open design question: ``EXPLICIT_PASS_MARKER`` with a selector that is always
 present on completion (the "Completed" summary row) emits PASS even when
@@ -91,9 +104,17 @@ _REVIEW_SUMMARY_SHA_FIELD = "review_summary_sha"
 
 # Machine-readable marker embedded by Codex inside the review-summary comment
 # when the security review completes. Format (empirically observed in
-# auto-merge.yml.tmpl, the authoritative detection path of the deployed gate):
-#   <!-- codex-security-review:v1 {"headSha":"<full40>","status":"completed"} -->
-_CODEX_SECURITY_REVIEW_MARKER_SELECTOR = "codex-security-review:v1"
+# auto-merge.yml.tmpl and gate_behavior.py, the authoritative detection paths):
+#   <!-- codex-security-review:v1 {"blockingSeverityThreshold":"P0",
+#        "headSha":"<full40>","status":"completed"} -->
+#
+# The selector is a compound expression (see module docstring). The first token
+# is the marker prefix; subsequent key=value tokens are JSON field requirements
+# evaluated by the PlatformRenderer against the parsed marker JSON. Both the
+# marker prefix and status=completed must be present for MATCH_FOUND to succeed.
+# A marker with status="running" must not satisfy MATCH_FOUND (gate_behavior.py
+# line: "gate: a security review still running blocks").
+_CODEX_SECURITY_REVIEW_MARKER_SELECTOR = "codex-security-review:v1 status=completed"
 
 # The JSON field within the codex-security-review:v1 blob that carries the
 # full 40-character head SHA of the reviewed commit.
