@@ -98,7 +98,7 @@ def test_filter_disabled_stages_disables_profile_provided_stage() -> None:
     cfg: dict = {
         "profile": "standard",
         "stages": [
-            {"id": "security", "enabled": False},
+            {"id": "security", "type": "security", "enabled": False},
         ],
     }
     active_stages = expand_stages(cfg)

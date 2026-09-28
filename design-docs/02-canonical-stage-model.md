@@ -102,7 +102,9 @@ It is a pre-normalization annotation, not a `NormalizedStage` field.
 ```
 
 **Preprocessing rule:** Stagr removes all stages with `enabled: false` from the active
-stage set before normalization begins. A disabled stage does not appear in
+stage set after profile expansion and operator override merging, but before backend/model
+resolution, dependency graph construction, policy derivation, and `NormalizedStage[]`
+production. A disabled stage does not appear in
 `NormalizedStage[]`, is not included in the dependency graph, does not contribute to
 `MergePolicy.blockingStageIds`, is not subject to routing-closure validation, and is
 not rendered into any artifact.
