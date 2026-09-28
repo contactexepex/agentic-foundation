@@ -195,6 +195,7 @@ Expansion order:
 Raw config YAML
     → Profile expansion
     → Operator field override merge
+    → enabled:false filtering (disabled-stage removal)
     → backend/model default resolution (see 03-provider-backend-model.md)
     → Dependency normalization
     → NormalizedStage[]
