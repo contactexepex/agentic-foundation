@@ -39,12 +39,19 @@ from neutral_core_tests.github_platform_renderer_tests.test_result_spec import (
     test_dry_run_produces_no_files,
     test_dry_run_produces_no_files_positive_control,
     test_dry_run_render_routing_raises_value_error,
-    test_live_mode_render_routing_raises_not_implemented_error,
+    test_live_mode_render_routing_writes_workflow_file,
     test_dry_run_render_governance_raises_value_error,
     test_live_mode_render_governance_raises_not_implemented_error,
     test_github_platform_renderer_protocol_conformance,
     test_pr_opened_and_pr_updated_combine_into_single_pull_request_target_block,
     test_manual_trigger_produces_workflow_dispatch_only,
+)
+from neutral_core_tests.github_platform_renderer_tests.test_routing_workflow import (
+    test_fast_path_null_produces_normal_immediately,
+    test_all_paths_match_classifies_as_fast,
+    test_any_path_mismatch_classifies_as_normal,
+    test_routing_workflow_first_step_references_private_key_secret,
+    test_fast_path_configured_workflow_embeds_patterns_as_json_constant,
 )
 
 GITHUB_PLATFORM_RENDERER_TESTS = [
@@ -78,12 +85,17 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_dry_run_produces_no_files,
     test_dry_run_produces_no_files_positive_control,
     test_dry_run_render_routing_raises_value_error,
-    test_live_mode_render_routing_raises_not_implemented_error,
+    test_live_mode_render_routing_writes_workflow_file,
     test_dry_run_render_governance_raises_value_error,
     test_live_mode_render_governance_raises_not_implemented_error,
     test_github_platform_renderer_protocol_conformance,
     test_pr_opened_and_pr_updated_combine_into_single_pull_request_target_block,
     test_manual_trigger_produces_workflow_dispatch_only,
+    test_fast_path_null_produces_normal_immediately,
+    test_all_paths_match_classifies_as_fast,
+    test_any_path_mismatch_classifies_as_normal,
+    test_routing_workflow_first_step_references_private_key_secret,
+    test_fast_path_configured_workflow_embeds_patterns_as_json_constant,
 ]
 
 __all__ = [
@@ -118,10 +130,15 @@ __all__ = [
     "test_dry_run_produces_no_files",
     "test_dry_run_produces_no_files_positive_control",
     "test_dry_run_render_routing_raises_value_error",
-    "test_live_mode_render_routing_raises_not_implemented_error",
+    "test_live_mode_render_routing_writes_workflow_file",
     "test_dry_run_render_governance_raises_value_error",
     "test_live_mode_render_governance_raises_not_implemented_error",
     "test_github_platform_renderer_protocol_conformance",
     "test_pr_opened_and_pr_updated_combine_into_single_pull_request_target_block",
     "test_manual_trigger_produces_workflow_dispatch_only",
+    "test_fast_path_null_produces_normal_immediately",
+    "test_all_paths_match_classifies_as_fast",
+    "test_any_path_mismatch_classifies_as_normal",
+    "test_routing_workflow_first_step_references_private_key_secret",
+    "test_fast_path_configured_workflow_embeds_patterns_as_json_constant",
 ]
