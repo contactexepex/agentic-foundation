@@ -171,26 +171,7 @@ from neutral_core_tests.test_backend_renderer_registry import (
     test_registry_multiple_providers_no_collision,
     test_registry_default_backend_for_unknown_provider_raises,
 )
-from neutral_core_tests.test_openai_codex_backend_renderer import (
-    test_codex_renderer_invocation_kind_is_pr_comment,
-    test_codex_renderer_required_secret_alias_and_no_env_name,
-    test_codex_renderer_gate_disposition_kind_is_no_open_threads,
-    test_codex_renderer_evidence_has_one_review_result_spec,
-    test_codex_renderer_evidence_head_sha_correlation_is_true,
-    test_codex_renderer_protocol_conformance,
-    test_codex_renderer_provider_and_backend_match_config,
-    test_codex_renderer_review_stage_posts_codex_review_command,
-    test_codex_renderer_security_stage_posts_security_review_command,
-    test_codex_renderer_gate_disposition_scope_is_codex_bot_head_bound,
-    test_codex_renderer_review_stage_evidence_success_condition_is_completed,
-    test_codex_renderer_security_stage_evidence_is_comment_match,
-    test_codex_renderer_security_stage_evidence_success_condition_is_match_found,
-    test_codex_renderer_security_stage_evidence_selector_is_verified_marker,
-    test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
-    test_codex_renderer_unsupported_stage_kind_raises_value_error,
-    test_codex_renderer_security_stage_gate_disposition_is_no_open_threads,
-    test_codex_renderer_non_blocking_stage_raises_value_error,
-)
+from neutral_core_tests.codex_renderer_tests import CODEX_RENDERER_TESTS
 
 _TESTS = [
     test_enum_string_values,
@@ -318,24 +299,7 @@ _TESTS = [
     test_registry_has_returns_false_for_unregistered,
     test_registry_multiple_providers_no_collision,
     test_registry_default_backend_for_unknown_provider_raises,
-    test_codex_renderer_invocation_kind_is_pr_comment,
-    test_codex_renderer_required_secret_alias_and_no_env_name,
-    test_codex_renderer_gate_disposition_kind_is_no_open_threads,
-    test_codex_renderer_evidence_has_one_review_result_spec,
-    test_codex_renderer_evidence_head_sha_correlation_is_true,
-    test_codex_renderer_protocol_conformance,
-    test_codex_renderer_provider_and_backend_match_config,
-    test_codex_renderer_review_stage_posts_codex_review_command,
-    test_codex_renderer_security_stage_posts_security_review_command,
-    test_codex_renderer_gate_disposition_scope_is_codex_bot_head_bound,
-    test_codex_renderer_review_stage_evidence_success_condition_is_completed,
-    test_codex_renderer_security_stage_evidence_is_comment_match,
-    test_codex_renderer_security_stage_evidence_success_condition_is_match_found,
-    test_codex_renderer_security_stage_evidence_selector_is_verified_marker,
-    test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
-    test_codex_renderer_unsupported_stage_kind_raises_value_error,
-    test_codex_renderer_security_stage_gate_disposition_is_no_open_threads,
-    test_codex_renderer_non_blocking_stage_raises_value_error,
+    *CODEX_RENDERER_TESTS,
 ]
 
 if __name__ == "__main__":
