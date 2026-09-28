@@ -182,7 +182,6 @@ from neutral_core_tests.test_platform_renderer import (
     test_platform_renderer_dry_run_render_governance_raises_value_error,
 )
 from neutral_core_tests.phase1_render_loop_tests import PHASE1_RENDER_LOOP_TESTS
-from neutral_core_tests.github_platform_renderer_tests import GITHUB_PLATFORM_RENDERER_TESTS
 
 _TESTS = [
     test_enum_string_values,
