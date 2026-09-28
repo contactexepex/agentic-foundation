@@ -14,7 +14,7 @@ from __future__ import annotations
 import dataclasses
 from typing import TYPE_CHECKING
 
-from .backend_renderer_registry import BackendRendererNotFoundError, BackendRendererRegistry
+from .backend_renderer_registry import BackendRendererRegistry
 from .errors import SecretAliasResolutionError
 from .models import ExecutionPlan, RenderContext, SecretRef, StageResultSpec
 
