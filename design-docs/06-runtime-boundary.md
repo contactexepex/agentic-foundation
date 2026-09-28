@@ -62,13 +62,44 @@ The PlatformRenderer maps each semantic kind to the appropriate platform API.
 | Value | Semantics | GitHub mapping |
 |---|---|---|
 | `REVIEW_RESULT` | A formal review object produced by a reviewer agent | Codex summary comment containing a structured review table |
-| `COMMENT_MATCH` | A PR comment matching a content selector | PR issue comment where `body` contains `selector` |
+| `COMMENT_MATCH` | A PR comment whose body satisfies the backend-defined selector expression | PR issue comment evaluated against the backend-defined `selector` (see compound selector convention below) |
 | `CHECK_RESULT` | A CI check run with a pass/fail conclusion | GitHub check run on the head commit |
 | `WORKFLOW_RESULT` | A CI workflow run with a pass/fail conclusion | GitHub Actions workflow run |
 
 Using semantic vocabulary keeps EvidenceSpec portable: a `REVIEW_RESULT` on GitHub is
 a comment with a specific format; on GitLab it might be a note on an MR. The renderer
 handles the mapping; the EvidenceSpec stays neutral.
+
+#### Compound selector convention for COMMENT_MATCH
+
+The `selector` field in `EvidenceSpec` is **backend-defined and opaque to the neutral
+contract**. The baseline semantic is that the comment body contains the selector string.
+BackendRenderers that need predicate filtering beyond simple string containment — for
+example, to distinguish a completed marker from a running one inside the same marker
+format — may use the following compound selector convention, which the PlatformRenderer
+for that backend must implement:
+
+```
+<marker-prefix> [key=value ...]
+```
+
+- The first space-delimited token is a **literal prefix** matched by simple string
+  containment against the comment body. `MATCH_FOUND` requires this prefix to be present.
+- Each subsequent `key=value` token is a **JSON field predicate**: the comment body must
+  contain the marker prefix, and the JSON blob inside the marker must have a field named
+  `key` whose value equals `value` (string comparison). All predicates must be satisfied.
+
+**Example:** the selector `codex-security-review:v1 status=completed` requires:
+1. The comment body contains the literal string `codex-security-review:v1`.
+2. The JSON object inside the marker has `"status": "completed"`.
+
+A marker with `"status": "running"` satisfies the prefix but not the predicate, so
+`MATCH_FOUND` is NOT triggered. This allows a single marker format to represent both
+in-progress and completed states without requiring separate marker types.
+
+BackendRenderers that use the compound format must document it in their module docstring.
+BackendRenderers that require only simple string containment use a plain prefix string
+with no `key=value` tokens; the two forms are unambiguous.
 
 ### CorrelationSpec
 
