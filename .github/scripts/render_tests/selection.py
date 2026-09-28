@@ -137,8 +137,8 @@ def _check_auto_merge_advisory_and_deadlock_guards(advisory_config: dict) -> Non
     _check_auto_merge_config_validity_guards(advisory_config)
 
 
-def _check_auto_merge_config_validity_guards(advisory_config: dict) -> None:
-    """Required-check names, merge methods, human-merge labels, and blocking-stage guards."""
+def _check_required_check_and_merge_method_guards(advisory_config: dict) -> None:
+    """Required-check name/app_id validity, merge method, and human-merge label safety."""
     empty_check = {**advisory_config, "routing": {"fast_path": {"enabled": False}},
                    "merge": {"required_status_checks": [{"name": "", "app_id": 1}]}}
     expect_raises(lambda: render.render_all(empty_check, "github"),
@@ -164,7 +164,9 @@ def _check_auto_merge_config_validity_guards(advisory_config: dict) -> None:
                                          "labels": {"human_merge": 'ho"ld'}}}, "github"),
         "auto-merge: unsafe human_merge label fails loud (#7-label)")
 
-    # blocking security + fast_path enabled -> deadlock
+
+def _check_blocking_security_and_unsupported_stage_guards() -> None:
+    """Blocking security with fast_path enabled (deadlock) and blocking stage without a gate signal."""
     adv_code_blocking_security = {
         "version": 2, "profile": "custom",
         "platform": {"type": "github", "default_branch": "main", "auth": {"token_secret": "REMEDIATION_TOKEN"}},
@@ -180,7 +182,6 @@ def _check_auto_merge_config_validity_guards(advisory_config: dict) -> None:
     expect_raises(lambda: render.validate_config(adv_code_blocking_security),
                   "auto-merge: blocking security + fast_path enabled fails loud (delta #1, front door)")
 
-    # blocking stage with no rendered gate signal
     blocking_test_stage = {
         "version": 2, "profile": "custom",
         "platform": {"type": "github", "default_branch": "main", "auth": {"token_secret": "REMEDIATION_TOKEN"}},
@@ -196,7 +197,9 @@ def _check_auto_merge_config_validity_guards(advisory_config: dict) -> None:
     expect_raises(lambda: render.validate_config(blocking_test_stage),
                   "auto-merge: blocking stage with no rendered gate signal fails loud (delta #7, front door)")
 
-    # second delta pass: manual-trigger blocking review and empty human-merge label
+
+def _check_manual_trigger_and_empty_label_guards(advisory_config: dict) -> None:
+    """Blocking review with only a manual trigger and an empty human-merge label are both rejected."""
     manual_review_config = {
         "version": 2, "profile": "custom",
         "platform": {"type": "github", "default_branch": "main", "auth": {"token_secret": "REMEDIATION_TOKEN"}},
@@ -219,6 +222,13 @@ def _check_auto_merge_config_validity_guards(advisory_config: dict) -> None:
                   "auto-merge: empty human_merge label fails loud (delta2, render)")
     expect_raises(lambda: render.validate_config(empty_label_config),
                   "auto-merge: empty human_merge label fails loud (delta2, schema)")
+
+
+def _check_auto_merge_config_validity_guards(advisory_config: dict) -> None:
+    """Required-check names, merge methods, labels, and blocking-stage guards."""
+    _check_required_check_and_merge_method_guards(advisory_config)
+    _check_blocking_security_and_unsupported_stage_guards()
+    _check_manual_trigger_and_empty_label_guards(advisory_config)
 
 
 def _check_auto_merge_coherence_matrix() -> None:
