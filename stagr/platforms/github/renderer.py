@@ -230,7 +230,6 @@ class GitHubPlatformRenderer:
             f"  execute:\n"
             f"    runs-on: ubuntu-latest\n"
             f"    permissions:\n"
-            f"      checks: write\n"
             f"      pull-requests: read\n"
             f"      contents: read\n"
             f"    steps:\n"
