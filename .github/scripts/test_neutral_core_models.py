@@ -40,6 +40,7 @@ from neutral_core_tests.test_normalize import (
     test_filter_disabled_stages_explicit_true_is_present,
     test_filter_disabled_stages_does_not_mutate_input,
     test_filter_disabled_stages_dogfood_config,
+    test_filter_disabled_stages_disables_profile_provided_stage,
 )
 
 _TESTS = [
@@ -60,6 +61,7 @@ _TESTS = [
     test_filter_disabled_stages_explicit_true_is_present,
     test_filter_disabled_stages_does_not_mutate_input,
     test_filter_disabled_stages_dogfood_config,
+    test_filter_disabled_stages_disables_profile_provided_stage,
 ]
 
 if __name__ == "__main__":
