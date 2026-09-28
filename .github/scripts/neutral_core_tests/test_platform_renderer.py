@@ -168,12 +168,18 @@ def test_platform_renderer_protocol_conformance() -> None:
 
 
 def test_platform_renderer_interface_uses_only_neutral_types() -> None:
-    """PlatformRenderer method signatures reference only neutral-core types.
+    """Every PlatformRenderer method annotation is a neutral-core type or composition thereof.
 
-    Confirms that ExecutionPlan, NormalizedStage, RenderContext, and
-    StageResultSpec are importable from stagr.core.models without any
-    platform-specific dependency.
+    Inspects the actual public method signatures of PlatformRenderer using
+    typing.get_type_hints so that introducing a platform-specific annotation
+    (e.g. a GitHub workflow type) would fail this test.
+
+    Approved annotations: ExecutionPlan, NormalizedStage, RenderContext,
+    StageResultSpec, NoneType, and tuple[<neutral>, ...].
     """
+    import typing
+
+    from stagr.core.platform_renderer import PlatformRenderer
     from stagr.core.models import (
         ExecutionPlan,
         NormalizedStage,
@@ -181,11 +187,34 @@ def test_platform_renderer_interface_uses_only_neutral_types() -> None:
         StageResultSpec,
     )
 
-    for neutral_type in (ExecutionPlan, NormalizedStage, RenderContext, StageResultSpec):
-        assert neutral_type.__module__.startswith("stagr.core"), (
-            f"{neutral_type.__name__} must live in stagr.core, "
-            f"got module {neutral_type.__module__!r}"
-        )
+    neutral_types = frozenset({ExecutionPlan, NormalizedStage, RenderContext, StageResultSpec})
+
+    def _is_neutral(annotation: object) -> bool:
+        """Return True if annotation is composed only of neutral types or NoneType/tuple."""
+        if annotation is type(None):
+            return True
+        if annotation in neutral_types:
+            return True
+        origin = typing.get_origin(annotation)
+        if origin is tuple:
+            return all(
+                arg is Ellipsis or _is_neutral(arg)
+                for arg in typing.get_args(annotation)
+            )
+        return False
+
+    public_methods = ("render_stage", "render_routing", "render_governance")
+    for method_name in public_methods:
+        method = getattr(PlatformRenderer, method_name)
+        hints = typing.get_type_hints(method)
+        for param_name, annotation in hints.items():
+            if param_name == "self":
+                continue
+            assert _is_neutral(annotation), (
+                f"PlatformRenderer.{method_name} parameter/return '{param_name}' has "
+                f"non-neutral annotation {annotation!r}; only neutral-core types are "
+                f"permitted in the PlatformRenderer interface"
+            )
 
 
 def test_platform_renderer_dry_run_render_stage_returns_spec() -> None:
