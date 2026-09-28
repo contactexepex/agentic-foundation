@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agentic-foundation and stagr</title>
+<style>
+  /* ---------- Base ---------- */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11.5pt;
+    line-height: 1.65;
+    color: #1f2a37;
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page {
+    width: 210mm;
+    margin: 0 auto;
+    padding: 18mm 18mm 16mm 18mm;
+    background: #ffffff;
+  }
+  h1, h2, h3, h4 { font-family: Arial, Helvetica, sans-serif; margin: 0; line-height: 1.3; }
+  h2 {
+    font-size: 21pt;
+    color: #0b3d5c;
+    margin: 0 0 6mm 0;
+    padding-bottom: 3mm;
+    border-bottom: 3px solid #1a9c8c;
+  }
+  h3 { font-size: 14pt; color: #0b3d5c; margin: 7mm 0 3mm 0; }
+  h4 { font-size: 11.5pt; color: #0b3d5c; margin: 0 0 2mm 0; }
+  p { margin: 0 0 4mm 0; }
+  ul, ol { margin: 0 0 4mm 0; padding-left: 6mm; }
+  li { margin-bottom: 2mm; }
+  strong { color: #0b3d5c; }
+  .lead { font-size: 12.5pt; color: #33475b; }
+  .muted { color: #5b6b7c; }
+  .small { font-size: 10pt; }
+  .section { page-break-before: always; break-before: page; }
+  .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+  .spacer { height: 6mm; }
+
+  /* ---------- Cover ---------- */
+  .cover {
+    min-height: 250mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .cover-band {
+    background: #0b3d5c;
+    color: #ffffff;
+    border-radius: 10px;
+    padding: 16mm 14mm;
+  }
+  .cover-eyebrow {
+    font-size: 10.5pt;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #8fe3d6;
+    margin-bottom: 6mm;
+  }
+  .cover-band h1 {
+    font-size: 34pt;
+    font-weight: bold;
+    color: #ffffff;
+    margin-bottom: 5mm;
+  }
+  .cover-band .sub {
+    font-size: 14pt;
+    line-height: 1.55;
+    color: #dbe7ef;
+    max-width: 150mm;
+    margin-bottom: 0;
+  }
+  .pillars { display: flex; gap: 5mm; margin-top: 9mm; }
+  .pillar {
+    flex: 1 1 0;
+    min-width: 0;
+    background: #f2f8fb;
+    border: 1px solid #cfe1ea;
+    border-top: 4px solid #1a9c8c;
+    border-radius: 8px;
+    padding: 6mm 5mm;
+  }
+  .pillar h4 { font-size: 12pt; margin-bottom: 2mm; }
+  .pillar p { margin: 0; font-size: 10.5pt; color: #33475b; }
+  .cover-foot {
+    margin-top: 10mm;
+    padding-top: 4mm;
+    border-top: 1px solid #d5dde5;
+    color: #5b6b7c;
+    font-size: 10pt;
+  }
+
+  /* ---------- Callouts & cards ---------- */
+  .callout {
+    background: #eef8f6;
+    border-left: 5px solid #1a9c8c;
+    border-radius: 6px;
+    padding: 5mm 6mm;
+    margin: 5mm 0 6mm 0;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.navy { background: #eef3f8; border-left-color: #0b3d5c; }
+  .callout.amber { background: #fff7e8; border-left-color: #e0a22b; }
+
+  .cards { display: flex; flex-wrap: wrap; gap: 5mm; margin: 4mm 0 5mm 0; }
+  .card {
+    flex: 0 0 calc(50% - 2.5mm);
+    width: calc(50% - 2.5mm);
+    min-width: 0;
+    background: #ffffff;
+    border: 1px solid #d5dde5;
+    border-radius: 8px;
+    padding: 5mm 5mm 4mm 5mm;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .card .num {
+    display: inline-block;
+    width: 8mm; height: 8mm; line-height: 8mm;
+    text-align: center;
+    background: #1a9c8c;
+    color: #ffffff;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 10.5pt;
+    margin-bottom: 3mm;
+  }
+  .card p { margin: 0; font-size: 10.5pt; color: #33475b; }
+  .card-3 { flex: 0 0 calc(33.333% - 3.34mm); width: calc(33.333% - 3.34mm); }
+
+  /* ---------- Two column is / is not ---------- */
+  .two-col { display: flex; gap: 6mm; margin: 4mm 0 5mm 0; }
+  .col { flex: 1 1 0; min-width: 0; border-radius: 8px; padding: 5mm 6mm; }
+  .col.is { background: #eef8f6; border: 1px solid #b9e3dc; }
+  .col.isnot { background: #fbeeee; border: 1px solid #efc7c7; }
+  .col h4 { margin-bottom: 3mm; }
+  .col.isnot h4 { color: #9b2c2c; }
+  .col ul { margin: 0; padding-left: 5mm; }
+  .col li { font-size: 10.5pt; margin-bottom: 1.5mm; }
+
+  /* ---------- Tables ---------- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 3mm 0 6mm 0;
+    font-size: 10.5pt;
+    table-layout: fixed;
+    page-break-inside: auto;
+  }
+  th, td {
+    border: 1px solid #d5dde5;
+    padding: 3mm 3.5mm;
+    text-align: left;
+    vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  th { background: #0b3d5c; color: #ffffff; font-weight: bold; }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: #f5f8fa; }
+
+  /* ---------- Diagrams ---------- */
+  .figure {
+    margin: 4mm 0 6mm 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .figure svg { width: 100%; height: auto; display: block; }
+  .figure .cap {
+    font-size: 10pt;
+    color: #5b6b7c;
+    margin-top: 2.5mm;
+    text-align: center;
+  }
+
+  /* ---------- Checklist ---------- */
+  .checklist { list-style: none; padding-left: 0; margin: 3mm 0 5mm 0; }
+  .checklist li {
+    position: relative;
+    padding-left: 10mm;
+    margin-bottom: 3mm;
+  }
+  .checklist li::before {
+    content: "\2713";
+    position: absolute;
+    left: 0; top: 0;
+    width: 7mm; height: 7mm; line-height: 7mm;
+    text-align: center;
+    border-radius: 50%;
+    background: #1a9c8c;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 10pt;
+  }
+
+  /* ---------- Roadmap ---------- */
+  .roadmap { margin: 5mm 0 0 0; }
+  .phase {
+    display: flex;
+    gap: 5mm;
+    margin-bottom: 6mm;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .phase-tag {
+    flex: 0 0 34mm;
+    width: 34mm;
+    border-radius: 8px;
+    padding: 5mm 4mm;
+    color: #ffffff;
+    text-align: center;
+  }
+  .phase-tag .ph { font-size: 10pt; letter-spacing: 1.5px; text-transform: uppercase; opacity: 0.85; }
+  .phase-tag .nm { font-size: 15pt; font-weight: bold; margin-top: 1mm; }
+  .phase-tag .st { font-size: 9.5pt; margin-top: 2mm; opacity: 0.9; }
+  .p1 { background: #1a9c8c; }
+  .p2 { background: #0b3d5c; }
+  .p3 { background: #4a5f78; }
+  .phase-body {
+    flex: 1 1 0;
+    min-width: 0;
+    border: 1px solid #d5dde5;
+    border-radius: 8px;
+    padding: 5mm 6mm;
+  }
+  .phase-body h4 { font-size: 12.5pt; }
+  .phase-body ul { margin-bottom: 3mm; }
+  .phase-body li { font-size: 10.5pt; margin-bottom: 1.5mm; }
+  .done-when {
+    font-size: 10.5pt;
+    background: #f5f8fa;
+    border-radius: 6px;
+    padding: 3mm 4mm;
+    margin: 0;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 9pt;
+    font-weight: bold;
+    padding: 1px 7px;
+    border-radius: 10px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .badge.ok { background: #d8f1ec; color: #0f6b60; }
+  .badge.plan { background: #fff0d1; color: #8a5a00; }
+
+  /* ---------- Print ---------- */
+  @page { size: A4; margin: 0; }
+  @media print {
+    body { font-size: 11pt; }
+    .page { width: 210mm; padding: 16mm 17mm 14mm 17mm; margin: 0; }
+    .cover { min-height: 255mm; }
+    a { color: inherit; text-decoration: none; }
+  }
+  @media screen and (max-width: 800px) {
+    .page { width: 100%; padding: 8mm 6mm; }
+    .pillars, .two-col, .phase { flex-direction: column; }
+    .card, .card-3 { flex: 1 1 100%; width: 100%; }
+    .phase-tag { width: 100%; flex-basis: auto; }
+    .cover { min-height: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- =============================== COVER =============================== -->
+<div class="cover">
+  <div>
+    <div class="cover-band">
+      <div class="cover-eyebrow">Governed AI software delivery</div>
+      <h1>agentic-foundation<br>&amp; stagr</h1>
+      <p class="sub">
+        A platform-neutral control plane that turns one small configuration file into a governed,
+        multi-agent development lane inside a repository's own CI. AI agents implement and review;
+        deterministic gates decide when a change is provably ready; humans keep the final word.
+      </p>
+    </div>
+
+    <div class="pillars">
+      <div class="pillar">
+        <h4>Declare</h4>
+        <p>Describe the pipeline once, in a short declarative file. No vendor, no CI system, no language is hard-wired into it.</p>
+      </div>
+      <div class="pillar">
+        <h4>Render</h4>
+        <p>The stagr CLI translates that file into native CI workflows for the target platform. GitHub ships first; others follow.</p>
+      </div>
+      <div class="pillar">
+        <h4>Govern</h4>
+        <p>Fail-closed merge gates, ordered review stages, budgets and guardrails. The tool never runs an agent itself.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cover-foot">
+    Product overview, design and roadmap &nbsp;&middot;&nbsp; September 2026
+  </div>
+</div>
+
+<!-- =============================== 1. WHY =============================== -->
+<div class="section">
+  <h2>1. The problem this solves</h2>
+
+  <p class="lead">
+    Teams already have strong AI coding agents. What they lack is a safe, repeatable way to run those
+    agents together, inside their own delivery pipeline, with clear rules about when a change may merge.
+  </p>
+
+  <p>
+    Today the common pattern is a do-it-yourself stack: one tool to implement, another to review, and
+    existing CI as the only gate. Each piece is wired by hand, each repository does it differently, and
+    nobody can answer simple governance questions with confidence:
+  </p>
+  <ul>
+    <li>Was every finding from the AI reviewer actually addressed before the merge?</li>
+    <li>Did the security review run on the exact commit that merged, or on an earlier one?</li>
+    <li>Can an untrusted contributor, or the AI implementer itself, bypass a required check?</li>
+    <li>How much did this pull request cost in model usage, and who capped it?</li>
+    <li>If the team switches model vendor or Git host next year, how much of this must be rebuilt?</li>
+  </ul>
+
+  <div class="callout">
+    <p><strong>The gap in the market.</strong> Mature tools each own one half of the pipeline: excellent
+    implementers, excellent reviewers, non-AI CI gates. None ships the whole flow as one governed,
+    configurable contract that binds any provider or model per stage and renders to any Git platform.</p>
+  </div>
+
+  <h3>The answer in one sentence</h3>
+  <p>
+    <strong>agentic-foundation</strong> is the toolkit and its design; <strong>stagr</strong> is the
+    installable product built from it. Together they turn one declarative file into a governed development
+    lane on a repository's own CI: pick up an approved story, drive implement &rarr; review &rarr; security
+    &rarr; tests &rarr; gated merge, and leave the pull request <strong>provably ready</strong> for a human
+    to approve.
+  </p>
+
+  <div class="two-col">
+    <div class="col is">
+      <h4>What it is</h4>
+      <ul>
+        <li>A platform-neutral <strong>configuration contract</strong> for a graph of SDLC stages</li>
+        <li>A deterministic <strong>installer and CLI</strong> (init, doctor, plan, apply)</li>
+        <li>Per-platform <strong>renderers</strong> that emit native CI workflows</li>
+        <li>Pluggable <strong>agent backends</strong> that wrap mature coding agents</li>
+        <li>A <strong>fail-closed merge gate</strong> and two clear merge lanes</li>
+      </ul>
+    </div>
+    <div class="col isnot">
+      <h4>What it is not</h4>
+      <ul>
+        <li>Not an AI agent; it composes agents that already exist</li>
+        <li>Not a runtime; it never executes a model call, test or scan itself</li>
+        <li>Not a hosted service or dashboard; it stays CLI + config + CI</li>
+        <li>Not a deployment tool or a project planner (those are sibling toolkits)</li>
+        <li>Not tied to one language, one AI vendor, or one Git host</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- =============================== 2. HOW IT WORKS =============================== -->
+<div class="section">
+  <h2>2. How it works</h2>
+
+  <p class="lead">
+    stagr operates at render time only. An operator writes the contract, stagr writes the wiring, and the
+    CI platform runs the work. Once rendered, the pipeline has no dependency on stagr at all.
+  </p>
+
+  <div class="figure">
+    <svg viewBox="0 0 760 140" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L10,5 L0,10 z" fill="#0b3d5c"/>
+        </marker>
+      </defs>
+      <!-- Layer 1 -->
+      <rect x="20" y="20" width="220" height="80" rx="10" fill="#eef8f6" stroke="#1a9c8c" stroke-width="2"/>
+      <text x="130" y="48" text-anchor="middle" font-size="15" font-weight="bold" fill="#0b3d5c">1. Contract</text>
+      <text x="130" y="70" text-anchor="middle" font-size="12" fill="#33475b">Operator writes</text>
+      <text x="130" y="88" text-anchor="middle" font-size="12" fill="#33475b">.agentic/config.yml</text>
+
+      <!-- Layer 2 -->
+      <rect x="270" y="20" width="220" height="80" rx="10" fill="#0b3d5c" stroke="#0b3d5c" stroke-width="2"/>
+      <text x="380" y="48" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">2. Render</text>
+      <text x="380" y="70" text-anchor="middle" font-size="12" fill="#dbe7ef">stagr apply (one-time)</text>
+      <text x="380" y="88" text-anchor="middle" font-size="12" fill="#dbe7ef">validate + emit workflows</text>
+
+      <!-- Layer 3 -->
+      <rect x="520" y="20" width="220" height="80" rx="10" fill="#f2f8fb" stroke="#0b3d5c" stroke-width="2"/>
+      <text x="630" y="48" text-anchor="middle" font-size="15" font-weight="bold" fill="#0b3d5c">3. Execute</text>
+      <text x="630" y="70" text-anchor="middle" font-size="12" fill="#33475b">CI platform runs the</text>
+      <text x="630" y="88" text-anchor="middle" font-size="12" fill="#33475b">agents, checks and gates</text>
+
+      <line x1="240" y1="60" x2="268" y2="60" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arrow)"/>
+      <line x1="490" y1="60" x2="518" y2="60" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arrow)"/>
+
+      <!-- Owner row -->
+      <text x="130" y="128" text-anchor="middle" font-size="11.5" fill="#5b6b7c">Owner: the team</text>
+      <text x="380" y="128" text-anchor="middle" font-size="11.5" fill="#5b6b7c">Owner: stagr CLI</text>
+      <text x="630" y="128" text-anchor="middle" font-size="11.5" fill="#5b6b7c">Owner: GitHub Actions / CI</text>
+
+    </svg>
+    <div class="cap">Figure 1. The three-layer model. stagr lives only in the middle layer and is never a runtime dependency.</div>
+  </div>
+
+  <h3>The control-plane rule</h3>
+  <div class="callout navy">
+    <p><strong>Declare, initialize, govern. Never execute.</strong> The litmus test for every feature is:
+    "Does this require stagr to be running while the pipeline executes?" If yes, it belongs in the
+    platform's generated artifacts or in a backend, not in stagr. The toolkit writes the wiring; the
+    platform runs the work.</p>
+  </div>
+
+  <h3>From zero to a governed lane in five steps</h3>
+  <div class="cards">
+    <div class="card card-3">
+      <div class="num">1</div>
+      <h4>Install the CLI</h4>
+      <p>A small Python package. No other runtime, no hosted service, no database.</p>
+    </div>
+    <div class="card card-3">
+      <div class="num">2</div>
+      <h4>Initialise the contract</h4>
+      <p>A guided wizard detects the build toolchain (Python, Node, Go, Java, Rust, .NET) and proposes a profile.</p>
+    </div>
+    <div class="card card-3">
+      <div class="num">3</div>
+      <h4>Doctor and plan</h4>
+      <p>Validate the contract, list the secret <em>names</em> to configure, and preview exactly which files would be written.</p>
+    </div>
+    <div class="card card-3">
+      <div class="num">4</div>
+      <h4>Apply</h4>
+      <p>Render native workflows into the repository. Review the diff like any other change and merge it.</p>
+    </div>
+    <div class="card card-3">
+      <div class="num">5</div>
+      <h4>Work as usual</h4>
+      <p>Open a pull request. The stages fire, the gates decide, and a human approves the merge.</p>
+    </div>
+    <div class="card card-3">
+      <div class="num">&#10003;</div>
+      <h4>Typical configuration size</h4>
+      <p>A version, a profile, a platform, and one model binding. Around ten lines for the common repository.</p>
+    </div>
+  </div>
+</div>
+
+<!-- =============================== 3. DESIGN =============================== -->
+<div class="section">
+  <h2>3. Design: layers and the stage graph</h2>
+
+  <p class="lead">
+    The design separates five concerns so that any one of them can change without disturbing the others.
+    The contract never names a language, a vendor SDK, or a CI system directly.
+  </p>
+
+  <div class="figure">
+    <svg viewBox="0 0 760 330" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+      <g>
+        <rect x="20" y="14" width="720" height="50" rx="8" fill="#0b3d5c"/>
+        <text x="40" y="45" font-size="14" font-weight="bold" fill="#ffffff">1. Contract</text>
+        <text x="200" y="45" font-size="12.5" fill="#dbe7ef">Declarative, platform-neutral description of the stage graph, gates and policy</text>
+      </g>
+      <g>
+        <rect x="20" y="76" width="720" height="50" rx="8" fill="#1a9c8c"/>
+        <text x="40" y="107" font-size="14" font-weight="bold" fill="#ffffff">2. Provider adapters</text>
+        <text x="200" y="107" font-size="12.5" fill="#ffffff">Model vendors, aliases, tiering, custom or self-hosted endpoints, secrets by name</text>
+      </g>
+      <g>
+        <rect x="20" y="138" width="720" height="50" rx="8" fill="#3d8fb0"/>
+        <text x="40" y="169" font-size="14" font-weight="bold" fill="#ffffff">3. Agent backends</text>
+        <text x="200" y="169" font-size="12.5" fill="#ffffff">The executor for a stage, derived from the provider; wraps mature coding agents</text>
+      </g>
+      <g>
+        <rect x="20" y="200" width="720" height="50" rx="8" fill="#6b8fa6"/>
+        <text x="40" y="231" font-size="14" font-weight="bold" fill="#ffffff">4. Platform renderers</text>
+        <text x="200" y="231" font-size="12.5" fill="#ffffff">Map the neutral pipeline to one CI system: pull vs. merge request, roles, checks</text>
+      </g>
+      <g>
+        <rect x="20" y="262" width="720" height="50" rx="8" fill="#f2f8fb" stroke="#0b3d5c" stroke-width="2"/>
+        <text x="40" y="293" font-size="14" font-weight="bold" fill="#0b3d5c">5. Installer / CLI</text>
+        <text x="200" y="293" font-size="12.5" fill="#33475b">init, doctor, plan, apply: validate the contract, render it, write the workflows</text>
+      </g>
+    </svg>
+    <div class="cap">Figure 2. Five layers. A team swaps a vendor, a coding agent, or a Git host by editing configuration, not workflows.</div>
+  </div>
+
+  <h3>A pipeline is a graph of stages</h3>
+  <p>
+    Each <strong>stage</strong> is one agent in the software lifecycle: implement, review, security, test,
+    integration-test, or custom. Every stage binds the same small set of properties, which keeps one generic
+    abstraction for all stage kinds:
+  </p>
+
+  <table>
+    <colgroup><col style="width:24%"><col style="width:76%"></colgroup>
+    <thead><tr><th>Property</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Provider + model</strong></td><td>The knob. Mix vendors per stage, or vary the model across stages. Resolved most-specific-first: per-request override, then stage model, then organisation default. If nothing resolves, it fails loudly rather than guessing.</td></tr>
+      <tr><td><strong>Backend</strong></td><td>The executor. Derived from the provider by default; can be pinned or swapped by name. This is the agent-backend seam.</td></tr>
+      <tr><td><strong>Trigger</strong></td><td>When the stage runs: pull request opened or updated, issue label, comment command, push, schedule, or manual dispatch.</td></tr>
+      <tr><td><strong>Gate</strong></td><td>What its result blocks. <em>Advisory</em> adds no required check. <em>Blocking</em> emits a required status check; missing, pending or errored means blocked.</td></tr>
+      <tr><td><strong>Dependencies</strong></td><td>Graph edges that define order. Security gates ahead of integration and performance stages by default; a repository can reorder this.</td></tr>
+    </tbody>
+  </table>
+
+  </div>
+
+<!-- =============================== 4. THE DEV LANE =============================== -->
+<div class="section">
+  <h2>4. The development lane</h2>
+
+  <p class="lead">
+    This is the heart of stagr: the ordered flow from an approved story to a merged pull request, and the
+    gate that decides when the change is provably ready.
+  </p>
+
+  <div class="figure">
+    <svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+      <defs>
+        <marker id="arr2" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L10,5 L0,10 z" fill="#0b3d5c"/>
+        </marker>
+      </defs>
+
+      <!-- Story -->
+      <rect x="230" y="14" width="300" height="46" rx="23" fill="#f5f8fa" stroke="#0b3d5c" stroke-width="2"/>
+      <text x="380" y="43" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#0b3d5c">Approved story</text>
+      <line x1="380" y1="60" x2="380" y2="84" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr2)"/>
+
+      <!-- Implement -->
+      <rect x="230" y="86" width="300" height="54" rx="8" fill="#1a9c8c"/>
+      <text x="380" y="109" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff">Implement</text>
+      <text x="380" y="128" text-anchor="middle" font-size="11.5" fill="#ffffff">AI implementer opens a pull request</text>
+      <line x1="380" y1="140" x2="380" y2="164" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr2)"/>
+
+      <!-- Code review -->
+      <rect x="230" y="166" width="300" height="54" rx="8" fill="#0b3d5c"/>
+      <text x="380" y="189" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff">Code review</text>
+      <text x="380" y="208" text-anchor="middle" font-size="11.5" fill="#dbe7ef">Loop until zero open review threads</text>
+      <!-- fix loop -->
+      <path d="M530,193 L600,193 L600,113 L532,113" fill="none" stroke="#e0a22b" stroke-width="2.5" marker-end="url(#arr2)"/>
+      <rect x="606" y="136" width="140" height="42" rx="6" fill="#fff7e8" stroke="#e0a22b" stroke-width="1.5"/>
+      <text x="676" y="153" text-anchor="middle" font-size="11" fill="#8a5a00">Findings pushed</text>
+      <text x="676" y="169" text-anchor="middle" font-size="11" fill="#8a5a00">as fixes, re-reviewed</text>
+      <line x1="380" y1="220" x2="380" y2="244" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr2)"/>
+      <text x="392" y="238" font-size="10.5" fill="#5b6b7c">only after code review converges</text>
+
+      <!-- Security -->
+      <rect x="230" y="246" width="300" height="54" rx="8" fill="#0b3d5c"/>
+      <text x="380" y="269" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff">Security review + SAST</text>
+      <text x="380" y="288" text-anchor="middle" font-size="11.5" fill="#dbe7ef">Runs once, never concurrent with code review</text>
+      <line x1="380" y1="300" x2="380" y2="324" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr2)"/>
+
+      <!-- Tests -->
+      <rect x="230" y="326" width="300" height="54" rx="8" fill="#3d8fb0"/>
+      <text x="380" y="349" text-anchor="middle" font-size="14" font-weight="bold" fill="#ffffff">Integration, performance, custom</text>
+      <text x="380" y="368" text-anchor="middle" font-size="11.5" fill="#ffffff">Each a required check, all green</text>
+      <line x1="380" y1="380" x2="380" y2="404" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr2)"/>
+
+      <!-- Gate -->
+      <rect x="180" y="406" width="400" height="58" rx="8" fill="#ffffff" stroke="#0b3d5c" stroke-width="3"/>
+      <text x="380" y="430" text-anchor="middle" font-size="14" font-weight="bold" fill="#0b3d5c">MERGE GATE: provably ready?</text>
+      <text x="380" y="450" text-anchor="middle" font-size="11.5" fill="#33475b">Fail-closed. Missing, pending or unknown means not ready.</text>
+
+      <!-- Two lanes -->
+      <line x1="300" y1="464" x2="220" y2="500" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr2)"/>
+      <line x1="460" y1="464" x2="540" y2="500" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr2)"/>
+
+      <rect x="60" y="502" width="300" height="46" rx="8" fill="#eef8f6" stroke="#1a9c8c" stroke-width="2"/>
+      <text x="210" y="522" text-anchor="middle" font-size="13" font-weight="bold" fill="#0b3d5c">Human lane (default)</text>
+      <text x="210" y="539" text-anchor="middle" font-size="11" fill="#33475b">A person approves and merges</text>
+
+      <rect x="400" y="502" width="300" height="46" rx="8" fill="#eef3f8" stroke="#0b3d5c" stroke-width="2"/>
+      <text x="550" y="522" text-anchor="middle" font-size="13" font-weight="bold" fill="#0b3d5c">Auto-merge lane (opt-in)</text>
+      <text x="550" y="539" text-anchor="middle" font-size="11" fill="#33475b">Gate merges; a label is always a hard stop</text>
+
+      <!-- CI rail -->
+      <rect x="14" y="86" width="150" height="294" rx="8" fill="#f5f8fa" stroke="#d5dde5" stroke-width="1.5"/>
+      <text x="89" y="112" text-anchor="middle" font-size="12" font-weight="bold" fill="#0b3d5c">Validate / CI</text>
+      <text x="89" y="134" text-anchor="middle" font-size="10.5" fill="#33475b">Build + unit tests</text>
+      <text x="89" y="152" text-anchor="middle" font-size="10.5" fill="#33475b">run on every push</text>
+      <text x="89" y="180" text-anchor="middle" font-size="10.5" fill="#33475b">Defines "green"</text>
+      <text x="89" y="198" text-anchor="middle" font-size="10.5" fill="#33475b">for the repository</text>
+      <text x="89" y="226" text-anchor="middle" font-size="10.5" fill="#33475b">Always a</text>
+      <text x="89" y="244" text-anchor="middle" font-size="10.5" fill="#33475b">blocking check</text>
+    </svg>
+    <div class="cap">Figure 3. The development lane. Security gates ahead of the expensive stages; the gate rests the pull request ready for a human.</div>
+  </div>
+
+  <h3>Profiles: simple by default, granular when needed</h3>
+  <p>
+    A profile expands to a default stage graph so a newcomer configures a handful of lines. Explicit stages
+    merge onto the profile, so an expert can accept the standard graph and tweak just one stage.
+  </p>
+  <table>
+    <colgroup><col style="width:20%"><col style="width:80%"></colgroup>
+    <thead><tr><th>Profile</th><th>Stages it expands to</th></tr></thead>
+    <tbody>
+      <tr><td><strong>minimal</strong></td><td>implement, review (advisory). Humans merge.</td></tr>
+      <tr><td><strong>standard</strong></td><td>implement, review (blocking), security (advisory).</td></tr>
+      <tr><td><strong>full</strong></td><td>implement, security (blocking), test (blocking), integration-test (blocking), review (blocking).</td></tr>
+      <tr><td><strong>custom</strong></td><td>No defaults. Every stage is declared explicitly.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- =============================== 5. GATE + TRUST =============================== -->
+<div class="section">
+  <h2>5. Provably ready: the merge gate and trust model</h2>
+
+  <p class="lead">
+    A pull request is ready only when <strong>all</strong> of the following hold on the exact current commit.
+    Every condition is fail-closed: a missing, pending or unknown signal means "not ready".
+  </p>
+
+  <ul class="checklist">
+    <li><strong>Eligible.</strong> Open, not a draft, not from a fork, targets the default branch, from a trusted author, and the platform reports no conflict.</li>
+    <li><strong>CI green.</strong> The combined status and every latest check run on the commit is a clean success. The mandatory validate check must be backed by a trusted workflow run for this exact commit.</li>
+    <li><strong>Every configured check green.</strong> SAST, quality, integration, test and custom checks, each a clean success. The configured list never hides an unrelated failing check.</li>
+    <li><strong>Code review complete.</strong> When a blocking code review is configured, a review bound to this commit has completed and is clean.</li>
+    <li><strong>Security review complete.</strong> When a blocking security review is configured, a review bound to this commit has completed and is clean.</li>
+    <li><strong>Zero open review threads,</strong> from any stage, advisory or blocking.</li>
+    <li><strong>No changes requested</strong> by any reviewer's latest decisive review.</li>
+  </ul>
+
+  <h3>Why the security review runs after the code review</h3>
+  <p>
+    Review backends reject a code review and a security review running concurrently on the same pull request.
+    The security review is therefore triggered only after the code-review loop has converged: completed and
+    clean on the exact commit. This is a correctness constraint, not a preference. Vulnerable code also
+    should not consume integration or performance budget, so the security group gates ahead of those stages
+    by default.
+  </p>
+
+  <h3>Trust boundaries</h3>
+  <div class="cards">
+    <div class="card card-3">
+      <h4>Trusted authors only</h4>
+      <p>Automation is driven only by owners, members and collaborators on same-repository branches. Fork pull requests never drive automation.</p>
+    </div>
+    <div class="card card-3">
+      <h4>Content is data, not instructions</h4>
+      <p>Pull request, issue and comment text is untrusted input. An agent reviews or implements against it; it never obeys directives embedded in it.</p>
+    </div>
+    <div class="card card-3">
+      <h4>Isolated identities and secrets</h4>
+      <p>The implementer never reaches the publisher or the push credential. Secrets are referenced by name only and never logged or stored. Actions are pinned by commit hash with least privilege.</p>
+    </div>
+  </div>
+</div>
+
+<!-- =============================== 6. CAPABILITIES =============================== -->
+<div class="section">
+  <h2>6. Key capabilities</h2>
+
+  <p class="lead">
+    Everything adapts to the team's own setup. All of the following are optional and configurable, so an
+    organisation, a team, or an individual can bend the toolkit to how they host, deploy and observe.
+  </p>
+
+  <table>
+    <colgroup><col style="width:27%"><col style="width:73%"></colgroup>
+    <thead><tr><th>Capability</th><th>What it gives you</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Any provider, per stage</strong></td><td>Mix vendors freely: one vendor implements, another reviews. Adding a provider is a mapping entry, not a fork of the contract.</td></tr>
+      <tr><td><strong>Layered model resolution</strong></td><td>Per-request override, then stage model, then organisation default. Optional deterministic tiering runs trivial changes on a low-cost model and escalates large ones, with no extra model call.</td></tr>
+            <tr><td><strong>Any platform</strong></td><td>One contract, rendered per Git host. The renderer normalises pull vs. merge requests, roles and required checks.</td></tr>
+      <tr><td><strong>Any language</strong></td><td>A repository declares what "green" means through a preset (Python, Maven, Gradle, Node, Go, Rust, .NET) or custom commands. Stages never assume a language.</td></tr>
+      <tr><td><strong>Skills and agent presets</strong></td><td>Reusable skills carry the methodology (checklist, rubric, output format). Presets wire a skill to a stage. Adopt a ready stage with one line, or bring your own by id.</td></tr>
+      <tr><td><strong>Config inheritance</strong></td><td>Layer an organisation base, a team base and a repository. Local values win.</td></tr>
+      <tr><td><strong>Cost and token budgets</strong></td><td>Per-run or per-period caps, global or per stage, with block, downgrade, or warn behaviour.</td></tr>
+      <tr><td><strong>Prompt-injection guardrails</strong></td><td>Pull request, issue, comment and diff content is treated as data, never as instructions.</td></tr>
+      <tr><td><strong>External quality gates</strong></td><td>Sonar, Checkmarx and similar tools are required by check name. stagr never runs the tool; it only requires its verdict.</td></tr>
+      <tr><td><strong>Observability</strong></td><td>Run records to a file, CI artifact, webhook, or telemetry collector. Endpoints come from a variable name, never hardcoded. Secrets always redacted.</td></tr>
+          </tbody>
+  </table>
+
+  <h3 class="section" style="margin-top:0">The agent-backend seam</h3>
+  <p>
+    A backend is the executor that runs a stage's agent. stagr derives it from the provider and lets a stage
+    pin or swap it by name. Adding a new backend is a new adapter template plus one enum entry, never a
+    renderer rewrite. A backend always runs on the user's side of the line: in their CI runner or by
+    dispatching to a provider's cloud, never inside a stagr-hosted process.
+  </p>
+
+  <table>
+    <colgroup><col style="width:30%"><col style="width:45%"><col style="width:25%"></colgroup>
+    <thead><tr><th>Backend</th><th>Wraps</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Claude Code (Action)</td><td>Anthropic's coding agent, GitHub-native</td><td><span class="badge ok">Shipped: implement</span></td></tr>
+      <tr><td>Codex</td><td>OpenAI's coding agent, GitHub-native</td><td><span class="badge ok">Shipped: reviews</span></td></tr>
+      <tr><td>Claude Code (CLI)</td><td>CLI-in-runner adapter</td><td><span class="badge plan">Roadmap</span></td></tr>
+      <tr><td>Generic runner</td><td>Provider-agnostic prompt runner driven by a skill</td><td><span class="badge plan">Roadmap</span></td></tr>
+      <tr><td>OpenHands, SWE-agent, PR-Agent</td><td>Mature open-source agents</td><td><span class="badge plan">Roadmap</span></td></tr>
+      <tr><td>Custom</td><td>Any action reference or container image</td><td><span class="badge plan">Roadmap</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Configuration minimalism as a hard budget</h3>
+  <p>
+    "Configurable" must never mean "overwhelming". The common path is a handful of lines. Advanced blocks are
+    opt-in and deleting any one falls back to a sensible default. The advanced surface is curated and capped,
+    and no key duplicates something the CI system or Git host already owns. The design target: the typical
+    repository is productive with about ten lines, and no repository ever needs more than a small,
+    readable file.
+  </p>
+</div>
+
+<!-- =============================== 7. TOOLKIT FAMILY =============================== -->
+<div class="section">
+  <h2>7. Where stagr sits: the toolkit family</h2>
+
+  <p class="lead">
+    stagr owns exactly one span of the software lifecycle: from an approved story to a merged pull request.
+    Nothing before, nothing after. Two sibling toolkits own the rest, and the three connect only through
+    repository artifacts and a decision-event stream, never by calling each other directly.
+  </p>
+
+  <div class="figure">
+    <svg viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+      <defs>
+        <marker id="arr3" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L10,5 L0,10 z" fill="#0b3d5c"/>
+        </marker>
+      </defs>
+      <!-- Planning -->
+      <rect x="20" y="30" width="220" height="130" rx="10" fill="#f5f8fa" stroke="#6b8fa6" stroke-width="2"/>
+      <text x="130" y="60" text-anchor="middle" font-size="15" font-weight="bold" fill="#0b3d5c">Planning toolkit</text>
+      <text x="130" y="84" text-anchor="middle" font-size="11.5" fill="#33475b">Requirement to approved stories</text>
+      <text x="130" y="106" text-anchor="middle" font-size="11.5" fill="#5b6b7c">Service-shaped: interactive,</text>
+      <text x="130" y="124" text-anchor="middle" font-size="11.5" fill="#5b6b7c">stateful intake and breakdown</text>
+      <text x="130" y="148" text-anchor="middle" font-size="10.5" fill="#8a5a00">Sibling, out of stagr scope</text>
+
+      <!-- stagr -->
+      <rect x="270" y="20" width="220" height="150" rx="10" fill="#0b3d5c" stroke="#1a9c8c" stroke-width="3"/>
+      <text x="380" y="52" text-anchor="middle" font-size="17" font-weight="bold" fill="#ffffff">stagr</text>
+      <text x="380" y="78" text-anchor="middle" font-size="11.5" fill="#dbe7ef">Approved story to merged PR</text>
+      <text x="380" y="102" text-anchor="middle" font-size="11.5" fill="#8fe3d6">Renderer-shaped: declarative</text>
+      <text x="380" y="120" text-anchor="middle" font-size="11.5" fill="#8fe3d6">config to native CI</text>
+      <text x="380" y="150" text-anchor="middle" font-size="10.5" fill="#dbe7ef">This document</text>
+
+      <!-- CD -->
+      <rect x="520" y="30" width="220" height="130" rx="10" fill="#f5f8fa" stroke="#6b8fa6" stroke-width="2"/>
+      <text x="630" y="60" text-anchor="middle" font-size="15" font-weight="bold" fill="#0b3d5c">CD toolkit</text>
+      <text x="630" y="84" text-anchor="middle" font-size="11.5" fill="#33475b">Merged change to deployed</text>
+      <text x="630" y="106" text-anchor="middle" font-size="11.5" fill="#5b6b7c">Renderer-shaped: same</text>
+      <text x="630" y="124" text-anchor="middle" font-size="11.5" fill="#5b6b7c">contract family as stagr</text>
+      <text x="630" y="148" text-anchor="middle" font-size="10.5" fill="#8a5a00">Sibling, out of stagr scope</text>
+
+      <line x1="240" y1="95" x2="268" y2="95" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr3)"/>
+      <line x1="490" y1="95" x2="518" y2="95" stroke="#0b3d5c" stroke-width="2.5" marker-end="url(#arr3)"/>
+      <text x="254" y="82" text-anchor="middle" font-size="9.5" fill="#5b6b7c">story</text>
+      <text x="504" y="82" text-anchor="middle" font-size="9.5" fill="#5b6b7c">merge</text>
+
+      <!-- Event stream -->
+      <rect x="20" y="196" width="720" height="40" rx="20" fill="#eef8f6" stroke="#1a9c8c" stroke-width="2"/>
+      <text x="380" y="221" text-anchor="middle" font-size="12.5" fill="#0b3d5c">Shared transports: repository artifacts (issues, PRs, labels, events) and the decision-event stream</text>
+    </svg>
+    <div class="cap">Figure 4. Three toolkits, one contract family. stagr governs a single pull request's lane; it never schedules or monitors a fleet.</div>
+  </div>
+
+  <h3>Non-goals that keep it a tool, not a framework</h3>
+  <div class="cards">
+    <div class="card card-3">
+      <h4>Not the planner</h4>
+      <p>Feature intake, story breakdown and approval belong to the Planning toolkit.</p>
+    </div>
+    <div class="card card-3">
+      <h4>Not the deployer</h4>
+      <p>Release, deploy and promotion belong to the CD toolkit.</p>
+    </div>
+    <div class="card card-3">
+      <h4>Not the orchestrator</h4>
+      <p>Choosing which story to start and tracking many pull requests is an external job that consumes stagr's events.</p>
+    </div>
+    <div class="card card-3">
+      <h4>Not a model gateway</h4>
+      <p>Model calls never route through the toolkit. Only credential names and endpoint metadata are referenced.</p>
+    </div>
+    <div class="card card-3">
+      <h4>Not memory or RAG</h4>
+      <p>Knowledge and retrieval are a backend's concern.</p>
+    </div>
+    <div class="card card-3">
+      <h4>Not a dashboard</h4>
+      <p>CLI + config + CI. Events are emitted to the tools a team already uses.</p>
+    </div>
+  </div>
+
+  </div>
+
+<!-- =============================== 8. ROADMAP =============================== -->
+<div class="section">
+  <h2>8. Current state and roadmap</h2>
+
+  <p class="lead">
+    The roadmap is phased and honest. Each phase is control-plane work (declare, initialise, govern, render,
+    emit), never runtime. Two decisions set the order: deepen GitHub first, and name the agent-backend seam
+    now while shipping one GitHub-native backend.
+  </p>
+
+  <h3>What exists today</h3>
+  <table>
+    <colgroup><col style="width:22%"><col style="width:78%"></colgroup>
+    <thead><tr><th>Area</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Contract</strong></td><td><span class="badge ok">Shipped</span>&nbsp; Platform-neutral schema, profiles, provider and model resolution, backend enum, budgets and guardrail policy.</td></tr>
+      <tr><td><strong>Development lane</strong></td><td><span class="badge ok">Shipped</span>&nbsp; Validate, review router, implementer, code review, security review, thread cleanup, fail-closed gate and both merge lanes rendered on GitHub.</td></tr>
+      <tr><td><strong>Trust</strong></td><td><span class="badge ok">Shipped</span>&nbsp; Commit-bound evidence, fail-closed gate, base-controlled definitions, scheduled sweep.</td></tr>
+      <tr><td><strong>CLI</strong></td><td><span class="badge ok">Shipped</span>&nbsp; init (guided wizard with toolchain detection), doctor, plan, apply.</td></tr>
+      <tr><td><strong>Dogfooded</strong></td><td><span class="badge ok">Shipped</span>&nbsp; The toolkit builds itself with the same pattern: AI implements, an independent AI reviews, CI gates, the fail-closed gate merges.</td></tr>
+      <tr><td><strong>Governance limits</strong></td><td><span class="badge plan">Target</span>&nbsp; Loop caps, cost ceilings, circuit breaker and escalation states are declared but not yet enforced.</td></tr>
+      <tr><td><strong>Audit stream</strong></td><td><span class="badge plan">Target</span>&nbsp; Decision records and provenance are in scope; no emitter ships yet.</td></tr>
+      <tr><td><strong>Other stages and platforms</strong></td><td><span class="badge plan">Target</span>&nbsp; Test, integration-test and custom stages are validated but not rendered; only the GitHub renderer exists.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout amber avoid-break">
+    <p><strong>Guardrail for every roadmap item.</strong> Is this wiring and governance, or doing the work?
+    If an item cannot be reduced to declare, initialise, govern, render or emit, it belongs in a backend,
+    a sibling toolkit, or the user's own CI, not in stagr.</p>
+  </div>
+
+  <h3 class="section" style="margin-top:0">Three phases</h3>
+  <div class="roadmap">
+    <div class="phase">
+      <div class="phase-tag p1">
+        <div class="ph">Phase</div>
+        <div class="nm">1</div>
+        <div class="st">Now</div>
+      </div>
+      <div class="phase-body">
+        <h4>Harden the GitHub development lane</h4>
+        <ul>
+          <li>Lock the ordered gate and the readiness predicate as tested invariants.</li>
+          <li>Enforce the gate through organisation rulesets so it cannot be edited away.</li>
+          <li>Render budgets, loop caps and escalation terminal states; ship a finite default so no repository is ever unbounded.</li>
+          <li>Trigger the implementer from an approved-story label; add an automatic, bounded finding-to-fix loop.</li>
+          <li>Emit a minimal decision record on gate outcomes and merge.</li>
+        </ul>
+        <p class="done-when"><strong>Done when:</strong> a trusted pull request runs implement, review loop, security, tests and a provably-ready, human-approved merge, with every documented edge case covered by a test.</p>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-tag p2">
+        <div class="ph">Phase</div>
+        <div class="nm">2</div>
+        <div class="st">Next</div>
+      </div>
+      <div class="phase-body">
+        <h4>Organisation-scale onboarding and the stage catalogue</h4>
+        <ul>
+          <li>Organisation-scoped provisioning: app install, secrets, reusable workflows and rulesets in one step.</li>
+          <li>Organisation-default configuration with per-repository override and a live central-update path.</li>
+          <li>Auto-merge selectors by branch, label, author or condition.</li>
+          <li>First-class SAST and quality integrations, plus integration, performance and custom stages as reference templates.</li>
+          <li>Fuller provenance and attestation stream for compliance regimes such as EU AI Act, ISO 42001 and SOC 2.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-tag p3">
+        <div class="ph">Phase</div>
+        <div class="nm">3</div>
+        <div class="st">Later</div>
+      </div>
+      <div class="phase-body">
+        <h4>Backend and platform breadth</h4>
+        <ul>
+          <li>Cloud-API backend for provider-hosted agents, then a CLI backend, both behind the existing seam.</li>
+          <li>A second platform renderer (for example GitLab CI), then others, with the contract unchanged.</li>
+          <li>Hybrid support: decouple where code lives from where agents run.</li>
+          <li>An opt-in, time-boxed autonomy window on the auto-merge lane: fail-closed, fully recorded, with the human stop label still absolute.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  </div>
+
+<!-- =============================== 9. SUMMARY =============================== -->
+<div class="section">
+  <h2>9. Why this shape wins</h2>
+
+  <p class="lead">
+    Every well-funded competitor is racing to be the agent, the editor, or the model. Almost no one is a
+    neutral control plane that governs whatever agents a repository already has, inside the repository's own
+    CI, and hands the merge decision to a human.
+  </p>
+
+  <div class="cards">
+    <div class="card">
+      <h4>Structurally defensible</h4>
+      <p>Neutrality is off-limits to platform incumbents, because each wants lock-in. It needs no model training and no hosted runtime to build.</p>
+    </div>
+    <div class="card">
+      <h4>Composes, never competes</h4>
+      <p>The best implementers and reviewers keep improving. stagr gets better with them, because it is the seam they plug into.</p>
+    </div>
+    <div class="card">
+      <h4>Governance people can trust</h4>
+      <p>Commit-bound evidence, fail-closed gates, isolated identities, secrets by name. "Provably ready" is a checklist, not a feeling.</p>
+    </div>
+    <div class="card">
+      <h4>Portable by construction</h4>
+      <p>One contract; a new vendor is a mapping entry, a new agent is an adapter, a new Git host is a renderer. Never a rewrite.</p>
+    </div>
+  </div>
+
+  <h3>In summary</h3>
+  <ul class="checklist">
+    <li><strong>One file in, a governed lane out.</strong> Ten lines of configuration for the common repository.</li>
+    <li><strong>The toolkit writes the wiring; the platform runs the work.</strong> stagr is never a runtime dependency.</li>
+    <li><strong>Any provider, any agent, any platform, any language.</strong> Mixed freely, per stage.</li>
+    <li><strong>Humans keep the final word.</strong> The default lane ends at "ready for approval"; auto-merge is opt-in and a label always stops it.</li>
+    <li><strong>Already running.</strong> The toolkit builds and reviews itself with the same lane it ships.</li>
+  </ul>
+
+  <div class="spacer"></div>
+  <p class="muted small" style="text-align:center;">agentic-foundation &amp; stagr &nbsp;&middot;&nbsp; Overview, design and roadmap</p>
+</div>
+
+</div>
+</body>
+</html>
