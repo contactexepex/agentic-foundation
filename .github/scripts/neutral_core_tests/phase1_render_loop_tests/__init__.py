@@ -12,6 +12,8 @@ from neutral_core_tests.phase1_render_loop_tests.test_stage_processing import (
     test_phase1_provider_api_key_resolved_from_api_key_secret,
     test_phase1_explicit_secrets_map_takes_precedence_over_api_key_secret,
     test_phase1_multiple_secrets_all_resolved,
+)
+from neutral_core_tests.phase1_render_loop_tests.test_secret_alias_defaults import (
     test_phase1_provider_api_key_resolves_to_provider_default_when_providers_absent,
     test_phase1_trusted_commenter_token_resolves_to_remediation_token_when_platform_absent,
     test_phase1_platform_auth_token_secret_overrides_trusted_commenter_default,
