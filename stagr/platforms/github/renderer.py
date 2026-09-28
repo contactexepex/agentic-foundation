@@ -1,18 +1,26 @@
-"""GitHubPlatformRenderer: Phase 1 stage execution artifact generator for GitHub Actions.
+"""GitHubPlatformRenderer: Phase 1 + Phase 2b artifact generator for GitHub Actions.
 
-Translates a (ExecutionPlan, NormalizedStage, RenderContext) triple into a GitHub
-Actions workflow file (.github/workflows/stage-<id>.yml) inside output_dir and returns a
-StageResultSpec that describes the Check Run this stage will emit at run time.
+Phase 1 (render_stage): translates a (ExecutionPlan, NormalizedStage, RenderContext)
+triple into a GitHub Actions workflow file (.github/workflows/stage-<id>.yml) inside
+output_dir and returns a StageResultSpec that describes the Check Run this stage will
+emit at run time.
 
-Security invariant: stages with required_secrets (privileged stages) MUST use
+Phase 2b (render_governance): generates the merge-gate workflow at
+.github/workflows/governance.yml.  The workflow reads StageResultSignal values from
+Check Runs published by stage execution artifacts, verifies publisher identity against
+the Stagr App ID (rendered as a literal constant), and blocks merge when any blocking
+stage has a BLOCKED or FAILED conclusion.  See _governance.py for the complete
+governance logic specification.
+
+Security invariant (Phase 1): stages with required_secrets (privileged stages) MUST use
 ``pull_request_target`` — never ``pull_request``. The ``pull_request`` event does
 not expose repository secrets, so any stage that needs them would fail silently.
 More critically, ``pull_request_target`` runs with the base-branch workflow
 definition, which is crucial for trusted execution. This renderer enforces the
 invariant at render time so a misconfiguration is caught before deployment.
 
-Token isolation: the Stagr GitHub App installation token (acquired in step 1 and
-used in step 5 for Check Run creation) is NEVER passed to the backend invocation
+Token isolation (Phase 1): the Stagr GitHub App installation token (acquired in step 1
+and used in step 5 for Check Run creation) is NEVER passed to the backend invocation
 step (step 4). The backend step receives only the secrets declared in
 ExecutionPlan.required_secrets (resolved alias → env_name pairs). Mixing the App
 token with backend invocation calls would grant the backend write access to
@@ -47,6 +55,7 @@ from stagr.core.models import (
     StageResultProvenance,
     StageResultSpec,
 )
+from stagr.platforms.github._governance import generate_governance_workflow_yaml
 
 # Check Run name template — design-doc 08: stagr/stage/<stageId>
 _CHECK_RUN_NAME_PREFIX = "stagr/stage"
@@ -71,8 +80,12 @@ class GitHubPlatformRenderer:
     ``output_dir/.github/workflows/stage-<id>.yml`` (or dry-run when
     ``output_dir`` is None) and returns the StageResultSpec.
 
-    Phase 2 (render_routing, render_governance): raises ValueError in dry-run
-    mode; full implementation is out of scope for issue #194.
+    Phase 2b (render_governance): generates the merge-gate workflow at
+    ``output_dir/.github/workflows/governance.yml``.  Raises ValueError
+    in dry-run mode.
+
+    Phase 2a (render_routing): raises ValueError in dry-run mode and
+    NotImplementedError in live mode until issue #195 is implemented.
     """
 
     def __init__(
@@ -166,21 +179,39 @@ class GitHubPlatformRenderer:
         result_specs: tuple[StageResultSpec, ...],
         render_context: RenderContext,
     ) -> None:
-        """Phase 2b: write the governance artifact.
+        """Phase 2b: write the governance / merge-gate workflow artifact.
+
+        Generates ``.github/workflows/governance.yml`` inside ``output_dir``.
+        The workflow reads StageResultSignal values from Check Runs published
+        by stage execution artifacts, verifies that each Check Run was
+        published by the Stagr GitHub App (using the publisher_app_id rendered
+        as a literal constant), and blocks merge when any blocking stage
+        reports a BLOCKED or FAILED conclusion.
 
         Raises ValueError in dry-run mode (output_dir is None).
-        Raises NotImplementedError in live mode until the full implementation
-        lands in a later issue (#195/#196); fail-loud prevents Phase 2
-        orchestration from silently receiving an incomplete pipeline.
+
+        Args:
+            result_specs: StageResultSpec for every stage produced in Phase 1.
+            render_context: RenderContext carrying MergePolicy, TrustPolicy,
+                and RoutingPolicy used to determine blocking stages.
         """
         if self._output_dir is None:
             raise ValueError(
                 "render_governance cannot be called in dry-run mode (output_dir is None)"
             )
-        raise NotImplementedError(
-            "render_governance is not yet implemented for live mode "
-            "(full implementation is out of scope for issue #194)"
+
+        governance_yaml = generate_governance_workflow_yaml(
+            publisher_app_id=self._publisher_app_id,
+            publisher_private_key_secret=self._publisher_private_key_secret,
+            result_specs=result_specs,
+            render_context=render_context,
         )
+
+        governance_file_path = (
+            self._output_dir / ".github" / "workflows" / "governance.yml"
+        )
+        governance_file_path.parent.mkdir(parents=True, exist_ok=True)
+        governance_file_path.write_text(governance_yaml, encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Private helpers
