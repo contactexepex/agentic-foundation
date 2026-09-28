@@ -19,9 +19,11 @@ review are performed by the same Codex bot identity on the same head commit.
 ``pull_request_review_id`` would require a runtime lookup of the formal review
 object per thread, and the existing workflows do not record or expose the
 per-review discriminator needed to scope thread counts to one stage.
-Therefore ``GateDispositionKind.EXPLICIT_PASS_MARKER`` is used in place of
-``NO_OPEN_THREADS``. The Codex review-summary comment row that transitions to
-"Completed" for the relevant review type serves as the explicit pass marker.
+Therefore ``invocation_correlation`` is ``None`` in the ``FindingScopeSpec``;
+both stages share the conservative requirement: zero unresolved Codex-bot
+threads on the current head commit. Cross-stage blocking (a REVIEW finding
+keeping SECURITY BLOCKED) is acceptable for V1 — it fails closed rather than
+permitting an unsafe merge.
 
 Evidence kinds by stage kind:
 - REVIEW stages use ``EvidenceKind.REVIEW_RESULT`` with ``COMPLETED``.
@@ -49,14 +51,16 @@ Evidence kinds by stage kind:
   JSON — it does NOT match a marker with ``"status":"running"``. The
   ``CorrelationSpec.sha_field`` handles the headSha check separately.
 
-Open design question: ``EXPLICIT_PASS_MARKER`` with a selector that is always
-present on completion (the "Completed" summary row) emits PASS even when
-blocking findings are present. The correct resolution per design-doc 06 is
-``NO_OPEN_THREADS`` with a reliable ``invocationCorrelation`` discriminator,
-or a genuinely verified clean-pass marker. Spike B found no reliable
-``invocationCorrelation`` in the current Codex output; a clean-pass marker
-has not been empirically verified. This is a pending design question requiring
-empirical investigation before this renderer can be fully trusted for gate use.
+Gate disposition: ``NO_OPEN_THREADS`` with ``FindingScopeSpec(created_by=
+"chatgpt-codex-connector[bot]", head_sha=True, invocation_correlation=None)``
+for both stage kinds. The security marker format (empirically verified in
+``gate_behavior.py``) is ``{"blockingSeverityThreshold":"P0","headSha":"...","status":"..."}``
+— there is no findings or verdict field; ``status=completed`` proves the review
+finished, not that it passed cleanly. ``NO_OPEN_THREADS`` is therefore the
+correct conservative disposition for SECURITY as well as REVIEW.
+``FindingScopeSpec.head_sha=True`` is a declaration to the PlatformRenderer
+that thread filtering must be head-bound; the concrete mechanism (e.g., the
+``commit_id`` field on GitHub review objects) is PlatformRenderer scope.
 
 Renderer raises ``ValueError`` for any stage kind other than REVIEW or
 SECURITY; both review kinds are the only supported backends for this renderer.
@@ -78,6 +82,7 @@ from stagr.core.models import (
     CorrelationSpec,
     EvidenceSpec,
     ExecutionPlan,
+    FindingScopeSpec,
     GateDispositionSpec,
     Invocation,
     NormalizedStage,
@@ -120,10 +125,10 @@ _CODEX_SECURITY_REVIEW_MARKER_SELECTOR = "codex-security-review:v1 status=comple
 # full 40-character head SHA of the reviewed commit.
 _SECURITY_REVIEW_MARKER_SHA_FIELD = "headSha"
 
-# Backend-defined selectors that identify the "Completed" pass-marker for each
-# review kind within the Codex summary comment.
-_CODE_REVIEW_PASS_MARKER_SELECTOR = "codex_code_review_completed"
-_SECURITY_REVIEW_PASS_MARKER_SELECTOR = "codex_security_review_completed"
+# Authoritative Codex bot GitHub login (empirically grounded in gate_behavior.py line 24:
+# CODEX = "chatgpt-codex-connector[bot]"). Used to scope NO_OPEN_THREADS to findings
+# posted by the Codex reviewer identity, excluding other actors' comments.
+_CODEX_BOT_IDENTITY = "chatgpt-codex-connector[bot]"
 
 
 class OpenAICodexBackendRenderer:
@@ -131,8 +136,9 @@ class OpenAICodexBackendRenderer:
 
     Handles REVIEW (code review) and SECURITY stages only. The invocation kind
     is PR_COMMENT for both; the comment body and evidence kind differ per stage
-    kind. Gate disposition is EXPLICIT_PASS_MARKER (see Spike B finding in
-    module docstring). Raises ValueError for any other stage kind.
+    kind. Gate disposition is NO_OPEN_THREADS scoped to the Codex bot identity
+    and the current head SHA (see module docstring). Raises ValueError for any
+    other stage kind.
     """
 
     provider: str = "openai"
@@ -143,9 +149,8 @@ class OpenAICodexBackendRenderer:
 
         The plan declares a PR_COMMENT invocation with the appropriate
         ``@codex`` command, an alias-only required secret, a stage-kind-specific
-        EvidenceSpec correlated to the head SHA, and an EXPLICIT_PASS_MARKER gate
-        disposition whose selector identifies the relevant completed-row in the
-        Codex summary comment.
+        EvidenceSpec correlated to the head SHA, and a NO_OPEN_THREADS gate
+        disposition scoped to the Codex bot identity and the current head SHA.
 
         Raises ValueError for stage kinds other than REVIEW and SECURITY.
         """
@@ -156,10 +161,7 @@ class OpenAICodexBackendRenderer:
 
         review_evidence = self._build_evidence_spec(stage.kind)
 
-        gate_disposition = GateDispositionSpec(
-            kind=GateDispositionKind.EXPLICIT_PASS_MARKER,
-            selector=self._resolve_pass_marker_selector(stage.kind),
-        )
+        gate_disposition = self._build_gate_disposition(stage.kind)
 
         required_secrets = (SecretRef(alias=_TRUSTED_COMMENTER_TOKEN_ALIAS),)
 
@@ -174,8 +176,9 @@ class OpenAICodexBackendRenderer:
     def _build_evidence_spec(self, stage_kind: StageKind) -> EvidenceSpec:
         """Return the EvidenceSpec appropriate for the stage kind.
 
-        REVIEW stages produce a REVIEW_RESULT spec with SUCCESS (clean pass, not
-        merely completed). SECURITY stages produce a COMMENT_MATCH spec with
+        REVIEW stages produce a REVIEW_RESULT spec with COMPLETED (the reviewer
+        finished; findings are handled by GateDispositionSpec). SECURITY stages
+        produce a COMMENT_MATCH spec with
         MATCH_FOUND using the security-review completion comment selector.
         Raises ValueError for any other stage kind.
         """
@@ -219,18 +222,32 @@ class OpenAICodexBackendRenderer:
             f"only REVIEW and SECURITY are valid"
         )
 
-    def _resolve_pass_marker_selector(self, stage_kind: StageKind) -> str:
-        """Return the backend-defined pass-marker selector for the stage kind.
+    def _build_gate_disposition(self, stage_kind: StageKind) -> GateDispositionSpec:
+        """Return the GateDispositionSpec for the stage kind.
 
-        The selector identifies which "Completed" row in the Codex summary
-        comment constitutes a gate pass for this stage's invocation.
+        Both REVIEW and SECURITY use NO_OPEN_THREADS scoped to the Codex bot
+        identity and the current head SHA. REVIEW uses it because Spike B found
+        no per-invocation discriminator. SECURITY uses it because the
+        codex-security-review:v1 marker encodes only {blockingSeverityThreshold,
+        headSha, status} — there is no findings or verdict field; status=completed
+        proves completion, not a clean pass.
+
+        FindingScopeSpec.head_sha=True declares the head-bound requirement to
+        the PlatformRenderer; the concrete mechanism is PlatformRenderer scope.
+
         Raises ValueError for any other stage kind.
         """
-        if stage_kind is StageKind.REVIEW:
-            return _CODE_REVIEW_PASS_MARKER_SELECTOR
-        if stage_kind is StageKind.SECURITY:
-            return _SECURITY_REVIEW_PASS_MARKER_SELECTOR
-        raise ValueError(
-            f"OpenAICodexBackendRenderer does not support stage kind {stage_kind!r}; "
-            f"only REVIEW and SECURITY are valid"
+        if stage_kind not in (StageKind.REVIEW, StageKind.SECURITY):
+            raise ValueError(
+                f"OpenAICodexBackendRenderer does not support stage kind {stage_kind!r}; "
+                f"only REVIEW and SECURITY are valid"
+            )
+        return GateDispositionSpec(
+            kind=GateDispositionKind.NO_OPEN_THREADS,
+            selector="",
+            scope=FindingScopeSpec(
+                created_by=_CODEX_BOT_IDENTITY,
+                head_sha=True,
+                invocation_correlation=None,
+            ),
         )

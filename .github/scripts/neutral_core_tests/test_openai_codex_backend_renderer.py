@@ -97,8 +97,8 @@ def test_codex_renderer_required_secret_alias_and_no_env_name() -> None:
     )
 
 
-def test_codex_renderer_gate_disposition_kind_is_explicit_pass_marker() -> None:
-    """gate_disposition.kind == EXPLICIT_PASS_MARKER (Spike B: thread correlation not reliably observable)."""
+def test_codex_renderer_gate_disposition_kind_is_no_open_threads() -> None:
+    """gate_disposition.kind == NO_OPEN_THREADS (conservative: zero Codex findings on head)."""
     from stagr.core.enums import GateDispositionKind
 
     renderer = _build_renderer()
@@ -106,8 +106,8 @@ def test_codex_renderer_gate_disposition_kind_is_explicit_pass_marker() -> None:
 
     execution_plan = renderer.render(review_stage)
 
-    assert execution_plan.gate_disposition.kind is GateDispositionKind.EXPLICIT_PASS_MARKER, (
-        f"Expected gate_disposition.kind EXPLICIT_PASS_MARKER (Spike B result), "
+    assert execution_plan.gate_disposition.kind is GateDispositionKind.NO_OPEN_THREADS, (
+        f"Expected gate_disposition.kind NO_OPEN_THREADS; "
         f"got {execution_plan.gate_disposition.kind!r}"
     )
 
@@ -201,16 +201,34 @@ def test_codex_renderer_security_stage_posts_security_review_command() -> None:
     )
 
 
-def test_codex_renderer_gate_disposition_has_no_scope() -> None:
-    """gate_disposition.scope is None for EXPLICIT_PASS_MARKER (scope required only for NO_OPEN_THREADS)."""
+def test_codex_renderer_gate_disposition_scope_is_codex_bot_head_bound() -> None:
+    """gate_disposition.scope is FindingScopeSpec(created_by=codex-bot, head_sha=True, invocation_correlation=None)."""
     renderer = _build_renderer()
     review_stage = _build_review_normalized_stage()
-
     execution_plan = renderer.render(review_stage)
+    scope = execution_plan.gate_disposition.scope
+    assert scope is not None, "NO_OPEN_THREADS gate_disposition must have scope set"
+    assert scope.created_by == "chatgpt-codex-connector[bot]", (
+        f"Expected scope.created_by 'chatgpt-codex-connector[bot]'; got {scope.created_by!r}"
+    )
+    assert scope.head_sha is True, f"Expected scope.head_sha True; got {scope.head_sha!r}"
+    assert scope.invocation_correlation is None
 
-    assert execution_plan.gate_disposition.scope is None, (
-        f"EXPLICIT_PASS_MARKER gate_disposition must have scope=None; "
-        f"got {execution_plan.gate_disposition.scope!r}"
+
+def test_codex_renderer_security_stage_gate_disposition_is_no_open_threads() -> None:
+    """SECURITY gate_disposition uses NO_OPEN_THREADS (security marker lacks a clean-pass verdict field)."""
+    from stagr.core.enums import GateDispositionKind
+
+    renderer = _build_renderer()
+    security_stage = _build_security_normalized_stage()
+    execution_plan = renderer.render(security_stage)
+    assert execution_plan.gate_disposition.kind is GateDispositionKind.NO_OPEN_THREADS, (
+        f"Expected SECURITY gate_disposition.kind NO_OPEN_THREADS; "
+        f"got {execution_plan.gate_disposition.kind!r}"
+    )
+    scope = execution_plan.gate_disposition.scope
+    assert scope is not None and scope.created_by == "chatgpt-codex-connector[bot]", (
+        f"Expected SECURITY scope.created_by 'chatgpt-codex-connector[bot]'; got scope={scope!r}"
     )
 
 
