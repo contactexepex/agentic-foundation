@@ -247,6 +247,21 @@ def test_invocation_params_deep_immutable() -> None:
     assert isinstance(nested.params["tags"], tuple), \
         "Top-level list value must become tuple"
 
+    # Dict inside a tuple is also frozen (tuple elements are recursed)
+    tuple_of_dicts = Invocation(
+        kind=InvocationKind.WORKFLOW_DISPATCH,
+        params={"x": ({"mutable": 1},)},
+    )
+    assert isinstance(tuple_of_dicts.params["x"], tuple), \
+        "Input tuple must remain a tuple"
+    assert isinstance(tuple_of_dicts.params["x"][0], MappingProxyType), \
+        "Dict inside tuple must become MappingProxyType"
+    try:
+        tuple_of_dicts.params["x"][0]["mutable"] = 99  # type: ignore[index]
+        assert False, "Should have raised TypeError on dict-inside-tuple write"
+    except TypeError:
+        pass
+
 
 def test_execution_plan_requires_gate_disposition() -> None:
     """ExecutionPlan without gate_disposition raises ValueError."""

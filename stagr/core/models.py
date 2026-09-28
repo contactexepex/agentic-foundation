@@ -31,14 +31,15 @@ from .enums import (
 def _deep_freeze(value: Any) -> Any:
     """Recursively convert mutable containers to immutable equivalents.
 
-    dict → MappingProxyType, list → tuple, set → frozenset.
-    Other values pass through unchanged.
+    dict → MappingProxyType, list/tuple → tuple, set/frozenset → frozenset.
+    Recurses into tuple and frozenset elements so values nested inside already-
+    immutable containers are also frozen. Other values pass through unchanged.
     """
     if isinstance(value, dict):
         return MappingProxyType({k: _deep_freeze(v) for k, v in value.items()})
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return tuple(_deep_freeze(v) for v in value)
-    if isinstance(value, set):
+    if isinstance(value, (set, frozenset)):
         return frozenset(_deep_freeze(v) for v in value)
     return value
 
