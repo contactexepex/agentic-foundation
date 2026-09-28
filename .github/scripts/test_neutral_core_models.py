@@ -63,6 +63,9 @@ from neutral_core_tests.test_defaults import (
     test_defaults_missing_provider_raises_config_error,
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
+    test_defaults_backend_propagates_from_defaults,
+    test_defaults_missing_backend_raises_config_error,
+    test_defaults_explicit_model_binding_normalized_to_string,
 )
 
 _TESTS = [
@@ -104,6 +107,9 @@ _TESTS = [
     test_defaults_missing_provider_raises_config_error,
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
+    test_defaults_backend_propagates_from_defaults,
+    test_defaults_missing_backend_raises_config_error,
+    test_defaults_explicit_model_binding_normalized_to_string,
 ]
 
 if __name__ == "__main__":
