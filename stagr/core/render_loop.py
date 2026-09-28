@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from .backend_renderer_registry import BackendRendererRegistry
 from .errors import SecretAliasResolutionError
-from .models import ExecutionPlan, RenderContext, SecretRef, StageResultSpec
+from .models import ExecutionPlan, NormalizedStage, RenderContext, SecretRef, StageResultSpec
 
 if TYPE_CHECKING:
     from .platform_renderer import PlatformRenderer
@@ -92,8 +92,11 @@ def run_phase1(
 
     Returns a list of length ``len(context.stages)`` in stage order.
     """
-    stage_result_specs: list[StageResultSpec] = []
-
+    # Preparation pass: validate every plan and resolve every alias before any render_stage call.
+    # This prevents a partially-rendered pipeline when a later stage has an unresolvable alias —
+    # render_stage is a file-producing operation (e.g. writing a workflow file), so atomicity
+    # requires all static checks to succeed first.
+    prepared: list[tuple[ExecutionPlan, NormalizedStage]] = []
     for stage in context.stages:
         backend_renderer = registry.get(stage.provider, stage.backend)
 
@@ -109,7 +112,11 @@ def run_phase1(
         resolved_plan: ExecutionPlan = _resolve_secret_aliases(
             unresolved_plan, stage.provider, provider_config
         )
+        prepared.append((resolved_plan, stage))
 
+    # Rendering pass: only reached when all stages have a validated, fully-resolved plan.
+    stage_result_specs: list[StageResultSpec] = []
+    for resolved_plan, stage in prepared:
         stage_result_spec: StageResultSpec = platform_renderer.render_stage(
             resolved_plan, stage, context
         )

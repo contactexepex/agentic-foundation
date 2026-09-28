@@ -79,6 +79,46 @@ def test_phase1_unresolvable_alias_raises_before_platform_renderer() -> None:
     )
 
 
+def test_phase1_second_stage_alias_failure_prevents_all_render_stage_calls() -> None:
+    """run_phase1 preparation pass fails before any render_stage when a later stage has unresolvable alias."""
+    from stagr.core.render_loop import run_phase1
+    from stagr.core.errors import SecretAliasResolutionError
+    from stagr.core.backend_renderer_registry import BackendRendererRegistry
+
+    stage_ok = build_stage("stage-ok")
+    stage_bad = build_stage("stage-bad")
+    render_context = build_minimal_render_context([stage_ok, stage_bad])
+
+    class _SecondStageAliasMissingBackendRenderer:
+        provider = "testprovider"
+        backend = "testbackend"
+
+        def render(self, stage_arg):
+            if stage_arg.id == "stage-bad":
+                return build_execution_plan("stage-bad", secret_aliases=("MISSING_ALIAS",))
+            return build_execution_plan(stage_arg.id)
+
+    registry = BackendRendererRegistry()
+    registry.register(_SecondStageAliasMissingBackendRenderer())
+    platform_renderer = TrackingPlatformRenderer()
+    provider_config: dict = {}
+
+    raised = False
+    try:
+        run_phase1(render_context, registry, platform_renderer, provider_config)
+    except SecretAliasResolutionError:
+        raised = True
+
+    assert raised, (
+        "Expected SecretAliasResolutionError when second stage has unresolvable alias"
+    )
+    assert not platform_renderer.render_stage_calls, (
+        "PlatformRenderer.render_stage must NOT be called for any stage when the "
+        "preparation pass fails; was called "
+        f"{len(platform_renderer.render_stage_calls)} time(s)"
+    )
+
+
 def test_phase1_mismatched_plan_stage_id_raises_value_error() -> None:
     """run_phase1 raises ValueError when BackendRenderer returns plan for wrong stage."""
     from stagr.core.render_loop import run_phase1

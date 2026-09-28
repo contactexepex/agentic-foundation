@@ -14,6 +14,7 @@ from neutral_core_tests.phase1_render_loop_tests.test_stage_processing import (
 from neutral_core_tests.phase1_render_loop_tests.test_error_conditions import (
     test_phase1_missing_backend_raises_backend_renderer_not_found_error,
     test_phase1_unresolvable_alias_raises_before_platform_renderer,
+    test_phase1_second_stage_alias_failure_prevents_all_render_stage_calls,
     test_phase1_mismatched_plan_stage_id_raises_value_error,
     test_phase1_mismatched_stage_result_id_raises_value_error,
 )
@@ -29,6 +30,7 @@ PHASE1_RENDER_LOOP_TESTS = [
     test_phase1_multiple_secrets_all_resolved,
     test_phase1_missing_backend_raises_backend_renderer_not_found_error,
     test_phase1_unresolvable_alias_raises_before_platform_renderer,
+    test_phase1_second_stage_alias_failure_prevents_all_render_stage_calls,
     test_phase1_mismatched_plan_stage_id_raises_value_error,
     test_phase1_mismatched_stage_result_id_raises_value_error,
     test_phase1_resolved_plan_has_env_name_set,
@@ -43,6 +45,7 @@ __all__ = [
     "test_phase1_multiple_secrets_all_resolved",
     "test_phase1_missing_backend_raises_backend_renderer_not_found_error",
     "test_phase1_unresolvable_alias_raises_before_platform_renderer",
+    "test_phase1_second_stage_alias_failure_prevents_all_render_stage_calls",
     "test_phase1_mismatched_plan_stage_id_raises_value_error",
     "test_phase1_mismatched_stage_result_id_raises_value_error",
     "test_phase1_resolved_plan_has_env_name_set",
