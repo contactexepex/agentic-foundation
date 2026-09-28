@@ -100,6 +100,20 @@ from neutral_core_tests.test_pipeline_edge_cases import (
     test_pipeline_dependencies_tuple_from_depends_on,
     test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
 )
+from neutral_core_tests.test_policy_trust import (
+    test_trust_policy_dogfood_config,
+    test_trust_policy_default_fork_policy_is_deny,
+    test_trust_policy_explicit_fork_policy,
+    test_trust_policy_default_human_merge_label,
+    test_trust_policy_custom_human_merge_label,
+    test_trust_policy_contributor_not_in_defaults,
+    test_trust_policy_unrecognized_role_raises,
+    test_trust_policy_unrecognized_role_names_bad_value,
+    test_trust_policy_absent_platform_section,
+    test_trust_policy_empty_trusted_roles,
+    test_trust_policy_returns_trust_policy_instance,
+    test_trust_policy_result_is_frozen,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -170,6 +184,18 @@ _TESTS = [
     test_pipeline_advisory_gate_maps_to_non_blocking,
     test_pipeline_dependencies_tuple_from_depends_on,
     test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
+    test_trust_policy_dogfood_config,
+    test_trust_policy_default_fork_policy_is_deny,
+    test_trust_policy_explicit_fork_policy,
+    test_trust_policy_default_human_merge_label,
+    test_trust_policy_custom_human_merge_label,
+    test_trust_policy_contributor_not_in_defaults,
+    test_trust_policy_unrecognized_role_raises,
+    test_trust_policy_unrecognized_role_names_bad_value,
+    test_trust_policy_absent_platform_section,
+    test_trust_policy_empty_trusted_roles,
+    test_trust_policy_returns_trust_policy_instance,
+    test_trust_policy_result_is_frozen,
 ]
 
 if __name__ == "__main__":
