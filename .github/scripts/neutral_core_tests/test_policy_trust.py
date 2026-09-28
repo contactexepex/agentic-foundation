@@ -1,8 +1,8 @@
 """Tests for derive_trust_policy (issue #184).
 
 Covers TrustPolicy derivation from the raw M1 config dict: trusted_roles
-validation, fork_policy defaulting, human_merge_label defaulting and override,
-and the V-S06 error path for unrecognised role strings.
+validation, same_repo_only → fork_policy mapping, human_merge_label defaulting
+and override, and the V-S14 error path for unrecognised role strings.
 """
 from __future__ import annotations
 
@@ -13,15 +13,15 @@ from __future__ import annotations
 
 def _make_config(
     trusted_roles: list[str] | None = None,
-    fork_policy: str | None = None,
+    same_repo_only: bool | None = None,
     human_merge_label: str | None = None,
 ) -> dict:
     """Build a minimal raw config dict for use in trust-policy tests."""
     platform: dict = {}
     if trusted_roles is not None:
         platform["trusted_roles"] = trusted_roles
-    if fork_policy is not None:
-        platform["fork_policy"] = fork_policy
+    if same_repo_only is not None:
+        platform["same_repo_only"] = same_repo_only
     if human_merge_label is not None:
         platform.setdefault("labels", {})["human_merge"] = human_merge_label
     return {"platform": platform}
@@ -33,7 +33,7 @@ def _make_config(
 
 def test_trust_policy_dogfood_config() -> None:
     """Dogfood config's trusted_roles [owner, member, collaborator] → OWNER/MEMBER/COLLABORATOR,
-    fork_policy absent → DENY, labels.human_merge 'human-merge' → 'human-merge'.
+    same_repo_only absent → DENY, labels.human_merge 'human-merge' → 'human-merge'.
     """
     from pathlib import Path
     import yaml  # noqa: PLC0415 — available in the CI environment
@@ -64,28 +64,28 @@ def test_trust_policy_dogfood_config() -> None:
 
 
 # ---------------------------------------------------------------------------
-# fork_policy defaulting
+# fork_policy / same_repo_only mapping
 # ---------------------------------------------------------------------------
 
 def test_trust_policy_default_fork_policy_is_deny() -> None:
-    """Absent fork_policy in config defaults to ForkPolicy.DENY."""
+    """Absent same_repo_only defaults to true → ForkPolicy.DENY."""
     from stagr.core.policy import derive_trust_policy
     from stagr.core.enums import ForkPolicy
 
     policy = derive_trust_policy(_make_config(trusted_roles=["owner"]))
 
     assert policy.fork_policy == ForkPolicy.DENY, (
-        f"Absent fork_policy must default to DENY, got {policy.fork_policy}"
+        f"Absent same_repo_only must default to DENY, got {policy.fork_policy}"
     )
 
 
 def test_trust_policy_explicit_fork_policy() -> None:
-    """fork_policy: allow_unprivileged → ForkPolicy.ALLOW_UNPRIVILEGED."""
+    """same_repo_only: false → ForkPolicy.ALLOW_UNPRIVILEGED."""
     from stagr.core.policy import derive_trust_policy
     from stagr.core.enums import ForkPolicy
 
     policy = derive_trust_policy(
-        _make_config(trusted_roles=["owner"], fork_policy="allow_unprivileged")
+        _make_config(trusted_roles=["owner"], same_repo_only=False)
     )
 
     assert policy.fork_policy == ForkPolicy.ALLOW_UNPRIVILEGED, (
@@ -142,12 +142,29 @@ def test_trust_policy_contributor_not_in_defaults() -> None:
     )
 
 
+def test_trust_policy_absent_trusted_roles_key_uses_default() -> None:
+    """When trusted_roles key is absent, the schema default (owner/member/collaborator) applies."""
+    from stagr.core.policy import derive_trust_policy
+    from stagr.core.enums import AuthorRole
+
+    policy = derive_trust_policy({"platform": {}})
+
+    assert AuthorRole.OWNER in policy.trusted_roles, "OWNER must be in schema default"
+    assert AuthorRole.MEMBER in policy.trusted_roles, "MEMBER must be in schema default"
+    assert AuthorRole.COLLABORATOR in policy.trusted_roles, (
+        "COLLABORATOR must be in schema default"
+    )
+    assert len(policy.trusted_roles) == 3, (
+        f"Schema default must be exactly 3 roles, got {policy.trusted_roles}"
+    )
+
+
 # ---------------------------------------------------------------------------
-# V-S06: unrecognised role string
+# V-S14: unrecognised role string
 # ---------------------------------------------------------------------------
 
 def test_trust_policy_unrecognized_role_raises() -> None:
-    """An unrecognised role string raises StaticValidationError referencing V-S06."""
+    """An unrecognised role string raises StaticValidationError referencing V-S14."""
     from stagr.core.policy import derive_trust_policy
     from stagr.core.models import StaticValidationError
 
@@ -156,8 +173,8 @@ def test_trust_policy_unrecognized_role_raises() -> None:
         derive_trust_policy(_make_config(trusted_roles=["superadmin"]))
     except StaticValidationError as exc:
         raised = True
-        assert "V-S06" in str(exc), (
-            f"Error must reference V-S06, got: {exc}"
+        assert "V-S14" in str(exc), (
+            f"Error must reference V-S14, got: {exc}"
         )
         assert "superadmin" in str(exc), (
             f"Error must name the offending role, got: {exc}"
@@ -166,7 +183,7 @@ def test_trust_policy_unrecognized_role_raises() -> None:
 
 
 def test_trust_policy_unrecognized_role_names_bad_value() -> None:
-    """V-S06 error message names the specific unrecognised role string."""
+    """V-S14 error message names the specific unrecognised role string."""
     from stagr.core.policy import derive_trust_policy
     from stagr.core.models import StaticValidationError
 
@@ -186,14 +203,23 @@ def test_trust_policy_unrecognized_role_names_bad_value() -> None:
 # ---------------------------------------------------------------------------
 
 def test_trust_policy_absent_platform_section() -> None:
-    """Config with no platform key produces an empty trusted_roles, DENY, 'human-merge'."""
+    """Config with no platform key applies schema defaults: owner/member/collaborator, DENY, 'human-merge'."""
     from stagr.core.policy import derive_trust_policy
-    from stagr.core.enums import ForkPolicy
+    from stagr.core.enums import AuthorRole, ForkPolicy
 
     policy = derive_trust_policy({})
 
-    assert policy.trusted_roles == (), (
-        f"Absent platform must produce empty trusted_roles, got {policy.trusted_roles}"
+    assert AuthorRole.OWNER in policy.trusted_roles, (
+        "Absent platform must yield default OWNER role"
+    )
+    assert AuthorRole.MEMBER in policy.trusted_roles, (
+        "Absent platform must yield default MEMBER role"
+    )
+    assert AuthorRole.COLLABORATOR in policy.trusted_roles, (
+        "Absent platform must yield default COLLABORATOR role"
+    )
+    assert len(policy.trusted_roles) == 3, (
+        f"Absent platform must yield exactly 3 default roles, got {policy.trusted_roles}"
     )
     assert policy.fork_policy == ForkPolicy.DENY
     assert policy.human_merge_label == "human-merge"

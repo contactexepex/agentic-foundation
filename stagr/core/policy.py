@@ -14,23 +14,31 @@ from .enums import AuthorRole, ForkPolicy
 from .models import StaticValidationError, TrustPolicy
 
 _DEFAULT_HUMAN_MERGE_LABEL = "human-merge"
+_DEFAULT_TRUSTED_ROLES: tuple[AuthorRole, ...] = (
+    AuthorRole.OWNER,
+    AuthorRole.MEMBER,
+    AuthorRole.COLLABORATOR,
+)
 
 
 def derive_trust_policy(config: dict[str, Any]) -> TrustPolicy:
     """Derive a TrustPolicy from the raw M1 config dict.
 
-    Reads ``platform.trusted_roles``, ``platform.fork_policy``, and
+    Reads ``platform.trusted_roles``, ``platform.same_repo_only``, and
     ``platform.labels.human_merge``.
 
     Derivation rules
     ----------------
     - ``platform.trusted_roles`` → tuple of :class:`AuthorRole` values.
+      When the key is absent the schema default applies: OWNER, MEMBER, and
+      COLLABORATOR.  An explicit empty list produces an empty tuple.
       Each string must match a recognised :class:`AuthorRole` member; an
       unrecognised string raises :class:`~stagr.core.models.StaticValidationError`
-      with code ``V-S06``.  ``CONTRIBUTOR`` is never added implicitly — only
+      with code ``V-S14``.  ``CONTRIBUTOR`` is never added implicitly — only
       roles the operator explicitly lists appear in ``trusted_roles``.
-    - ``platform.fork_policy`` → :class:`ForkPolicy` member.  Defaults to
-      :attr:`ForkPolicy.DENY` when the key is absent.
+    - ``platform.same_repo_only`` → :class:`ForkPolicy` member.  ``true``
+      (the default when the key is absent) maps to :attr:`ForkPolicy.DENY`;
+      ``false`` maps to :attr:`ForkPolicy.ALLOW_UNPRIVILEGED`.
     - ``platform.labels.human_merge`` → ``human_merge_label`` string.
       Defaults to ``"human-merge"`` when absent.
 
@@ -48,7 +56,7 @@ def derive_trust_policy(config: dict[str, Any]) -> TrustPolicy:
     ------
     StaticValidationError
         When any element of ``platform.trusted_roles`` is not a recognised
-        :class:`AuthorRole` value (check code ``V-S06``).
+        :class:`AuthorRole` value (check code ``V-S14``).
     """
     platform_config: dict[str, Any] = config.get("platform", {}) or {}
 
@@ -64,7 +72,9 @@ def derive_trust_policy(config: dict[str, Any]) -> TrustPolicy:
 
 
 def _derive_trusted_roles(platform_config: dict[str, Any]) -> tuple[AuthorRole, ...]:
-    raw_role_strings: list[str] = platform_config.get("trusted_roles", []) or []
+    if "trusted_roles" not in platform_config:
+        return _DEFAULT_TRUSTED_ROLES
+    raw_role_strings: list[str] = platform_config["trusted_roles"] or []
     valid_role_values = {member.value for member in AuthorRole}
 
     validated_roles: list[AuthorRole] = []
@@ -72,7 +82,7 @@ def _derive_trusted_roles(platform_config: dict[str, Any]) -> tuple[AuthorRole, 
         role_string = str(raw_role).lower()
         if role_string not in valid_role_values:
             raise StaticValidationError(
-                f"V-S06: unrecognised trusted_role '{raw_role}'. "
+                f"V-S14: unrecognised trusted_role '{raw_role}'. "
                 f"Valid values: {sorted(valid_role_values)}"
             )
         validated_roles.append(AuthorRole(role_string))
@@ -81,10 +91,10 @@ def _derive_trusted_roles(platform_config: dict[str, Any]) -> tuple[AuthorRole, 
 
 
 def _derive_fork_policy(platform_config: dict[str, Any]) -> ForkPolicy:
-    raw_fork_policy: str | None = platform_config.get("fork_policy")
-    if raw_fork_policy is None:
+    same_repo_only: bool = platform_config.get("same_repo_only", True)
+    if same_repo_only:
         return ForkPolicy.DENY
-    return ForkPolicy(str(raw_fork_policy).lower())
+    return ForkPolicy.ALLOW_UNPRIVILEGED
 
 
 def _derive_human_merge_label(platform_config: dict[str, Any]) -> str:
