@@ -171,6 +171,18 @@ from neutral_core_tests.test_backend_renderer_registry import (
     test_registry_multiple_providers_no_collision,
     test_registry_default_backend_for_unknown_provider_raises,
 )
+from neutral_core_tests.test_openai_codex_backend_renderer import (
+    test_codex_renderer_invocation_kind_is_pr_comment,
+    test_codex_renderer_required_secret_alias_and_no_env_name,
+    test_codex_renderer_gate_disposition_kind_is_explicit_pass_marker,
+    test_codex_renderer_evidence_has_one_review_result_spec,
+    test_codex_renderer_evidence_head_sha_correlation_is_true,
+    test_codex_renderer_protocol_conformance,
+    test_codex_renderer_provider_and_backend_match_config,
+    test_codex_renderer_review_stage_posts_codex_review_command,
+    test_codex_renderer_security_stage_posts_security_review_command,
+    test_codex_renderer_gate_disposition_has_no_scope,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -298,6 +310,16 @@ _TESTS = [
     test_registry_has_returns_false_for_unregistered,
     test_registry_multiple_providers_no_collision,
     test_registry_default_backend_for_unknown_provider_raises,
+    test_codex_renderer_invocation_kind_is_pr_comment,
+    test_codex_renderer_required_secret_alias_and_no_env_name,
+    test_codex_renderer_gate_disposition_kind_is_explicit_pass_marker,
+    test_codex_renderer_evidence_has_one_review_result_spec,
+    test_codex_renderer_evidence_head_sha_correlation_is_true,
+    test_codex_renderer_protocol_conformance,
+    test_codex_renderer_provider_and_backend_match_config,
+    test_codex_renderer_review_stage_posts_codex_review_command,
+    test_codex_renderer_security_stage_posts_security_review_command,
+    test_codex_renderer_gate_disposition_has_no_scope,
 ]
 
 if __name__ == "__main__":
