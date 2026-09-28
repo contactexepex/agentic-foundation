@@ -107,6 +107,7 @@ from neutral_core_tests.test_policy_routing import (
     test_routing_policy_enabled_fast_path,
     test_routing_policy_no_error_on_dormant_config,
     test_routing_policy_routing_present_no_fast_path_key,
+    test_routing_policy_absent_enabled_key_uses_default,
 )
 
 _TESTS = [
@@ -184,6 +185,7 @@ _TESTS = [
     test_routing_policy_enabled_fast_path,
     test_routing_policy_no_error_on_dormant_config,
     test_routing_policy_routing_present_no_fast_path_key,
+    test_routing_policy_absent_enabled_key_uses_default,
 ]
 
 if __name__ == "__main__":

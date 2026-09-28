@@ -67,7 +67,7 @@ def test_routing_policy_enabled_fast_path() -> None:
         "routing": {
             "fast_path": {
                 "enabled": True,
-                "match": {"paths": ["docs/**", "*.md"]},
+                "globs": ["docs/**", "*.md"],
                 "stages": {
                     "fast": ["review"],
                     "normal": ["review", "security"],
@@ -109,7 +109,7 @@ def test_routing_policy_no_error_on_dormant_config() -> None:
         "routing": {
             "fast_path": {
                 "enabled": False,
-                "match": {"paths": ["docs/**"]},
+                "globs": ["docs/**"],
                 "stages": {
                     "fast": ["review"],
                     "normal": ["review", "security"],
@@ -122,6 +122,32 @@ def test_routing_policy_no_error_on_dormant_config() -> None:
     assert result.fast_path is None, (
         f"Dormant config (enabled=False with populated keys): "
         f"expected fast_path=None, got {result.fast_path!r}"
+    )
+
+
+def test_routing_policy_absent_enabled_key_uses_default() -> None:
+    """Absent enabled key defaults to true → fast_path is populated."""
+    from stagr.core.policy import derive_routing_policy
+
+    config = {
+        "routing": {
+            "fast_path": {
+                "globs": ["docs/**", "*.md"],
+                "stages": {
+                    "fast": ["review"],
+                    "normal": ["review", "security"],
+                },
+            }
+        }
+    }
+    result = derive_routing_policy(config)
+
+    assert result.fast_path is not None, (
+        "Absent enabled key must default to true; expected fast_path to be populated, "
+        f"got fast_path=None"
+    )
+    assert "docs/**" in result.fast_path.match.paths, (
+        f"expected 'docs/**' in match.paths, got {result.fast_path.match.paths!r}"
     )
 
 

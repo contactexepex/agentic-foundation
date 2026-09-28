@@ -198,7 +198,15 @@
             "globs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
             "max_files": { "type": "integer", "minimum": 0 },
             "max_lines": { "type": "integer", "minimum": 0 },
-            "exclude": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            "exclude": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "stages": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "fast": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "normal": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+              }
+            }
           }
         }
       }

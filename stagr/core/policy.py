@@ -47,12 +47,10 @@ def derive_routing_policy(config: dict[str, Any]) -> RoutingPolicy:
         return RoutingPolicy(fast_path=None)
 
     fast_path_cfg: dict[str, Any] = routing_cfg.get("fast_path") or {}
-    if not fast_path_cfg.get("enabled", False):
+    if not fast_path_cfg.get("enabled", True):
         return RoutingPolicy(fast_path=None)
 
-    match_paths: tuple[str, ...] = tuple(
-        fast_path_cfg.get("match", {}).get("paths", [])
-    )
+    match_paths: tuple[str, ...] = tuple(fast_path_cfg.get("globs", []))
     stages_cfg: dict[str, Any] = fast_path_cfg.get("stages") or {}
     fast_stage_ids: tuple[str, ...] = tuple(stages_cfg.get("fast", []))
     normal_stage_ids: tuple[str, ...] = tuple(stages_cfg.get("normal", []))
