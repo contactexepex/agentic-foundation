@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from stagr.core.normalize import filter_disabled_stages
 from .constants import AGENTS_DIR, PROFILE_STAGES, PROVIDER_TOOL
 from .errors import RenderError
 from .util import _deep_merge, _read_yaml
@@ -49,7 +50,8 @@ def expand_stages(cfg: dict[str, Any]) -> list[dict[str, Any]]:
         else:
             stages_by_id[stage_id] = resolved
             order.append(stage_id)
-    expanded = [stages_by_id[stage_id] for stage_id in order if stages_by_id[stage_id].get("enabled", True)]
+    merged_stages = [stages_by_id[stage_id] for stage_id in order]
+    expanded = filter_disabled_stages(merged_stages)
     _apply_backend_defaults(cfg, expanded)
     return expanded
 

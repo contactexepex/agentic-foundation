@@ -34,6 +34,13 @@ from neutral_core_tests.test_render_context import (
     test_render_context_construction,
     test_render_context_is_immutable,
 )
+from neutral_core_tests.test_normalize import (
+    test_filter_disabled_stages_removes_disabled,
+    test_filter_disabled_stages_absent_defaults_to_enabled,
+    test_filter_disabled_stages_explicit_true_is_present,
+    test_filter_disabled_stages_does_not_mutate_input,
+    test_filter_disabled_stages_dogfood_config,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -48,6 +55,11 @@ _TESTS = [
     test_stage_result_spec_construction,
     test_render_context_construction,
     test_render_context_is_immutable,
+    test_filter_disabled_stages_removes_disabled,
+    test_filter_disabled_stages_absent_defaults_to_enabled,
+    test_filter_disabled_stages_explicit_true_is_present,
+    test_filter_disabled_stages_does_not_mutate_input,
+    test_filter_disabled_stages_dogfood_config,
 ]
 
 if __name__ == "__main__":
