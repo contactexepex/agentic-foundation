@@ -117,13 +117,13 @@ def generate_routing_workflow_yaml(
         f"    types: [opened, reopened, synchronize, ready_for_review, edited]\n"
         f"\n"
         f"concurrency:\n"
-        f'  group: "stagr-routing-${{{{ github.event.pull_request.number }}}}"\n'
+        f'  group: "stagr-routing-${{{{ github.event.pull_request.number }}}}${{{{ (github.event.action == \'edited\' && github.event.changes.base == \'\') && \'-noop\' || \'\' }}}}"\n'
         f"  cancel-in-progress: true\n"
         f"\n"
         f"jobs:\n"
         f"  classify:\n"
         f"    runs-on: ubuntu-latest\n"
-        f"    if: github.event_name != 'pull_request_target' || github.event.action != 'edited' || github.event.changes.base != null\n"
+        f"    if: github.event_name != 'pull_request_target' || github.event.action != 'edited' || github.event.changes.base != ''\n"
         f"    permissions:\n"
         f"      pull-requests: read\n"
         f"      contents: read\n"
@@ -209,9 +209,11 @@ def _build_changed_files_step(app_token_output_expr: str) -> str:
         f"          set -euo pipefail\n"
         f"          pr_meta=$(gh api \"repos/${{GITHUB_REPOSITORY}}/pulls/${{PR_NUMBER}}\" --jq '.changed_files')\n"
         f'          echo "changed_files_count=${{pr_meta}}" >> "$GITHUB_OUTPUT"\n'
-        f"          files_json=$(gh api \"repos/${{GITHUB_REPOSITORY}}/pulls/${{PR_NUMBER}}/files\" \\\n"
-        f"            --paginate --slurp \\\n"
-        f"            | jq -c '[.[][] | .filename, (.previous_filename // empty)] | unique')\n"
+        f"          raw_files=$(gh api \"repos/${{GITHUB_REPOSITORY}}/pulls/${{PR_NUMBER}}/files\" \\\n"
+        f"            --paginate --slurp)\n"
+        f"          api_record_count=$(echo \"${{raw_files}}\" | jq '[.[][]] | length')\n"
+        f'          echo "api_record_count=${{api_record_count}}" >> "$GITHUB_OUTPUT"\n'
+        f"          files_json=$(echo \"${{raw_files}}\" | jq -c '[.[][] | .filename, (.previous_filename // empty)] | unique')\n"
         f'          echo "files_json=${{files_json}}" >> "$GITHUB_OUTPUT"\n'
     )
 
@@ -233,6 +235,7 @@ def _build_classify_step(patterns_json: str) -> str:
         f"        env:\n"
         f'          FILES_JSON: "${{{{ steps.changed-files.outputs.files_json }}}}"\n'
         f'          CHANGED_FILES_COUNT: "${{{{ steps.changed-files.outputs.changed_files_count }}}}"\n'
+        f'          API_RECORD_COUNT: "${{{{ steps.changed-files.outputs.api_record_count }}}}"\n'
         f"          FAST_PATH_PATTERNS_B64: '{patterns_b64}'\n"
         f"        run: |\n"
         f"          set -euo pipefail\n"
@@ -240,8 +243,9 @@ def _build_classify_step(patterns_json: str) -> str:
         f"          import base64, fnmatch, json, os\n"
         f"          files = json.loads(os.environ['FILES_JSON'])\n"
         f"          changed_files_count = int(os.environ['CHANGED_FILES_COUNT'])\n"
+        f"          api_record_count = int(os.environ['API_RECORD_COUNT'])\n"
         f"          patterns = json.loads(base64.b64decode(os.environ['FAST_PATH_PATTERNS_B64']).decode())\n"
-        f"          if len(files) < changed_files_count:\n"
+        f"          if api_record_count < changed_files_count:\n"
         f"              route = 'NORMAL'\n"
         f"          else:\n"
         f"              def matches_any_pattern(file_path):\n"

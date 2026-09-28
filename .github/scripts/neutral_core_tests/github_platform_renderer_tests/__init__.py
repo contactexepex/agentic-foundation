@@ -57,6 +57,8 @@ from neutral_core_tests.github_platform_renderer_tests.test_routing_workflow imp
     test_edited_event_type_present_in_routing_workflow,
     test_rename_previous_filename_included_in_files_json,
     test_truncated_file_list_forces_normal_route,
+    test_metadata_edit_uses_distinct_concurrency_key,
+    test_truncation_check_uses_raw_api_record_count,
 )
 
 GITHUB_PLATFORM_RENDERER_TESTS = [
@@ -106,6 +108,8 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_edited_event_type_present_in_routing_workflow,
     test_rename_previous_filename_included_in_files_json,
     test_truncated_file_list_forces_normal_route,
+    test_metadata_edit_uses_distinct_concurrency_key,
+    test_truncation_check_uses_raw_api_record_count,
 ]
 
 __all__ = [
@@ -156,4 +160,6 @@ __all__ = [
     "test_edited_event_type_present_in_routing_workflow",
     "test_rename_previous_filename_included_in_files_json",
     "test_truncated_file_list_forces_normal_route",
+    "test_metadata_edit_uses_distinct_concurrency_key",
+    "test_truncation_check_uses_raw_api_record_count",
 ]

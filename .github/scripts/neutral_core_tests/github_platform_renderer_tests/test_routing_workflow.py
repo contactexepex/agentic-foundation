@@ -235,3 +235,41 @@ def test_truncated_file_list_forces_normal_route() -> None:
         "Classify step Python script must compare fetched file count against "
         "changed_files_count to detect truncation"
     )
+
+
+def test_metadata_edit_uses_distinct_concurrency_key() -> None:
+    """Metadata-only edited events use a -noop concurrency key to avoid cancelling real classifications."""
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=None,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "-noop" in yaml_content, (
+        "Concurrency group must include a '-noop' suffix for metadata-only edited events "
+        "so they do not cancel in-progress synchronize/base-edit classifications"
+    )
+    assert "changes.base == ''" in yaml_content, (
+        "Concurrency key expression and job if-condition must use == '' (empty string) "
+        "to detect absent changes.base, not == null which is always false in GitHub Actions"
+    )
+
+
+def test_truncation_check_uses_raw_api_record_count() -> None:
+    """Truncation check compares raw API record count, not expanded path count."""
+    fast_path_policy = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/*",)),
+        stages=RouteStageMap(fast=(), normal=("review",)),
+    )
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=fast_path_policy,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "api_record_count" in yaml_content, (
+        "Changed-files step must emit api_record_count (raw API records before rename expansion) "
+        "and classify step must compare it against changed_files_count to detect truncation; "
+        "comparing len(files) which includes previous_filename entries can mask truncation"
+    )
+    assert "API_RECORD_COUNT" in yaml_content, (
+        "Classify step must receive API_RECORD_COUNT from the changed-files step output"
+    )
