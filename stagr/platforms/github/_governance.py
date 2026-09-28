@@ -161,6 +161,13 @@ def _build_route_reading_block() -> str:
         "  echo \"::error::Duplicate RouteClassification Check Runs found for SHA '${PR_HEAD_SHA}'.\"\n"
         "  exit 1\n"
         "fi\n"
+        "route_app_id=\"$(echo \"${route_check_runs_json}\" | jq -r '.[0].app.id | tostring')\"\n"
+        "if [[ \"${route_app_id}\" != \"${STAGR_APP_ID}\" ]]; then\n"
+        "  echo \"::error::RouteClassification Check Run publisher mismatch for SHA '${PR_HEAD_SHA}':\"\\\n"
+        "    \" expected Stagr App ID '${STAGR_APP_ID}', found '${route_app_id}'.\"\\\n"
+        "    \" Rejecting classification — Check Run not published by the trusted Stagr App.\"\n"
+        "  exit 1\n"
+        "fi\n"
         "route_title=\"$(echo \"${route_check_runs_json}\" | jq -r '.[0].output.title // \"\"')\"\n"
         "current_route=\"${route_title#RouteClassification=}\"\n"
         "if [[ \"${current_route}\" != \"FAST\" && \"${current_route}\" != \"NORMAL\" ]]; then\n"
@@ -222,7 +229,7 @@ def _build_stage_evaluation_call_lines(
     for spec in result_specs:
         is_blocking = spec.stage_id in blocking_stage_ids
         gate_argument = "blocking" if is_blocking else "non_blocking"
-        fail_suffix = " || overall_pass=false" if is_blocking else ""
+        fail_suffix = " || overall_pass=false" if is_blocking else " || true"
         eval_call = (
             f'evaluate_stage_signal'
             f' "{spec.stage_id}"'
@@ -247,7 +254,7 @@ def _build_stage_evaluation_call_lines(
                 lines.append(f'  {eval_call}\n')
                 lines.append(f'fi\n')
             else:
-                lines.append(eval_call + "\n")
+                pass  # stage not applicable to either route; skip
     return "".join(lines)
 
 

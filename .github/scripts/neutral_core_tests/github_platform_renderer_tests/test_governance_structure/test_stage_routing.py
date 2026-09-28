@@ -113,3 +113,183 @@ def test_governance_workflow_fast_path_only_evaluates_fast_route_stages() -> Non
     assert '"NORMAL"' in yaml_content, (
         "Governance must wrap NORMAL-only stages in an if-NORMAL conditional"
     )
+
+
+def test_governance_route_publisher_authentication_rejects_forged_app() -> None:
+    """Route-reading block verifies app.id matches STAGR_APP_ID before trusting classification."""
+    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.models import (
+        DiscussionPolicy,
+        MergePolicy,
+        RenderContext,
+        RoutingPolicy,
+        StageResultProvenance,
+        StageResultSpec,
+        TrustPolicy,
+    )
+    from stagr.platforms.github._governance import generate_governance_workflow_yaml
+
+    fast_path = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/*",)),
+        stages=RouteStageMap(fast=("lint",), normal=("review",)),
+    )
+    render_ctx = RenderContext(
+        stages=(),
+        merge_policy=MergePolicy(
+            mode=MergeMode.AUTO,
+            blocking_stage_ids=("lint", "review"),
+            require_head_bound=True,
+            discussion_policy=DiscussionPolicy(require_resolved=False),
+        ),
+        routing_policy=RoutingPolicy(fast_path=fast_path),
+        trust_policy=TrustPolicy(
+            trusted_roles=(AuthorRole.OWNER,),
+            fork_policy=ForkPolicy.DENY,
+            human_merge_label="human-merge",
+        ),
+        platform="github",
+        config_version="2",
+    )
+    result_specs = (
+        StageResultSpec(
+            stage_id="lint",
+            signal_kind=StageResultSignalKind.CHECK_RUN,
+            signal_selector="stagr/lint",
+            provenance=StageResultProvenance(publisher_identity="42"),
+        ),
+    )
+    yaml_content = generate_governance_workflow_yaml(
+        publisher_app_id="42",
+        publisher_private_key_secret="STAGR_KEY",
+        result_specs=result_specs,
+        render_context=render_ctx,
+    )
+    assert "route_app_id" in yaml_content, (
+        "Route-reading block must extract the Check Run's app.id to verify publisher identity"
+    )
+    assert "STAGR_APP_ID" in yaml_content, (
+        "Route-reading block must compare app.id against STAGR_APP_ID before trusting the title"
+    )
+    assert "Rejecting classification" in yaml_content, (
+        "Route-reading block must emit an error and exit when publisher identity does not match"
+    )
+
+
+def test_non_blocking_stage_call_has_or_true_suffix() -> None:
+    """Non-blocking stage evaluation calls include '|| true' to survive set -euo pipefail."""
+    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.models import (
+        DiscussionPolicy,
+        MergePolicy,
+        RenderContext,
+        RoutingPolicy,
+        StageResultProvenance,
+        StageResultSpec,
+        TrustPolicy,
+    )
+    from stagr.platforms.github._governance import generate_governance_workflow_yaml
+
+    render_ctx = RenderContext(
+        stages=(),
+        merge_policy=MergePolicy(
+            mode=MergeMode.AUTO,
+            blocking_stage_ids=(),
+            require_head_bound=True,
+            discussion_policy=DiscussionPolicy(require_resolved=False),
+        ),
+        routing_policy=RoutingPolicy(fast_path=None),
+        trust_policy=TrustPolicy(
+            trusted_roles=(AuthorRole.OWNER,),
+            fork_policy=ForkPolicy.DENY,
+            human_merge_label="human-merge",
+        ),
+        platform="github",
+        config_version="2",
+    )
+    result_specs = (
+        StageResultSpec(
+            stage_id="advisory",
+            signal_kind=StageResultSignalKind.CHECK_RUN,
+            signal_selector="stagr/advisory",
+            provenance=StageResultProvenance(publisher_identity="42"),
+        ),
+    )
+    yaml_content = generate_governance_workflow_yaml(
+        publisher_app_id="42",
+        publisher_private_key_secret="STAGR_KEY",
+        result_specs=result_specs,
+        render_context=render_ctx,
+    )
+    assert "|| true" in yaml_content, (
+        "Non-blocking stage evaluation call must end with '|| true' so that "
+        "set -euo pipefail does not kill the governance job on a non-zero return"
+    )
+
+
+def test_unrouted_stage_absent_from_generated_script() -> None:
+    """A stage absent from both stages.fast and stages.normal is not evaluated."""
+    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.models import (
+        DiscussionPolicy,
+        MergePolicy,
+        RenderContext,
+        RoutingPolicy,
+        StageResultProvenance,
+        StageResultSpec,
+        TrustPolicy,
+    )
+    from stagr.platforms.github._governance import generate_governance_workflow_yaml
+
+    fast_path = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/*",)),
+        stages=RouteStageMap(fast=("lint",), normal=("review",)),
+    )
+    render_ctx = RenderContext(
+        stages=(),
+        merge_policy=MergePolicy(
+            mode=MergeMode.AUTO,
+            blocking_stage_ids=("lint", "review", "orphan"),
+            require_head_bound=True,
+            discussion_policy=DiscussionPolicy(require_resolved=False),
+        ),
+        routing_policy=RoutingPolicy(fast_path=fast_path),
+        trust_policy=TrustPolicy(
+            trusted_roles=(AuthorRole.OWNER,),
+            fork_policy=ForkPolicy.DENY,
+            human_merge_label="human-merge",
+        ),
+        platform="github",
+        config_version="2",
+    )
+    # "orphan" stage is blocking but absent from both routes.fast and routes.normal
+    orphan_selector = "stagr/orphan"
+    result_specs = (
+        StageResultSpec(
+            stage_id="lint",
+            signal_kind=StageResultSignalKind.CHECK_RUN,
+            signal_selector="stagr/lint",
+            provenance=StageResultProvenance(publisher_identity="42"),
+        ),
+        StageResultSpec(
+            stage_id="review",
+            signal_kind=StageResultSignalKind.CHECK_RUN,
+            signal_selector="stagr/review",
+            provenance=StageResultProvenance(publisher_identity="42"),
+        ),
+        StageResultSpec(
+            stage_id="orphan",
+            signal_kind=StageResultSignalKind.CHECK_RUN,
+            signal_selector=orphan_selector,
+            provenance=StageResultProvenance(publisher_identity="42"),
+        ),
+    )
+    yaml_content = generate_governance_workflow_yaml(
+        publisher_app_id="42",
+        publisher_private_key_secret="STAGR_KEY",
+        result_specs=result_specs,
+        render_context=render_ctx,
+    )
+    assert orphan_selector not in yaml_content, (
+        "Stage absent from both routes.fast and routes.normal must be omitted from the "
+        "generated governance script; it must not be evaluated unconditionally"
+    )
