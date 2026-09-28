@@ -162,6 +162,15 @@ from neutral_core_tests.test_anthropic_claude_backend_renderer import (
     test_anthropic_renderer_protocol_conformance,
     test_anthropic_renderer_provider_and_backend,
 )
+from neutral_core_tests.test_backend_renderer_registry import (
+    test_registry_get_returns_registered_renderer,
+    test_registry_get_unknown_raises_error,
+    test_registry_default_backend_for_provider,
+    test_registry_has_returns_true_for_registered,
+    test_registry_has_returns_false_for_unregistered,
+    test_registry_multiple_providers_no_collision,
+    test_registry_default_backend_for_unknown_provider_raises,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -282,6 +291,13 @@ _TESTS = [
     test_anthropic_renderer_no_evidence_spec,
     test_anthropic_renderer_protocol_conformance,
     test_anthropic_renderer_provider_and_backend,
+    test_registry_get_returns_registered_renderer,
+    test_registry_get_unknown_raises_error,
+    test_registry_default_backend_for_provider,
+    test_registry_has_returns_true_for_registered,
+    test_registry_has_returns_false_for_unregistered,
+    test_registry_multiple_providers_no_collision,
+    test_registry_default_backend_for_unknown_provider_raises,
 ]
 
 if __name__ == "__main__":
