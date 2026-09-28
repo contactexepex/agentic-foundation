@@ -108,7 +108,7 @@ class GateDispositionSpec:
     def __post_init__(self) -> None:
         if self.kind is GateDispositionKind.NO_OPEN_THREADS and self.scope is None:
             raise ValueError(
-                f"GateDispositionSpec with kind NO_OPEN_THREADS requires scope to be set"
+                "GateDispositionSpec with kind NO_OPEN_THREADS requires scope to be set"
             )
 
 

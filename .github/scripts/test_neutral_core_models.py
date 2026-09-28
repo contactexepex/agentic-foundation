@@ -515,11 +515,13 @@ def test_render_context_is_immutable() -> None:
         platform="github",
         config_version="1",
     )
+    raised = False
     try:
         ctx.platform = "gitlab"  # type: ignore[misc]
-        assert False, "Should have raised FrozenInstanceError"
     except Exception as exc:
+        raised = True
         assert "frozen" in str(exc).lower() or "cannot" in str(exc).lower()
+    assert raised, "ctx.platform assignment should have raised an exception"
 
 
 # ---------------------------------------------------------------------------
