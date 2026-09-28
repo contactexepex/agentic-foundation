@@ -22,6 +22,20 @@ if TYPE_CHECKING:
 
 
 _PROVIDER_API_KEY_ALIAS = "PROVIDER_API_KEY"
+_TRUSTED_COMMENTER_TOKEN_ALIAS = "TRUSTED_COMMENTER_TOKEN"
+
+# Default CI secret names when providers.<provider>.api_key_secret is absent.
+# Mirrors DEFAULT_KEY_SECRET in stagr/backends/generic/runner.py.
+_DEFAULT_PROVIDER_API_KEY_SECRETS: dict[str, str] = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "azure_openai": "AZURE_OPENAI_API_KEY",
+}
+
+# Default CI secret name when platform.auth.token_secret is absent from config.
+# Mirrors DEFAULT_TOKEN_SECRET in stagr/render/constants.py.
+_DEFAULT_TRUSTED_COMMENTER_SECRET = "REMEDIATION_TOKEN"
 
 
 def _resolve_secret_aliases(
@@ -34,7 +48,10 @@ def _resolve_secret_aliases(
     Resolution precedence for each SecretRef.alias (design-doc 03, V-S12):
 
     1. Explicit mapping: ``provider_config["providers"][provider_name]["secrets"][alias]``
-    2. Provider ``api_key_secret`` field when alias is ``PROVIDER_API_KEY``
+    2a. ``PROVIDER_API_KEY``: resolved to ``providers.<provider>.api_key_secret`` when set,
+        falling back to the provider's established default (e.g. ``ANTHROPIC_API_KEY``).
+    2b. ``TRUSTED_COMMENTER_TOKEN``: resolved to ``platform.auth.token_secret`` when set,
+        falling back to ``REMEDIATION_TOKEN``.
     3. Convention: alias is itself the platform secret name (env_name = alias).
        The ``secrets`` block is optional in V1; when omitted, aliases ARE the
        platform secret names.
@@ -49,15 +66,25 @@ def _resolve_secret_aliases(
     )
     provider_secrets: dict[str, str] = provider_entry.get("secrets", {})
     api_key_secret: str | None = provider_entry.get("api_key_secret")
+    platform_token_secret: str | None = (
+        provider_config
+        .get("platform", {})
+        .get("auth", {})
+        .get("token_secret")
+    )
 
     resolved_secret_refs: list[SecretRef] = []
     for secret_ref in plan.required_secrets:
         # 1. Explicit alias → env_name mapping in the provider secrets block.
         env_name: str | None = provider_secrets.get(secret_ref.alias)
 
-        # 2. Semantic mapping: PROVIDER_API_KEY → api_key_secret field.
-        if env_name is None and secret_ref.alias == _PROVIDER_API_KEY_ALIAS and api_key_secret:
-            env_name = api_key_secret
+        # 2a. Semantic mapping: PROVIDER_API_KEY → api_key_secret or provider default.
+        if env_name is None and secret_ref.alias == _PROVIDER_API_KEY_ALIAS:
+            env_name = api_key_secret or _DEFAULT_PROVIDER_API_KEY_SECRETS.get(provider_name)
+
+        # 2b. Semantic mapping: TRUSTED_COMMENTER_TOKEN → platform.auth.token_secret or default.
+        if env_name is None and secret_ref.alias == _TRUSTED_COMMENTER_TOKEN_ALIAS:
+            env_name = platform_token_secret or _DEFAULT_TRUSTED_COMMENTER_SECRET
 
         # 3. Convention fallback: alias is the platform secret name.
         if env_name is None:

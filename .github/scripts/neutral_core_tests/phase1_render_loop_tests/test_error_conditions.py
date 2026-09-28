@@ -166,6 +166,21 @@ def test_phase1_mismatched_plan_stage_id_raises_value_error() -> None:
     )
 
 
+def test_secret_ref_alias_must_not_be_empty() -> None:
+    """SecretRef(alias='') raises ValueError at construction time."""
+    from stagr.core.models import SecretRef
+
+    raised = False
+    try:
+        SecretRef(alias="")
+    except ValueError:
+        raised = True
+
+    assert raised, (
+        "Expected ValueError when constructing SecretRef with an empty alias"
+    )
+
+
 def test_phase1_mismatched_stage_result_id_raises_value_error() -> None:
     """run_phase1 raises ValueError when PlatformRenderer returns wrong stage_id."""
     from stagr.core.render_loop import run_phase1
