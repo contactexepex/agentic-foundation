@@ -10,6 +10,18 @@ This module implements the first two steps of the normalization pipeline:
 Both functions run before backend/model resolution, dependency graph construction,
 policy derivation, and ``NormalizedStage[]`` production.
 
+**Vocabulary layer:** Both functions operate in the raw M1 config vocabulary as
+validated by ``stagr/config.schema.json``.  Key raw-vocab field names:
+
+- Dependencies: ``depends_on`` (a list of stage ids; translated to canonical
+  ``dependencies`` in a later normalization step).
+- Gate values: ``"blocking"`` / ``"advisory"`` (raw schema literals; translated
+  to ``StageGate.BLOCKING`` / ``StageGate.NON_BLOCKING`` later).
+
+Consumers downstream (``#181``–``#183``) are responsible for translating raw
+field names to canonical neutral-core vocabulary before producing
+``NormalizedStage[]`` objects.
+
 Design source: design-docs/02-canonical-stage-model.md
 """
 from __future__ import annotations
@@ -68,7 +80,7 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "skill": "code-review",
             "gate": "blocking",
             "triggers": ["pr_opened", "pr_updated"],
-            "dependencies": [],
+            "depends_on": [],
         },
     ],
     "standard": [
@@ -79,7 +91,7 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "skill": "code-review",
             "gate": "blocking",
             "triggers": ["pr_opened", "pr_updated"],
-            "dependencies": [],
+            "depends_on": [],
         },
         {
             "id": "security",
@@ -88,7 +100,7 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "skill": "security-review",
             "gate": "blocking",
             "triggers": ["pr_opened", "pr_updated"],
-            "dependencies": [],
+            "depends_on": [],
         },
     ],
     "custom": [],
@@ -113,7 +125,8 @@ def expand_profile_defaults(
       field themselves.
     - For all other built-in profiles, the profile supplies a predefined set
       of stage defaults including ``skill``, ``gate``, ``triggers``, and
-      ``depends_on``.  Each profile stage is included in the output.  When
+      ``depends_on`` (raw M1 vocabulary; see module docstring).  Each profile
+      stage is included in the output.  When
       the operator declares a stage with the same ``id`` as a profile stage,
       the operator's fields are merged *on top of* the profile defaults (the
       operator always wins).  Operator stages whose ``id`` is absent from the

@@ -53,6 +53,7 @@ from neutral_core_tests.test_normalize import (
     test_expand_profile_defaults_does_not_mutate_input,
     test_expand_profile_defaults_standard_includes_all_profile_stages,
     test_expand_profile_defaults_nested_lists_are_not_shared,
+    test_expand_profile_defaults_operator_depends_on_survives_expansion,
 )
 
 _TESTS = [
@@ -86,6 +87,7 @@ _TESTS = [
     test_expand_profile_defaults_does_not_mutate_input,
     test_expand_profile_defaults_standard_includes_all_profile_stages,
     test_expand_profile_defaults_nested_lists_are_not_shared,
+    test_expand_profile_defaults_operator_depends_on_survives_expansion,
 ]
 
 if __name__ == "__main__":

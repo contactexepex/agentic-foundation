@@ -131,7 +131,7 @@ def test_expand_profile_defaults_minimal_shape() -> None:
     assert review["skill"] == "code-review"
     assert review["gate"] == "blocking"
     assert review["triggers"] == ["pr_opened", "pr_updated"]
-    assert review["dependencies"] == []
+    assert review["depends_on"] == []
 
 
 def test_expand_profile_defaults_standard_shape() -> None:
@@ -149,14 +149,14 @@ def test_expand_profile_defaults_standard_shape() -> None:
     assert review["skill"] == "code-review"
     assert review["gate"] == "blocking"
     assert review["triggers"] == ["pr_opened", "pr_updated"]
-    assert review["dependencies"] == []
+    assert review["depends_on"] == []
 
     assert security["type"] == "security"
     assert security["provider"] == "openai"
     assert security["skill"] == "security-review"
     assert security["gate"] == "blocking"
     assert security["triggers"] == ["pr_opened", "pr_updated"]
-    assert security["dependencies"] == []
+    assert security["depends_on"] == []
 
 
 def test_expand_profile_defaults_standard_fills_missing_fields() -> None:
@@ -171,7 +171,7 @@ def test_expand_profile_defaults_standard_fills_missing_fields() -> None:
     assert review_stage.get("gate") == "blocking"
     assert review_stage.get("skill") == "code-review"
     assert review_stage.get("triggers") == ["pr_opened", "pr_updated"]
-    assert review_stage.get("dependencies") == []
+    assert review_stage.get("depends_on") == []
 
 
 def test_expand_profile_defaults_custom_adds_no_fields() -> None:
@@ -308,7 +308,7 @@ def test_expand_profile_defaults_nested_lists_are_not_shared() -> None:
     first_review = next(s for s in first_result if s["id"] == "review")
 
     first_review["triggers"].append("manual")
-    first_review["dependencies"].append("some-stage")
+    first_review["depends_on"].append("some-stage")
 
     second_result = expand_profile_defaults("standard", [])
     second_review = next(s for s in second_result if s["id"] == "review")
@@ -316,8 +316,8 @@ def test_expand_profile_defaults_nested_lists_are_not_shared() -> None:
     assert second_review["triggers"] == ["pr_opened", "pr_updated"], (
         f"Module-level triggers were mutated via first result: {second_review['triggers']}"
     )
-    assert second_review["dependencies"] == [], (
-        f"Module-level dependencies were mutated via first result: {second_review['dependencies']}"
+    assert second_review["depends_on"] == [], (
+        f"Module-level depends_on was mutated via first result: {second_review['depends_on']}"
     )
 
     # --- path 2: operator input isolation ---
@@ -330,4 +330,29 @@ def test_expand_profile_defaults_nested_lists_are_not_shared() -> None:
 
     assert operator_stage["triggers"] == ["pr_opened"], (
         f"Operator input triggers were mutated via expansion result: {operator_stage['triggers']}"
+    )
+
+
+def test_expand_profile_defaults_operator_depends_on_survives_expansion() -> None:
+    """An operator depends_on override produces a single depends_on field with the operator value.
+
+    Vocabulary boundary test: expand_profile_defaults operates in raw M1 config vocabulary
+    where the dependency field is 'depends_on' (as in config.schema.json). An operator who
+    explicitly declares depends_on: [build] on a standard profile stage must get exactly that
+    value in the output — the profile default depends_on: [] must be replaced, with no
+    second 'dependencies' key appearing alongside it.
+    """
+    from stagr.core.normalize import expand_profile_defaults
+
+    operator_review = {"id": "review", "depends_on": ["build"]}
+    result = expand_profile_defaults("standard", [operator_review])
+
+    review_stage = next(s for s in result if s["id"] == "review")
+
+    assert review_stage.get("depends_on") == ["build"], (
+        f"Operator depends_on override not preserved: got {review_stage.get('depends_on')}"
+    )
+    assert "dependencies" not in review_stage, (
+        f"No canonical 'dependencies' key should appear at this raw-vocab layer: "
+        f"found in {list(review_stage.keys())}"
     )
