@@ -41,6 +41,19 @@ from neutral_core_tests.test_normalize import (
     test_filter_disabled_stages_does_not_mutate_input,
     test_filter_disabled_stages_dogfood_config,
     test_filter_disabled_stages_disables_profile_provided_stage,
+    test_expand_profile_defaults_minimal_shape,
+    test_expand_profile_defaults_standard_shape,
+    test_expand_profile_defaults_standard_fills_missing_fields,
+    test_expand_profile_defaults_custom_adds_no_fields,
+    test_expand_profile_defaults_explicit_fields_override_profile,
+    test_expand_profile_defaults_unrecognized_profile_raises,
+    test_expand_profile_defaults_missing_id_raises,
+    test_expand_profile_defaults_duplicate_ids_raise,
+    test_expand_profile_defaults_is_idempotent,
+    test_expand_profile_defaults_does_not_mutate_input,
+    test_expand_profile_defaults_standard_includes_all_profile_stages,
+    test_expand_profile_defaults_nested_lists_are_not_shared,
+    test_expand_profile_defaults_operator_depends_on_survives_expansion,
 )
 
 _TESTS = [
@@ -62,6 +75,19 @@ _TESTS = [
     test_filter_disabled_stages_does_not_mutate_input,
     test_filter_disabled_stages_dogfood_config,
     test_filter_disabled_stages_disables_profile_provided_stage,
+    test_expand_profile_defaults_minimal_shape,
+    test_expand_profile_defaults_standard_shape,
+    test_expand_profile_defaults_standard_fills_missing_fields,
+    test_expand_profile_defaults_custom_adds_no_fields,
+    test_expand_profile_defaults_explicit_fields_override_profile,
+    test_expand_profile_defaults_unrecognized_profile_raises,
+    test_expand_profile_defaults_missing_id_raises,
+    test_expand_profile_defaults_duplicate_ids_raise,
+    test_expand_profile_defaults_is_idempotent,
+    test_expand_profile_defaults_does_not_mutate_input,
+    test_expand_profile_defaults_standard_includes_all_profile_stages,
+    test_expand_profile_defaults_nested_lists_are_not_shared,
+    test_expand_profile_defaults_operator_depends_on_survives_expansion,
 ]
 
 if __name__ == "__main__":
