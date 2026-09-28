@@ -172,6 +172,15 @@ from neutral_core_tests.test_backend_renderer_registry import (
     test_registry_default_backend_for_unknown_provider_raises,
 )
 from neutral_core_tests.codex_renderer_tests import CODEX_RENDERER_TESTS
+from neutral_core_tests.test_platform_renderer import (
+    test_platform_renderer_protocol_conformance,
+    test_platform_renderer_interface_uses_only_neutral_types,
+    test_platform_renderer_dry_run_render_stage_returns_spec,
+    test_platform_renderer_dry_run_produces_no_files,
+    test_platform_renderer_non_dry_run_render_stage_writes_file,
+    test_platform_renderer_dry_run_render_routing_raises_value_error,
+    test_platform_renderer_dry_run_render_governance_raises_value_error,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -300,6 +309,13 @@ _TESTS = [
     test_registry_multiple_providers_no_collision,
     test_registry_default_backend_for_unknown_provider_raises,
     *CODEX_RENDERER_TESTS,
+    test_platform_renderer_protocol_conformance,
+    test_platform_renderer_interface_uses_only_neutral_types,
+    test_platform_renderer_dry_run_render_stage_returns_spec,
+    test_platform_renderer_dry_run_produces_no_files,
+    test_platform_renderer_non_dry_run_render_stage_writes_file,
+    test_platform_renderer_dry_run_render_routing_raises_value_error,
+    test_platform_renderer_dry_run_render_governance_raises_value_error,
 ]
 
 if __name__ == "__main__":
