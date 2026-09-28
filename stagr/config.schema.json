@@ -386,7 +386,12 @@
         "api_version": { "type": "string" },
         "deployment": { "type": "string" },
         "api_key_secret": { "type": "string", "minLength": 1 },
-        "extra_headers_secret": { "type": "string", "minLength": 1 }
+        "extra_headers_secret": { "type": "string", "minLength": 1 },
+        "secrets": {
+          "description": "Secret alias map: keys are SecretRef.alias names used by this provider's BackendRenderer; values are the environment-variable names where the actual secret lives at run time. Never the secret values themselves. Example: {\"PROVIDER_API_KEY\": \"ANTHROPIC_API_KEY\"}.",
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "observabilitySink": {

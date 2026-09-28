@@ -98,6 +98,13 @@ def run_phase1(
         backend_renderer = registry.get(stage.provider, stage.backend)
 
         unresolved_plan: ExecutionPlan = backend_renderer.render(stage)
+        if unresolved_plan.stage_id != stage.id:
+            raise ValueError(
+                f"BackendRenderer returned an ExecutionPlan with stage_id "
+                f"{unresolved_plan.stage_id!r} but was called for stage "
+                f"{stage.id!r}; the renderer must return a plan for the "
+                f"stage it received."
+            )
 
         resolved_plan: ExecutionPlan = _resolve_secret_aliases(
             unresolved_plan, stage.provider, provider_config

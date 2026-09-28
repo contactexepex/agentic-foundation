@@ -79,6 +79,42 @@ def test_phase1_unresolvable_alias_raises_before_platform_renderer() -> None:
     )
 
 
+def test_phase1_mismatched_plan_stage_id_raises_value_error() -> None:
+    """run_phase1 raises ValueError when BackendRenderer returns plan for wrong stage."""
+    from stagr.core.render_loop import run_phase1
+    from stagr.core.backend_renderer_registry import BackendRendererRegistry
+
+    stage = build_stage("correct-stage-id")
+    render_context = build_minimal_render_context([stage])
+
+    class _MismatchingBackendRenderer:
+        provider = "testprovider"
+        backend = "testbackend"
+
+        def render(self, stage_arg):
+            return build_execution_plan("wrong-stage-id")
+
+    registry = BackendRendererRegistry()
+    registry.register(_MismatchingBackendRenderer())
+    platform_renderer = TrackingPlatformRenderer()
+    provider_config: dict = {}
+
+    raised = False
+    try:
+        run_phase1(render_context, registry, platform_renderer, provider_config)
+    except ValueError:
+        raised = True
+
+    assert raised, (
+        "Expected ValueError when BackendRenderer returns an ExecutionPlan "
+        "with a stage_id that does not match the stage being processed"
+    )
+    assert not platform_renderer.render_stage_calls, (
+        "PlatformRenderer.render_stage must NOT be called when plan stage_id mismatch is "
+        f"detected; was called {len(platform_renderer.render_stage_calls)} time(s)"
+    )
+
+
 def test_phase1_mismatched_stage_result_id_raises_value_error() -> None:
     """run_phase1 raises ValueError when PlatformRenderer returns wrong stage_id."""
     from stagr.core.render_loop import run_phase1
