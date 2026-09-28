@@ -54,6 +54,9 @@ from neutral_core_tests.github_platform_renderer_tests.test_routing_workflow imp
     test_fast_path_configured_workflow_embeds_patterns_as_base64_constant,
     test_routing_workflow_changed_files_step_aggregates_pages_safely,
     test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern,
+    test_edited_event_type_present_in_routing_workflow,
+    test_rename_previous_filename_included_in_files_json,
+    test_truncated_file_list_forces_normal_route,
 )
 
 GITHUB_PLATFORM_RENDERER_TESTS = [
@@ -100,6 +103,9 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_fast_path_configured_workflow_embeds_patterns_as_base64_constant,
     test_routing_workflow_changed_files_step_aggregates_pages_safely,
     test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern,
+    test_edited_event_type_present_in_routing_workflow,
+    test_rename_previous_filename_included_in_files_json,
+    test_truncated_file_list_forces_normal_route,
 ]
 
 __all__ = [
@@ -147,4 +153,7 @@ __all__ = [
     "test_fast_path_configured_workflow_embeds_patterns_as_base64_constant",
     "test_routing_workflow_changed_files_step_aggregates_pages_safely",
     "test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern",
+    "test_edited_event_type_present_in_routing_workflow",
+    "test_rename_previous_filename_included_in_files_json",
+    "test_truncated_file_list_forces_normal_route",
 ]

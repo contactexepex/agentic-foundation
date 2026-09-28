@@ -180,3 +180,58 @@ def test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern() -> 
         "The raw apostrophe-containing path must not appear unescaped in the YAML scalar; "
         "base64 encoding must transport the patterns safely"
     )
+
+
+def test_edited_event_type_present_in_routing_workflow() -> None:
+    """Routing workflow trigger includes 'edited' event type for base branch changes."""
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=None,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "edited" in yaml_content, (
+        "Routing workflow must include 'edited' in pull_request_target event types "
+        "so re-routing fires when the PR base branch changes"
+    )
+    assert "changes.base" in yaml_content, (
+        "Routing workflow must guard the 'edited' trigger with a changes.base != null check "
+        "to avoid re-routing on title/body-only edits"
+    )
+
+
+def test_rename_previous_filename_included_in_files_json() -> None:
+    """Changed-files step extracts previous_filename alongside filename for renames."""
+    fast_path_policy = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/*",)),
+        stages=RouteStageMap(fast=(), normal=("review",)),
+    )
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=fast_path_policy,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "previous_filename" in yaml_content, (
+        "Changed-files step must extract previous_filename so renames from outside "
+        "the fast-path patterns are correctly classified as NORMAL"
+    )
+
+
+def test_truncated_file_list_forces_normal_route() -> None:
+    """Classify step routes NORMAL when the fetched file list is shorter than changed_files count."""
+    fast_path_policy = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/*",)),
+        stages=RouteStageMap(fast=(), normal=("review",)),
+    )
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=fast_path_policy,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "CHANGED_FILES_COUNT" in yaml_content, (
+        "Classify step must receive CHANGED_FILES_COUNT from the changed-files step "
+        "to detect GitHub's 3000-file API cap and force NORMAL when truncated"
+    )
+    assert "changed_files_count" in yaml_content, (
+        "Classify step Python script must compare fetched file count against "
+        "changed_files_count to detect truncation"
+    )
