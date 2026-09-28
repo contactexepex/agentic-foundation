@@ -159,6 +159,36 @@ stop to avoid review.
   new capability needs many new moving parts, reconsider the design.
 - **Stay a control plane:** declare, initialize, and govern — never execute (see `docs/CHARTER.md`).
 
+## Coding standards
+
+These rules apply to all production and test Python code in this repository. Configuration files
+(YAML, JSON, TOML, `.cfg`) are exempt from the class-size limit.
+
+### Naming
+
+Every identifier must communicate its purpose without needing a comment:
+
+- **Classes** — noun phrases that describe what the class *is*. Reading the name alone must reveal
+  the class's role (e.g. `StageResultSignal`, `RenderContext`, `GateDispositionSpec`).
+- **Methods and functions** — verb phrases that describe what they *do*. Reading the name alone must
+  reveal the operation (e.g. `build_context`, `resolve_model`, `assert_safe_label`).
+- **Variables, parameters, and arguments** — descriptive nouns or noun phrases that reveal their
+  intent and content (e.g. `default_branch`, `required_secrets`, `platform_auth_config`).
+  Single-letter names are acceptable only for loop counters and trivial local temporaries with a
+  scope shorter than three lines.
+
+### Class size limit
+
+- No Python class body (logic or test) may exceed **350 lines**.
+- Configuration files (YAML, JSON, TOML, `.cfg`) are exempt.
+- When a class exceeds 350 lines, decompose it into focused classes with clear, minimal
+  responsibilities. Do not create so many small classes that the code becomes unnecessarily
+  fragmented — aim for balanced decomposition where each class has one clear purpose.
+- When a test module grows beyond 350 lines, extract logical groups into focused sub-modules within
+  a package (following the `render_tests/` pattern), and keep a thin runner that imports and calls
+  each test function. The validate.yml runner command stays unchanged; only the module structure
+  changes underneath it.
+
 ## Documentation principles
 
 - Docs are read by other people, including non-experts: use **simple, plain language** any technical
