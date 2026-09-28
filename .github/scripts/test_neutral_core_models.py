@@ -100,6 +100,15 @@ from neutral_core_tests.test_pipeline_edge_cases import (
     test_pipeline_dependencies_tuple_from_depends_on,
     test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
 )
+from neutral_core_tests.test_policy_routing import (
+    test_routing_policy_dogfood_config,
+    test_routing_policy_absent_routing_key,
+    test_routing_policy_disabled_fast_path,
+    test_routing_policy_enabled_fast_path,
+    test_routing_policy_no_error_on_dormant_config,
+    test_routing_policy_routing_present_no_fast_path_key,
+    test_routing_policy_absent_enabled_key_uses_default,
+)
 from neutral_core_tests.test_policy_trust import (
     test_trust_policy_dogfood_config,
     test_trust_policy_default_fork_policy_is_deny,
@@ -185,6 +194,13 @@ _TESTS = [
     test_pipeline_advisory_gate_maps_to_non_blocking,
     test_pipeline_dependencies_tuple_from_depends_on,
     test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
+    test_routing_policy_dogfood_config,
+    test_routing_policy_absent_routing_key,
+    test_routing_policy_disabled_fast_path,
+    test_routing_policy_enabled_fast_path,
+    test_routing_policy_no_error_on_dormant_config,
+    test_routing_policy_routing_present_no_fast_path_key,
+    test_routing_policy_absent_enabled_key_uses_default,
     test_trust_policy_dogfood_config,
     test_trust_policy_default_fork_policy_is_deny,
     test_trust_policy_explicit_fork_policy,

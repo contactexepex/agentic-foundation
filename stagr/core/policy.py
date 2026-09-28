@@ -5,13 +5,21 @@ accepts the raw config dict and returns a frozen, validated policy dataclass.
 
 Issue #184: derive_trust_policy — who and what Stagr-generated automation
 may act on behalf of.
+Issue #185: derive_routing_policy — fast-path routing policy.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from .enums import AuthorRole, ForkPolicy
-from .models import StaticValidationError, TrustPolicy
+from .models import (
+    FastPathPolicy,
+    PathMatchSpec,
+    RouteStageMap,
+    RoutingPolicy,
+    StaticValidationError,
+    TrustPolicy,
+)
 
 _DEFAULT_HUMAN_MERGE_LABEL = "human-merge"
 _DEFAULT_TRUSTED_ROLES: tuple[AuthorRole, ...] = (
@@ -100,3 +108,52 @@ def _derive_fork_policy(platform_config: dict[str, Any]) -> ForkPolicy:
 def _derive_human_merge_label(platform_config: dict[str, Any]) -> str:
     labels_config: dict[str, Any] = platform_config.get("labels", {}) or {}
     return str(labels_config.get("human_merge", _DEFAULT_HUMAN_MERGE_LABEL))
+
+
+def derive_routing_policy(config: dict[str, Any]) -> RoutingPolicy:
+    """Derive a ``RoutingPolicy`` from the parsed config dict.
+
+    Reads ``routing.fast_path`` to determine whether fast-path routing is
+    active and, when it is, extracts the glob match patterns and route-stage
+    map.
+
+    Derivation rules
+    ----------------
+    - When ``routing`` is absent -> ``RoutingPolicy(fast_path=None)``
+    - When ``routing.fast_path.enabled`` is ``false`` -> ``RoutingPolicy(fast_path=None)``
+    - When ``routing.fast_path.enabled`` is ``true`` -> ``RoutingPolicy`` with a
+      fully-populated ``FastPathPolicy`` (``match`` glob patterns and ``stages``
+      route-stage map).
+
+    V-S09 (route dependency-closure) is NOT validated here; it belongs in a
+    separate validation pass.
+
+    Parameters
+    ----------
+    config:
+        The raw YAML config dict (top-level, as loaded by ``yaml.safe_load``).
+
+    Returns
+    -------
+    RoutingPolicy
+        An immutable routing-policy dataclass. ``fast_path`` is ``None`` when
+        fast-path is disabled or the ``routing`` key is absent.
+    """
+    routing_cfg: dict[str, Any] = config.get("routing") or {}
+    if not routing_cfg:
+        return RoutingPolicy(fast_path=None)
+
+    fast_path_cfg: dict[str, Any] = routing_cfg.get("fast_path") or {}
+    if not fast_path_cfg.get("enabled", True):
+        return RoutingPolicy(fast_path=None)
+
+    match_paths: tuple[str, ...] = tuple(fast_path_cfg.get("globs", []))
+    stages_cfg: dict[str, Any] = fast_path_cfg.get("stages") or {}
+    fast_stage_ids: tuple[str, ...] = tuple(stages_cfg.get("fast", []))
+    normal_stage_ids: tuple[str, ...] = tuple(stages_cfg.get("normal", []))
+
+    fast_path = FastPathPolicy(
+        match=PathMatchSpec(paths=match_paths),
+        stages=RouteStageMap(fast=fast_stage_ids, normal=normal_stage_ids),
+    )
+    return RoutingPolicy(fast_path=fast_path)
