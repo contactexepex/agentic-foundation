@@ -80,6 +80,26 @@ from neutral_core_tests.test_defaults import (
     test_defaults_mixed_binding_with_tiers_preserved,
     test_defaults_tier_only_binding_preserved,
 )
+from neutral_core_tests.test_pipeline_dogfood import (
+    test_pipeline_dogfood_config_produces_three_stages,
+    test_pipeline_dogfood_config_stage_ids_present,
+    test_pipeline_dogfood_config_implement_claude,
+    test_pipeline_dogfood_config_review,
+    test_pipeline_dogfood_config_security,
+    test_pipeline_dogfood_config_no_enabled_field,
+    test_pipeline_dogfood_config_backend_derived_from_provider,
+)
+from neutral_core_tests.test_pipeline_edge_cases import (
+    test_pipeline_empty_stages_returns_empty_tuple,
+    test_pipeline_single_active_stage,
+    test_pipeline_all_disabled_stages_returns_empty_tuple,
+    test_pipeline_defaults_provider_propagates_to_stage,
+    test_pipeline_returns_tuple_not_list,
+    test_pipeline_gate_defaults_to_non_blocking_when_absent,
+    test_pipeline_advisory_gate_maps_to_non_blocking,
+    test_pipeline_dependencies_tuple_from_depends_on,
+    test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -134,6 +154,22 @@ _TESTS = [
     test_defaults_provider_model_binding_with_tiers_preserved,
     test_defaults_mixed_binding_with_tiers_preserved,
     test_defaults_tier_only_binding_preserved,
+    test_pipeline_dogfood_config_produces_three_stages,
+    test_pipeline_dogfood_config_stage_ids_present,
+    test_pipeline_dogfood_config_implement_claude,
+    test_pipeline_dogfood_config_review,
+    test_pipeline_dogfood_config_security,
+    test_pipeline_dogfood_config_no_enabled_field,
+    test_pipeline_dogfood_config_backend_derived_from_provider,
+    test_pipeline_empty_stages_returns_empty_tuple,
+    test_pipeline_single_active_stage,
+    test_pipeline_all_disabled_stages_returns_empty_tuple,
+    test_pipeline_defaults_provider_propagates_to_stage,
+    test_pipeline_returns_tuple_not_list,
+    test_pipeline_gate_defaults_to_non_blocking_when_absent,
+    test_pipeline_advisory_gate_maps_to_non_blocking,
+    test_pipeline_dependencies_tuple_from_depends_on,
+    test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
 ]
 
 if __name__ == "__main__":
