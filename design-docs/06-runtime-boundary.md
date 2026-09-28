@@ -62,13 +62,44 @@ The PlatformRenderer maps each semantic kind to the appropriate platform API.
 | Value | Semantics | GitHub mapping |
 |---|---|---|
 | `REVIEW_RESULT` | A formal review object produced by a reviewer agent | Codex summary comment containing a structured review table |
-| `COMMENT_MATCH` | A PR comment matching a content selector | PR issue comment where `body` contains `selector` |
+| `COMMENT_MATCH` | A PR comment whose body satisfies the backend-defined selector expression | PR issue comment evaluated against the backend-defined `selector` (see compound selector convention below) |
 | `CHECK_RESULT` | A CI check run with a pass/fail conclusion | GitHub check run on the head commit |
 | `WORKFLOW_RESULT` | A CI workflow run with a pass/fail conclusion | GitHub Actions workflow run |
 
 Using semantic vocabulary keeps EvidenceSpec portable: a `REVIEW_RESULT` on GitHub is
 a comment with a specific format; on GitLab it might be a note on an MR. The renderer
 handles the mapping; the EvidenceSpec stays neutral.
+
+#### Compound selector convention for COMMENT_MATCH
+
+The `selector` field in `EvidenceSpec` is **backend-defined and opaque to the neutral
+contract**. The baseline semantic is that the comment body contains the selector string.
+BackendRenderers that need predicate filtering beyond simple string containment — for
+example, to distinguish a completed marker from a running one inside the same marker
+format — may use the following compound selector convention, which the PlatformRenderer
+for that backend must implement:
+
+```
+<marker-prefix> [key=value ...]
+```
+
+- The first space-delimited token is a **literal prefix** matched by simple string
+  containment against the comment body. `MATCH_FOUND` requires this prefix to be present.
+- Each subsequent `key=value` token is a **JSON field predicate**: the comment body must
+  contain the marker prefix, and the JSON blob inside the marker must have a field named
+  `key` whose value equals `value` (string comparison). All predicates must be satisfied.
+
+**Example:** the selector `codex-security-review:v1 status=completed` requires:
+1. The comment body contains the literal string `codex-security-review:v1`.
+2. The JSON object inside the marker has `"status": "completed"`.
+
+A marker with `"status": "running"` satisfies the prefix but not the predicate, so
+`MATCH_FOUND` is NOT triggered. This allows a single marker format to represent both
+in-progress and completed states without requiring separate marker types.
+
+BackendRenderers that use the compound format must document it in their module docstring.
+BackendRenderers that require only simple string containment use a plain prefix string
+with no `key=value` tokens; the two forms are unambiguous.
 
 ### CorrelationSpec
 
@@ -173,12 +204,34 @@ platform's review-thread API. For `NO_OPEN_THREADS` to be safe on GitHub, the bi
 must unambiguously associate each review thread with its originating stage invocation
 using a field the GitHub review-thread API actually exposes (e.g., `pull_request_review_id`,
 not a back-reference to the triggering issue comment, which the API does not provide).
-If no reliable platform binding can be demonstrated for a given backend, `NO_OPEN_THREADS`
-must not be used as the `GateDispositionKind` for that stage — the BackendRenderer must
-choose an alternative kind (e.g., `EXPLICIT_PASS_MARKER`) instead.
 
-When `invocationCorrelation` is null, `createdBy + headSha` is sufficient (applies when
-stages use distinct bot identities).
+**V1 conservative fallback (shared-scope mode).** When a spike investigation demonstrates
+that no reliable per-invocation binding is available for a given backend — for example,
+Spike B found that the GitHub API does not expose a reliably observable field that
+unambiguously associates individual review threads with their originating stage invocation
+when two reviews run under the same Codex bot identity on the same head commit — the
+BackendRenderer may use `NO_OPEN_THREADS` with `invocationCorrelation=null` as a
+conservative V1 fallback. In this mode the gate is scoped only by `createdBy + headSha`:
+all unresolved threads from that bot identity on the current head must be resolved before
+any stage using this disposition passes. The intentional consequence is **cross-stage
+blocking**: a finding from the REVIEW stage will keep the SECURITY stage BLOCKED, and
+vice versa. This is fail-closed behavior, not a bug. The BackendRenderer's module
+docstring must explicitly document this V1 shared-scope mode and the Spike finding that
+motivates it. The V1 fallback is not a general licence to omit `invocationCorrelation`;
+it requires documented spike evidence that no reliable binding exists for this specific
+backend.
+
+**Gate-semantics constraint:** the V1 fallback is only valid when **all** stages that
+share the bot identity and head SHA are configured with `BLOCKING` gate semantics. If
+any co-sharing stage is configured `NON_BLOCKING` (advisory), the shared scope silently
+causes that stage's unresolved findings to block every `BLOCKING` stage in the shared
+scope, contradicting the user's explicit advisory-gate intent. In that situation the
+BackendRenderer must not apply `NO_OPEN_THREADS` with shared scope to either the
+advisory stage or any blocking stage sharing its identity; an alternative disposition
+must be chosen instead.
+
+When `invocationCorrelation` is null without a documented spike, `createdBy + headSha` is
+sufficient only when stages use distinct bot identities.
 
 The BackendRenderer supplies both `EvidenceSpec` (when done?) and `GateDispositionSpec`
 (PASS or BLOCKED?). The PlatformRenderer uses both to write the observation logic inside
