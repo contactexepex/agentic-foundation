@@ -48,15 +48,23 @@ def test_anthropic_renderer_invocation_kind() -> None:
 
 
 def test_anthropic_renderer_invocation_params_action() -> None:
-    """invocation.params contains the correct Claude Code action reference."""
+    """invocation.params contains the full SHA-pinned Claude Code action reference."""
+    from stagr.core.renderers.anthropic_claude_backend_renderer import (
+        _CLAUDE_CODE_ACTION_REFERENCE,
+    )
+
     renderer = _build_renderer()
     stage = _build_implement_normalized_stage()
 
     execution_plan = renderer.render(stage)
 
     action_value = execution_plan.invocation.params.get("action")
-    assert action_value == "anthropics/claude-code-action", (
-        f"Expected action 'anthropics/claude-code-action', got {action_value!r}"
+    assert "@" in _CLAUDE_CODE_ACTION_REFERENCE, (
+        "Action reference must include a SHA pin (@ separator missing)"
+    )
+    assert action_value == _CLAUDE_CODE_ACTION_REFERENCE, (
+        f"Expected full pinned action reference {_CLAUDE_CODE_ACTION_REFERENCE!r}, "
+        f"got {action_value!r}"
     )
 
 

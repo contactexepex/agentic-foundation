@@ -18,7 +18,8 @@ from stagr.core.models import (
     SecretRef,
 )
 
-_CLAUDE_CODE_ACTION_REFERENCE = "anthropics/claude-code-action"
+_CLAUDE_CODE_ACTION_SHA = "cfc3eb22bfed5c26ef66e3223c982af27e4524de"
+_CLAUDE_CODE_ACTION_REFERENCE = f"anthropics/claude-code-action@{_CLAUDE_CODE_ACTION_SHA}"
 _PROVIDER_API_KEY_ALIAS = "PROVIDER_API_KEY"
 _ANTHROPIC_API_KEY_SECRET_INPUT = "anthropic_api_key"
 
