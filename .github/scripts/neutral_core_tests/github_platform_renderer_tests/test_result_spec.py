@@ -145,6 +145,19 @@ def test_dry_run_render_routing_raises_value_error() -> None:
         pass  # expected
 
 
+def test_live_mode_render_routing_raises_not_implemented_error() -> None:
+    """render_routing raises NotImplementedError in live mode (output_dir set)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        renderer = build_renderer(output_dir=Path(temp_dir))
+        stage = build_stage()
+        context = build_render_context(stage)
+        try:
+            renderer.render_routing(context)
+            assert False, "render_routing must raise NotImplementedError in live mode"  # noqa: B011
+        except NotImplementedError:
+            pass  # expected
+
+
 def test_dry_run_render_governance_raises_value_error() -> None:
     """render_governance raises ValueError in dry-run mode (output_dir=None)."""
     from stagr.core.enums import StageResultSignalKind
@@ -164,6 +177,28 @@ def test_dry_run_render_governance_raises_value_error() -> None:
         assert False, "render_governance must raise ValueError in dry-run mode"  # noqa: B011
     except ValueError:
         pass  # expected
+
+
+def test_live_mode_render_governance_raises_not_implemented_error() -> None:
+    """render_governance raises NotImplementedError in live mode (output_dir set)."""
+    from stagr.core.enums import StageResultSignalKind
+    from stagr.core.models import StageResultProvenance
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        renderer = build_renderer(output_dir=Path(temp_dir))
+        stage = build_stage()
+        context = build_render_context(stage)
+        spec = StageResultSpec(
+            stage_id=stage.id,
+            signal_kind=StageResultSignalKind.CHECK_RUN,
+            signal_selector="stagr/stage/review",
+            provenance=StageResultProvenance(publisher_identity="99001"),
+        )
+        try:
+            renderer.render_governance((spec,), context)
+            assert False, "render_governance must raise NotImplementedError in live mode"  # noqa: B011
+        except NotImplementedError:
+            pass  # expected
 
 
 # ------------------------------------------------------------------

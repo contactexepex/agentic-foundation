@@ -148,12 +148,18 @@ class GitHubPlatformRenderer:
         """Phase 2a: write the routing artifact.
 
         Raises ValueError in dry-run mode (output_dir is None).
-        Full implementation is out of scope for issue #194.
+        Raises NotImplementedError in live mode until the full implementation
+        lands in a later issue (#195/#196); fail-loud prevents Phase 2
+        orchestration from silently receiving an incomplete pipeline.
         """
         if self._output_dir is None:
             raise ValueError(
                 "render_routing cannot be called in dry-run mode (output_dir is None)"
             )
+        raise NotImplementedError(
+            "render_routing is not yet implemented for live mode "
+            "(full implementation is out of scope for issue #194)"
+        )
 
     def render_governance(
         self,
@@ -163,12 +169,18 @@ class GitHubPlatformRenderer:
         """Phase 2b: write the governance artifact.
 
         Raises ValueError in dry-run mode (output_dir is None).
-        Full implementation is out of scope for issue #194.
+        Raises NotImplementedError in live mode until the full implementation
+        lands in a later issue (#195/#196); fail-loud prevents Phase 2
+        orchestration from silently receiving an incomplete pipeline.
         """
         if self._output_dir is None:
             raise ValueError(
                 "render_governance cannot be called in dry-run mode (output_dir is None)"
             )
+        raise NotImplementedError(
+            "render_governance is not yet implemented for live mode "
+            "(full implementation is out of scope for issue #194)"
+        )
 
     # ------------------------------------------------------------------
     # Private helpers
