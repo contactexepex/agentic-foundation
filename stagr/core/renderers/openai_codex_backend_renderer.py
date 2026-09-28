@@ -24,14 +24,23 @@ Therefore ``GateDispositionKind.EXPLICIT_PASS_MARKER`` is used in place of
 "Completed" for the relevant review type serves as the explicit pass marker.
 
 Evidence kinds by stage kind:
-- REVIEW stages use ``EvidenceKind.REVIEW_RESULT`` with ``SUCCESS`` to confirm
-  the code review ran cleanly (without blocking findings). ``COMPLETED`` would
-  fire even when the review has open findings, so ``SUCCESS`` is the correct
-  success condition for a clean-pass gate.
+- REVIEW stages use ``EvidenceKind.REVIEW_RESULT`` with ``COMPLETED``.
+  Per design-doc 06, ``COMPLETED`` is the correct ``EvidenceSuccessCondition``
+  for review stages — it means "the reviewer finished processing," regardless
+  of findings. Findings are handled separately by ``GateDispositionSpec``.
 - SECURITY stages use ``EvidenceKind.COMMENT_MATCH`` with ``MATCH_FOUND``:
   the security review completion is detected from a comment match rather than
   a formal review object. The selector and SHA field are distinct from the
   code-review summary to allow independent evidence tracking.
+
+Open design question: ``EXPLICIT_PASS_MARKER`` with a selector that is always
+present on completion (the "Completed" summary row) emits PASS even when
+blocking findings are present. The correct resolution per design-doc 06 is
+``NO_OPEN_THREADS`` with a reliable ``invocationCorrelation`` discriminator,
+or a genuinely verified clean-pass marker. Spike B found no reliable
+``invocationCorrelation`` in the current Codex output; a clean-pass marker
+has not been empirically verified. This is a pending design question requiring
+empirical investigation before this renderer can be fully trusted for gate use.
 
 Renderer raises ``ValueError`` for any stage kind other than REVIEW or
 SECURITY; both review kinds are the only supported backends for this renderer.
@@ -152,7 +161,7 @@ class OpenAICodexBackendRenderer:
                     head_sha=True,
                     sha_field=_REVIEW_SUMMARY_SHA_FIELD,
                 ),
-                success_condition=EvidenceSuccessCondition.SUCCESS,
+                success_condition=EvidenceSuccessCondition.COMPLETED,
             )
         if stage_kind is StageKind.SECURITY:
             return EvidenceSpec(

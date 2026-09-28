@@ -214,8 +214,8 @@ def test_codex_renderer_gate_disposition_has_no_scope() -> None:
     )
 
 
-def test_codex_renderer_review_stage_evidence_success_condition_is_success() -> None:
-    """REVIEW stage evidence uses SUCCESS (not COMPLETED), so a review with blocking findings does not pass."""
+def test_codex_renderer_review_stage_evidence_success_condition_is_completed() -> None:
+    """REVIEW stage evidence uses COMPLETED (design-doc 06: the reviewer finished, regardless of findings)."""
     from stagr.core.enums import EvidenceSuccessCondition
 
     renderer = _build_renderer()
@@ -224,8 +224,8 @@ def test_codex_renderer_review_stage_evidence_success_condition_is_success() -> 
     execution_plan = renderer.render(review_stage)
 
     evidence_spec = execution_plan.evidence[0]
-    assert evidence_spec.success_condition is EvidenceSuccessCondition.SUCCESS, (
-        f"Expected REVIEW stage evidence success_condition SUCCESS; "
+    assert evidence_spec.success_condition is EvidenceSuccessCondition.COMPLETED, (
+        f"Expected REVIEW stage evidence success_condition COMPLETED (design-doc 06); "
         f"got {evidence_spec.success_condition!r}"
     )
 
