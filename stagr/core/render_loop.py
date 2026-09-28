@@ -15,11 +15,13 @@ import dataclasses
 from typing import TYPE_CHECKING
 
 from .backend_renderer_registry import BackendRendererRegistry
-from .errors import SecretAliasResolutionError
 from .models import ExecutionPlan, NormalizedStage, RenderContext, SecretRef, StageResultSpec
 
 if TYPE_CHECKING:
     from .platform_renderer import PlatformRenderer
+
+
+_PROVIDER_API_KEY_ALIAS = "PROVIDER_API_KEY"
 
 
 def _resolve_secret_aliases(
@@ -29,30 +31,38 @@ def _resolve_secret_aliases(
 ) -> ExecutionPlan:
     """Return a new ExecutionPlan with every SecretRef.env_name filled in.
 
-    For each SecretRef in ``plan.required_secrets``, looks up the env_name via
-    ``provider_config["providers"][provider_name]["secrets"][alias]``. Raises
-    ``SecretAliasResolutionError`` when an alias has no mapping.
+    Resolution precedence for each SecretRef.alias (design-doc 03, V-S12):
+
+    1. Explicit mapping: ``provider_config["providers"][provider_name]["secrets"][alias]``
+    2. Provider ``api_key_secret`` field when alias is ``PROVIDER_API_KEY``
+    3. Convention: alias is itself the platform secret name (env_name = alias).
+       The ``secrets`` block is optional in V1; when omitted, aliases ARE the
+       platform secret names.
 
     The original plan is not mutated; a new frozen ExecutionPlan is returned
     via ``dataclasses.replace``.
     """
-    provider_secrets: dict[str, str] = (
+    provider_entry: dict = (
         provider_config
         .get("providers", {})
         .get(provider_name, {})
-        .get("secrets", {})
     )
+    provider_secrets: dict[str, str] = provider_entry.get("secrets", {})
+    api_key_secret: str | None = provider_entry.get("api_key_secret")
 
     resolved_secret_refs: list[SecretRef] = []
     for secret_ref in plan.required_secrets:
-        env_name = provider_secrets.get(secret_ref.alias)
+        # 1. Explicit alias → env_name mapping in the provider secrets block.
+        env_name: str | None = provider_secrets.get(secret_ref.alias)
+
+        # 2. Semantic mapping: PROVIDER_API_KEY → api_key_secret field.
+        if env_name is None and secret_ref.alias == _PROVIDER_API_KEY_ALIAS and api_key_secret:
+            env_name = api_key_secret
+
+        # 3. Convention fallback: alias is the platform secret name.
         if env_name is None:
-            raise SecretAliasResolutionError(
-                f"No mapping for secret alias {secret_ref.alias!r} on stage "
-                f"{plan.stage_id!r} (provider={provider_name!r}). "
-                f"Add 'providers.{provider_name}.secrets.{secret_ref.alias}' "
-                f"to the provider configuration."
-            )
+            env_name = secret_ref.alias
+
         resolved_secret_refs.append(
             dataclasses.replace(secret_ref, env_name=env_name)
         )
@@ -78,10 +88,9 @@ def run_phase1(
        ``BackendRendererNotFoundError`` when none is found.
     2. Call ``backend_renderer.render(stage)`` to get an ``ExecutionPlan``
        with alias-only ``SecretRef`` values (``env_name`` not yet set).
-    3. Resolve each ``SecretRef.alias`` from
-       ``provider_config["providers"][stage.provider]["secrets"][alias]``;
-       raises ``SecretAliasResolutionError`` when an alias has no mapping,
-       before the PlatformRenderer is called.
+    3. Resolve each ``SecretRef.alias`` via the three-level precedence in
+       ``_resolve_secret_aliases`` (explicit mapping → ``api_key_secret`` →
+       convention), before the PlatformRenderer is called.
     4. Call ``platform_renderer.render_stage(resolved_plan, stage, context)``
        to get a ``StageResultSpec``.
     5. Collect and return all ``StageResultSpec`` objects.

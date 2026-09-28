@@ -92,6 +92,105 @@ def test_phase1_empty_stages_returns_empty_list() -> None:
     )
 
 
+def test_phase1_provider_api_key_resolved_from_api_key_secret() -> None:
+    """PROVIDER_API_KEY alias falls back to providers.<provider>.api_key_secret when no secrets map entry exists."""
+    from stagr.core.render_loop import run_phase1
+    from stagr.core.backend_renderer_registry import BackendRendererRegistry
+
+    stage = build_stage("stage-api-key")
+    render_context = build_minimal_render_context([stage])
+
+    plan_with_provider_api_key = build_execution_plan(
+        "stage-api-key", secret_aliases=("PROVIDER_API_KEY",)
+    )
+
+    class _BackendRendererWithProviderApiKey:
+        provider = "testprovider"
+        backend = "testbackend"
+
+        def render(self, stage_arg):
+            return plan_with_provider_api_key
+
+    registry = BackendRendererRegistry()
+    registry.register(_BackendRendererWithProviderApiKey())
+
+    received_plans: list = []
+
+    class _CapturingPlatformRenderer(TrackingPlatformRenderer):
+        def render_stage(self, plan, stage_arg, render_context_arg):
+            received_plans.append(plan)
+            return build_stage_result_spec(stage_arg.id)
+
+    # api_key_secret field present; no explicit secrets map for PROVIDER_API_KEY.
+    provider_config = {
+        "providers": {
+            "testprovider": {
+                "api_key_secret": "TESTPROVIDER_API_KEY",
+            },
+        },
+    }
+
+    run_phase1(render_context, registry, _CapturingPlatformRenderer(), provider_config)
+
+    assert received_plans, "PlatformRenderer.render_stage was not called"
+    resolved_plan = received_plans[0]
+    env_names = {ref.alias: ref.env_name for ref in resolved_plan.required_secrets}
+    assert env_names == {"PROVIDER_API_KEY": "TESTPROVIDER_API_KEY"}, (
+        f"PROVIDER_API_KEY must resolve via api_key_secret; got {env_names!r}"
+    )
+
+
+def test_phase1_explicit_secrets_map_takes_precedence_over_api_key_secret() -> None:
+    """An explicit secrets map entry beats the api_key_secret fallback for PROVIDER_API_KEY."""
+    from stagr.core.render_loop import run_phase1
+    from stagr.core.backend_renderer_registry import BackendRendererRegistry
+
+    stage = build_stage("stage-precedence")
+    render_context = build_minimal_render_context([stage])
+
+    plan_with_provider_api_key = build_execution_plan(
+        "stage-precedence", secret_aliases=("PROVIDER_API_KEY",)
+    )
+
+    class _BackendRendererExplicit:
+        provider = "testprovider"
+        backend = "testbackend"
+
+        def render(self, stage_arg):
+            return plan_with_provider_api_key
+
+    registry = BackendRendererRegistry()
+    registry.register(_BackendRendererExplicit())
+
+    received_plans: list = []
+
+    class _CapturingPlatformRenderer(TrackingPlatformRenderer):
+        def render_stage(self, plan, stage_arg, render_context_arg):
+            received_plans.append(plan)
+            return build_stage_result_spec(stage_arg.id)
+
+    # Both explicit secrets map and api_key_secret present — explicit map must win.
+    provider_config = {
+        "providers": {
+            "testprovider": {
+                "api_key_secret": "FALLBACK_KEY",
+                "secrets": {
+                    "PROVIDER_API_KEY": "EXPLICIT_API_KEY",
+                },
+            },
+        },
+    }
+
+    run_phase1(render_context, registry, _CapturingPlatformRenderer(), provider_config)
+
+    assert received_plans, "PlatformRenderer.render_stage was not called"
+    resolved_plan = received_plans[0]
+    env_names = {ref.alias: ref.env_name for ref in resolved_plan.required_secrets}
+    assert env_names == {"PROVIDER_API_KEY": "EXPLICIT_API_KEY"}, (
+        f"Explicit secrets map must take precedence over api_key_secret; got {env_names!r}"
+    )
+
+
 def test_phase1_multiple_secrets_all_resolved() -> None:
     """All SecretRef entries in the plan are resolved when the mapping covers all aliases."""
     from stagr.core.render_loop import run_phase1
