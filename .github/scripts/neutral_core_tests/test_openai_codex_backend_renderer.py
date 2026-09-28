@@ -212,3 +212,84 @@ def test_codex_renderer_gate_disposition_has_no_scope() -> None:
         f"EXPLICIT_PASS_MARKER gate_disposition must have scope=None; "
         f"got {execution_plan.gate_disposition.scope!r}"
     )
+
+
+def test_codex_renderer_review_stage_evidence_success_condition_is_success() -> None:
+    """REVIEW stage evidence uses SUCCESS (not COMPLETED), so a review with blocking findings does not pass."""
+    from stagr.core.enums import EvidenceSuccessCondition
+
+    renderer = _build_renderer()
+    review_stage = _build_review_normalized_stage()
+
+    execution_plan = renderer.render(review_stage)
+
+    evidence_spec = execution_plan.evidence[0]
+    assert evidence_spec.success_condition is EvidenceSuccessCondition.SUCCESS, (
+        f"Expected REVIEW stage evidence success_condition SUCCESS; "
+        f"got {evidence_spec.success_condition!r}"
+    )
+
+
+def test_codex_renderer_security_stage_evidence_is_comment_match() -> None:
+    """SECURITY stage produces EvidenceSpec with kind == COMMENT_MATCH (not REVIEW_RESULT)."""
+    from stagr.core.enums import EvidenceKind
+
+    renderer = _build_renderer()
+    security_stage = _build_security_normalized_stage()
+
+    execution_plan = renderer.render(security_stage)
+
+    assert len(execution_plan.evidence) == 1, (
+        f"Expected exactly 1 EvidenceSpec for security stage, "
+        f"got {len(execution_plan.evidence)}"
+    )
+    evidence_spec = execution_plan.evidence[0]
+    assert evidence_spec.kind is EvidenceKind.COMMENT_MATCH, (
+        f"Expected evidence[0].kind COMMENT_MATCH for security stage, "
+        f"got {evidence_spec.kind!r}"
+    )
+
+
+def test_codex_renderer_security_stage_evidence_success_condition_is_match_found() -> None:
+    """SECURITY stage EvidenceSpec uses MATCH_FOUND success condition."""
+    from stagr.core.enums import EvidenceSuccessCondition
+
+    renderer = _build_renderer()
+    security_stage = _build_security_normalized_stage()
+
+    execution_plan = renderer.render(security_stage)
+
+    evidence_spec = execution_plan.evidence[0]
+    assert evidence_spec.success_condition is EvidenceSuccessCondition.MATCH_FOUND, (
+        f"Expected SECURITY stage evidence success_condition MATCH_FOUND; "
+        f"got {evidence_spec.success_condition!r}"
+    )
+
+
+def test_codex_renderer_unsupported_stage_kind_raises_value_error() -> None:
+    """render() raises ValueError for stage kinds other than REVIEW and SECURITY."""
+    from stagr.core.enums import StageGate, StageKind, StageTrigger
+    from stagr.core.models import NormalizedStage
+
+    renderer = _build_renderer()
+    implement_stage = NormalizedStage(
+        id="implement",
+        kind=StageKind.IMPLEMENT,
+        provider="openai",
+        backend="codex",
+        skill=None,
+        gate=StageGate.NON_BLOCKING,
+        triggers=(StageTrigger.MANUAL,),
+        dependencies=(),
+    )
+
+    raised = False
+    try:
+        renderer.render(implement_stage)
+    except ValueError:
+        raised = True
+
+    assert raised, (
+        "Expected ValueError when rendering an IMPLEMENT stage with "
+        "OpenAICodexBackendRenderer"
+    )

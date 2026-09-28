@@ -182,6 +182,10 @@ from neutral_core_tests.test_openai_codex_backend_renderer import (
     test_codex_renderer_review_stage_posts_codex_review_command,
     test_codex_renderer_security_stage_posts_security_review_command,
     test_codex_renderer_gate_disposition_has_no_scope,
+    test_codex_renderer_review_stage_evidence_success_condition_is_success,
+    test_codex_renderer_security_stage_evidence_is_comment_match,
+    test_codex_renderer_security_stage_evidence_success_condition_is_match_found,
+    test_codex_renderer_unsupported_stage_kind_raises_value_error,
 )
 
 _TESTS = [
@@ -320,6 +324,10 @@ _TESTS = [
     test_codex_renderer_review_stage_posts_codex_review_command,
     test_codex_renderer_security_stage_posts_security_review_command,
     test_codex_renderer_gate_disposition_has_no_scope,
+    test_codex_renderer_review_stage_evidence_success_condition_is_success,
+    test_codex_renderer_security_stage_evidence_is_comment_match,
+    test_codex_renderer_security_stage_evidence_success_condition_is_match_found,
+    test_codex_renderer_unsupported_stage_kind_raises_value_error,
 ]
 
 if __name__ == "__main__":
