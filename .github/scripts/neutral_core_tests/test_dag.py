@@ -185,3 +185,33 @@ def test_dag_direct_two_stage_cycle_raises_v_s04() -> None:
         assert "a" in error_message, f"Error must name stage 'a': {error_message}"
         assert "b" in error_message, f"Error must name stage 'b': {error_message}"
     assert raised, "Expected StaticValidationError for a direct two-stage cycle"
+
+
+def test_dag_cycle_error_excludes_downstream_dependents() -> None:
+    """Stages downstream of a cycle are not named in the V-S04 error message.
+
+    When D depends on A, and A and B form a cycle, Kahn's residual set includes
+    D (its in-degree never drops to zero because A is never processed).  The
+    error must name only actual cycle members A and B, not the innocent
+    downstream stage D.
+    """
+    from stagr.core.dag import build_and_validate_dag
+    from stagr.core.models import StaticValidationError
+
+    stage_a = {"id": "a", "depends_on": ["b"]}
+    stage_b = {"id": "b", "depends_on": ["a"]}
+    stage_d = {"id": "d", "depends_on": ["a"]}
+
+    raised = False
+    try:
+        build_and_validate_dag([stage_a, stage_b, stage_d])
+    except StaticValidationError as exc:
+        raised = True
+        error_message = str(exc)
+        assert "V-S04" in error_message, f"Error must reference V-S04: {error_message}"
+        assert "'a'" in error_message, f"Error must name cycle member 'a': {error_message}"
+        assert "'b'" in error_message, f"Error must name cycle member 'b': {error_message}"
+        assert "'d'" not in error_message, (
+            f"Downstream stage 'd' must NOT appear in the cycle error: {error_message}"
+        )
+    assert raised, "Expected StaticValidationError for a cycle with a downstream dependent"

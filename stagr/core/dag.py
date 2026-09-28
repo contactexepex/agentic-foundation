@@ -99,13 +99,55 @@ def _topological_sort_or_raise(
                 processing_queue.append(dependent_id)
 
     if len(topologically_sorted_ids) != len(active_stages):
-        cycle_stage_ids = sorted(
-            stage_id
-            for stage_id, degree in in_degree.items()
-            if degree > 0
-        )
+        cycle_stage_ids = sorted(_find_cycle_member_ids(active_stages, in_degree))
         raise StaticValidationError(
             f"V-S04: dependency cycle detected among stages: {cycle_stage_ids}"
         )
 
     return [stage_id_to_stage[stage_id] for stage_id in topologically_sorted_ids]
+
+
+def _find_cycle_member_ids(
+    active_stages: list[dict[str, Any]],
+    in_degree: dict[str, int],
+) -> set[str]:
+    """Return only the stage ids that are actual cycle participants.
+
+    After Kahn's algorithm, every stage with positive in-degree is in the
+    residual subgraph — which includes both cycle members AND any acyclic
+    stages whose dependencies are stuck in cycles.  This function identifies
+    only the former: a stage is a cycle member if and only if it can reach
+    itself via directed edges in the residual subgraph.
+    """
+    residual_ids: frozenset[str] = frozenset(
+        stage_id for stage_id, degree in in_degree.items() if degree > 0
+    )
+    residual_deps: dict[str, list[str]] = {
+        stage["id"]: [
+            dep_id
+            for dep_id in stage.get("depends_on", [])
+            if dep_id in residual_ids
+        ]
+        for stage in active_stages
+        if stage["id"] in residual_ids
+    }
+
+    cycle_members: set[str] = set()
+    for start_id in residual_ids:
+        if _can_reach_self(start_id, residual_deps):
+            cycle_members.add(start_id)
+    return cycle_members
+
+
+def _can_reach_self(start_id: str, adjacency: dict[str, list[str]]) -> bool:
+    """Return True if start_id can reach itself via directed edges in adjacency."""
+    visited: set[str] = set()
+    stack: list[str] = list(adjacency.get(start_id, []))
+    while stack:
+        current_id = stack.pop()
+        if current_id == start_id:
+            return True
+        if current_id not in visited:
+            visited.add(current_id)
+            stack.extend(adjacency.get(current_id, []))
+    return False
