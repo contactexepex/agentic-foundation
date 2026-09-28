@@ -331,7 +331,7 @@ def test_codex_renderer_unsupported_stage_kind_raises_value_error() -> None:
         provider="openai",
         backend="codex",
         skill=None,
-        gate=StageGate.NON_BLOCKING,
+        gate=StageGate.BLOCKING,
         triggers=(StageTrigger.MANUAL,),
         dependencies=(),
     )
@@ -345,4 +345,41 @@ def test_codex_renderer_unsupported_stage_kind_raises_value_error() -> None:
     assert raised, (
         "Expected ValueError when rendering an IMPLEMENT stage with "
         "OpenAICodexBackendRenderer"
+    )
+
+
+def test_codex_renderer_non_blocking_stage_raises_value_error() -> None:
+    """render() raises ValueError for NON_BLOCKING stages (V1 shared-scope requires BLOCKING gate).
+
+    The V1 conservative shared-scope mode sets NO_OPEN_THREADS scoped only by
+    createdBy + headSha. If a NON_BLOCKING (advisory) stage were rendered, its
+    unresolved findings would count in the shared scope of any co-sharing BLOCKING
+    stage, silently turning the advisory stage into a merge gate. The renderer
+    rejects NON_BLOCKING stages to enforce the gate-semantics constraint.
+    """
+    from stagr.core.enums import StageGate, StageKind, StageTrigger
+    from stagr.core.models import NormalizedStage
+
+    renderer = _build_renderer()
+    advisory_review_stage = NormalizedStage(
+        id="advisory-review",
+        kind=StageKind.REVIEW,
+        provider="openai",
+        backend="codex",
+        skill="code-review",
+        gate=StageGate.NON_BLOCKING,
+        triggers=(StageTrigger.PR_OPENED,),
+        dependencies=(),
+    )
+
+    raised = False
+    try:
+        renderer.render(advisory_review_stage)
+    except ValueError:
+        raised = True
+
+    assert raised, (
+        "Expected ValueError when rendering a NON_BLOCKING REVIEW stage with "
+        "OpenAICodexBackendRenderer (V1 shared-scope NO_OPEN_THREADS requires "
+        "BLOCKING gate semantics)"
     )

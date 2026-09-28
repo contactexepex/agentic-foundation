@@ -189,6 +189,7 @@ from neutral_core_tests.test_openai_codex_backend_renderer import (
     test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
     test_codex_renderer_unsupported_stage_kind_raises_value_error,
     test_codex_renderer_security_stage_gate_disposition_is_no_open_threads,
+    test_codex_renderer_non_blocking_stage_raises_value_error,
 )
 
 _TESTS = [
@@ -334,6 +335,7 @@ _TESTS = [
     test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
     test_codex_renderer_unsupported_stage_kind_raises_value_error,
     test_codex_renderer_security_stage_gate_disposition_is_no_open_threads,
+    test_codex_renderer_non_blocking_stage_raises_value_error,
 ]
 
 if __name__ == "__main__":

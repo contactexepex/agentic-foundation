@@ -76,6 +76,7 @@ from stagr.core.enums import (
     EvidenceSuccessCondition,
     GateDispositionKind,
     InvocationKind,
+    StageGate,
     StageKind,
 )
 from stagr.core.models import (
@@ -152,8 +153,17 @@ class OpenAICodexBackendRenderer:
         EvidenceSpec correlated to the head SHA, and a NO_OPEN_THREADS gate
         disposition scoped to the Codex bot identity and the current head SHA.
 
-        Raises ValueError for stage kinds other than REVIEW and SECURITY.
+        Raises ValueError for stage kinds other than REVIEW and SECURITY, and
+        for stages configured with NON_BLOCKING gate semantics (V1 shared-scope
+        constraint — see module docstring and design-doc 06).
         """
+        if stage.gate is StageGate.NON_BLOCKING:
+            raise ValueError(
+                f"OpenAICodexBackendRenderer V1 shared-scope NO_OPEN_THREADS mode "
+                f"requires BLOCKING gate semantics; stage '{stage.id}' has gate "
+                f"{stage.gate!r}. Configure an alternative backend or disposition "
+                f"for advisory (NON_BLOCKING) stages."
+            )
         invocation = Invocation(
             kind=InvocationKind.PR_COMMENT,
             params={"body": self._resolve_codex_comment_command(stage.kind)},
