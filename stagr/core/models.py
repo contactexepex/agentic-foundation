@@ -38,6 +38,15 @@ class ConfigError(Exception):
     """
 
 
+class StaticValidationError(ValueError):
+    """Raised when static validation of a stage config fails.
+
+    Covers all V-S0x checks: schema validity, dependency reference validity
+    (V-S05), and dependency graph acyclicity (V-S04). The exception message
+    always names the relevant stage id(s) and the check code that failed.
+    """
+
+
 def _deep_freeze(value: Any) -> Any:
     """Recursively convert mutable containers to immutable equivalents.
 

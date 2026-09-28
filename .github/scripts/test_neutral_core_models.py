@@ -55,6 +55,18 @@ from neutral_core_tests.test_normalize import (
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
 )
+from neutral_core_tests.test_dag import (
+    test_dag_linear_chain_passes,
+    test_dag_cycle_raises_v_s04,
+    test_dag_unknown_dep_raises_v_s05,
+    test_dag_disabled_dep_raises_v_s05,
+    test_dag_no_deps_passes,
+    test_dag_does_not_mutate_input,
+    test_dag_parallel_stages_pass,
+    test_dag_empty_active_stages_passes,
+    test_dag_direct_two_stage_cycle_raises_v_s04,
+    test_dag_cycle_error_excludes_downstream_dependents,
+)
 from neutral_core_tests.test_defaults import (
     test_defaults_provider_propagates,
     test_defaults_explicit_provider_not_overridden,
@@ -63,9 +75,8 @@ from neutral_core_tests.test_defaults import (
     test_defaults_missing_provider_raises_config_error,
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
-    test_defaults_backend_propagates_from_defaults,
-    test_defaults_missing_backend_raises_config_error,
     test_defaults_explicit_model_binding_normalized_to_string,
+    test_defaults_tier_only_binding_preserved,
 )
 
 _TESTS = [
@@ -100,6 +111,16 @@ _TESTS = [
     test_expand_profile_defaults_standard_includes_all_profile_stages,
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
+    test_dag_linear_chain_passes,
+    test_dag_cycle_raises_v_s04,
+    test_dag_unknown_dep_raises_v_s05,
+    test_dag_disabled_dep_raises_v_s05,
+    test_dag_no_deps_passes,
+    test_dag_does_not_mutate_input,
+    test_dag_parallel_stages_pass,
+    test_dag_empty_active_stages_passes,
+    test_dag_direct_two_stage_cycle_raises_v_s04,
+    test_dag_cycle_error_excludes_downstream_dependents,
     test_defaults_provider_propagates,
     test_defaults_explicit_provider_not_overridden,
     test_defaults_model_resolved_from_defaults,
@@ -107,9 +128,8 @@ _TESTS = [
     test_defaults_missing_provider_raises_config_error,
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
-    test_defaults_backend_propagates_from_defaults,
-    test_defaults_missing_backend_raises_config_error,
     test_defaults_explicit_model_binding_normalized_to_string,
+    test_defaults_tier_only_binding_preserved,
 ]
 
 if __name__ == "__main__":
