@@ -37,7 +37,7 @@ def _render_to_string(
         plan = build_execution_plan(stage_id=stage_id, required_secrets=required_secrets)
         context = build_render_context(stage)
         renderer.render_stage(plan, stage, context)
-        workflow_path = output_dir / f"stagr-stage-{stage_id}.yml"
+        workflow_path = output_dir / ".github" / "workflows" / f"stage-{stage_id}.yml"
         return workflow_path.read_text(encoding="utf-8")
 
 
@@ -191,10 +191,13 @@ def test_app_token_step_has_id_app_token() -> None:
 # ------------------------------------------------------------------
 
 def test_backend_invocation_step_uses_trusted_commenter_token() -> None:
-    """Backend invocation step references TRUSTED_COMMENTER_TOKEN, not the App token."""
-    yaml_content = _render_to_string()
+    """Backend invocation step exposes TRUSTED_COMMENTER_TOKEN when declared in the plan."""
+    trusted_commenter_secret = (
+        SecretRef(alias="TRUSTED_COMMENTER_TOKEN", env_name="REMEDIATION_TOKEN"),
+    )
+    yaml_content = _render_to_string(required_secrets=trusted_commenter_secret)
     assert "TRUSTED_COMMENTER_TOKEN" in yaml_content, (
-        "Backend invocation step must reference TRUSTED_COMMENTER_TOKEN"
+        "Backend invocation step must expose TRUSTED_COMMENTER_TOKEN when plan declares it"
     )
 
 
@@ -238,7 +241,7 @@ def test_result_signaling_step_uses_app_token() -> None:
 # ------------------------------------------------------------------
 
 def test_workflow_file_written_with_correct_name() -> None:
-    """Workflow file is written as stagr-stage-<id>.yml inside output_dir."""
+    """Workflow file is written as .github/workflows/stage-<id>.yml inside output_dir."""
     stage_id = "security"
     with tempfile.TemporaryDirectory() as temp_dir:
         output_dir = Path(temp_dir)
@@ -247,7 +250,63 @@ def test_workflow_file_written_with_correct_name() -> None:
         plan = build_execution_plan(stage_id=stage_id)
         context = build_render_context(stage)
         renderer.render_stage(plan, stage, context)
-        expected_file = output_dir / f"stagr-stage-{stage_id}.yml"
+        expected_file = output_dir / ".github" / "workflows" / f"stage-{stage_id}.yml"
         assert expected_file.exists(), (
             f"Workflow file must be written at {expected_file}"
         )
+
+
+def test_backend_invocation_step_env_is_plan_driven() -> None:
+    """Backend invocation step env reflects exactly the plan's required_secrets."""
+    secrets = (
+        SecretRef(alias="PROVIDER_API_KEY", env_name="OPENAI_API_KEY"),
+        SecretRef(alias="TRUSTED_COMMENTER_TOKEN", env_name="REMEDIATION_TOKEN"),
+    )
+    yaml_content = _render_to_string(required_secrets=secrets)
+
+    invoke_backend_index = yaml_content.find("Invoke backend")
+    assert invoke_backend_index != -1, "Must have 'Invoke backend' step"
+    publish_result_index = yaml_content.find("Publish result", invoke_backend_index)
+    assert publish_result_index != -1, "Must have 'Publish result' step after backend step"
+    backend_step_block = yaml_content[invoke_backend_index:publish_result_index]
+
+    assert "PROVIDER_API_KEY" in backend_step_block, (
+        "Backend step must expose PROVIDER_API_KEY alias from plan"
+    )
+    assert "OPENAI_API_KEY" in backend_step_block, (
+        "Backend step must map PROVIDER_API_KEY to its resolved env_name OPENAI_API_KEY"
+    )
+    assert "TRUSTED_COMMENTER_TOKEN" in backend_step_block, (
+        "Backend step must expose TRUSTED_COMMENTER_TOKEN alias from plan"
+    )
+    assert "REMEDIATION_TOKEN" in backend_step_block, (
+        "Backend step must map TRUSTED_COMMENTER_TOKEN to its resolved env_name REMEDIATION_TOKEN"
+    )
+    assert "steps.app-token.outputs.token" not in backend_step_block, (
+        "Backend invocation step must not reference the App token"
+    )
+
+
+def test_backend_invocation_step_has_no_env_when_plan_has_no_secrets() -> None:
+    """Backend invocation step has no env block when the plan declares no secrets."""
+    yaml_content = _render_to_string(required_secrets=())
+
+    invoke_backend_index = yaml_content.find("Invoke backend")
+    assert invoke_backend_index != -1, "Must have 'Invoke backend' step"
+    publish_result_index = yaml_content.find("Publish result", invoke_backend_index)
+    assert publish_result_index != -1, "Must have 'Publish result' step after backend step"
+    backend_step_block = yaml_content[invoke_backend_index:publish_result_index]
+
+    # There should be no env: key in the backend step block when no secrets are declared.
+    assert "env:" not in backend_step_block, (
+        "Backend step must not emit an env block when the plan has no required_secrets"
+    )
+
+
+def test_app_token_action_uses_pinned_sha() -> None:
+    """App token acquisition step uses the pinned commit SHA, not a mutable tag."""
+    yaml_content = _render_to_string()
+    assert "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e" in yaml_content, (
+        "App token action must use the pinned commit SHA per supply-chain integrity rules; "
+        "mutable tags like @v1 are not permitted"
+    )

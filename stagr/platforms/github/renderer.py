@@ -1,7 +1,7 @@
 """GitHubPlatformRenderer: Phase 1 stage execution artifact generator for GitHub Actions.
 
 Translates a (ExecutionPlan, NormalizedStage, RenderContext) triple into a GitHub
-Actions workflow file (.github/workflows/stagr-stage-<id>.yml) and returns a
+Actions workflow file (.github/workflows/stage-<id>.yml) inside output_dir and returns a
 StageResultSpec that describes the Check Run this stage will emit at run time.
 
 Security invariant: stages with required_secrets (privileged stages) MUST use
@@ -13,9 +13,10 @@ invariant at render time so a misconfiguration is caught before deployment.
 
 Token isolation: the Stagr GitHub App installation token (acquired in step 1 and
 used in step 5 for Check Run creation) is NEVER passed to the backend invocation
-step (step 4). The backend step uses TRUSTED_COMMENTER_TOKEN exclusively. Mixing
-the App token with backend invocation calls would grant the backend write access
-to platform primitives (Check Runs) it must not control.
+step (step 4). The backend step receives only the secrets declared in
+ExecutionPlan.required_secrets (resolved alias → env_name pairs). Mixing the App
+token with backend invocation calls would grant the backend write access to
+platform primitives (Check Runs) it must not control.
 
 Workflow structure (Phase 1 scaffold; steps 2–5 are stubs awaiting later issues):
   1. App token acquisition   — this issue; always emitted
@@ -54,15 +55,20 @@ _CHECK_RUN_NAME_PREFIX = "stagr/stage"
 _PULL_REQUEST_TARGET_EVENTS_FOR_PR_OPENED = ("opened", "reopened", "ready_for_review")
 _PULL_REQUEST_TARGET_EVENTS_FOR_PR_UPDATED = ("synchronize",)
 
-# Secret alias used by the backend invocation step (issued by BackendRenderer).
-_TRUSTED_COMMENTER_TOKEN_SECRET_ALIAS = "TRUSTED_COMMENTER_TOKEN"
+# Pinned commit SHA for actions/create-github-app-token v1.11.1. Update this SHA after
+# auditing the release when upgrading. Mutable tags are not used per AGENTS.md supply-chain
+# integrity requirement (immutable action pinning).
+_APP_TOKEN_ACTION_REF = (
+    "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e"
+    "  # v1.11.1"
+)
 
 
 class GitHubPlatformRenderer:
     """PlatformRenderer that generates GitHub Actions workflow YAML files.
 
     Phase 1 (render_stage): generates a stage execution workflow file at
-    ``output_dir/.github/workflows/stagr-stage-<id>.yml`` (or dry-run when
+    ``output_dir/.github/workflows/stage-<id>.yml`` (or dry-run when
     ``output_dir`` is None) and returns the StageResultSpec.
 
     Phase 2 (render_routing, render_governance): raises ValueError in dry-run
@@ -103,7 +109,7 @@ class GitHubPlatformRenderer:
     ) -> StageResultSpec:
         """Generate the stage execution workflow and return its StageResultSpec.
 
-        Writes ``.github/workflows/stagr-stage-<stage.id>.yml`` inside
+        Writes ``.github/workflows/stage-<stage.id>.yml`` inside
         ``output_dir`` when not in dry-run mode.  In dry-run mode (``output_dir``
         is None) no file is written and the StageResultSpec is still returned.
 
@@ -115,10 +121,13 @@ class GitHubPlatformRenderer:
         on_section_yaml = self._build_on_section(stage.triggers)
         self._assert_privileged_stage_on_section_is_safe(stage, on_section_yaml, is_privileged)
 
-        workflow_yaml = self._generate_workflow_yaml(stage, on_section_yaml)
+        workflow_yaml = self._generate_workflow_yaml(plan, stage, on_section_yaml)
 
         if self._output_dir is not None:
-            workflow_file_path = self._output_dir / f"stagr-stage-{stage.id}.yml"
+            workflow_file_path = (
+                self._output_dir / ".github" / "workflows" / f"stage-{stage.id}.yml"
+            )
+            workflow_file_path.parent.mkdir(parents=True, exist_ok=True)
             workflow_file_path.write_text(workflow_yaml, encoding="utf-8")
 
         check_run_name = f"{_CHECK_RUN_NAME_PREFIX}/{stage.id}"
@@ -198,15 +207,13 @@ class GitHubPlatformRenderer:
                     f"stage, or remove the required_secrets from the ExecutionPlan."
                 )
 
-    def _generate_workflow_yaml(self, stage: NormalizedStage, on_section: str) -> str:
+    def _generate_workflow_yaml(
+        self, plan: ExecutionPlan, stage: NormalizedStage, on_section: str
+    ) -> str:
         """Return the complete GitHub Actions workflow YAML string for the stage."""
-        concurrency_group = (
-            f"stagr-{stage.id}-"
-            "${{ github.event.pull_request.number || github.event.issue.number }}"
-        )
         private_key_expr = f"${{{{ secrets.{self._publisher_private_key_secret} }}}}"
         app_token_output_expr = "${{ steps.app-token.outputs.token }}"
-        trusted_commenter_expr = "${{ secrets.TRUSTED_COMMENTER_TOKEN }}"
+        backend_env_section = self._build_backend_env_section(plan)
 
         return (
             f'name: "Stagr stage: {stage.id}"\n'
@@ -229,7 +236,7 @@ class GitHubPlatformRenderer:
             f"    steps:\n"
             f"      - name: Acquire Stagr App installation token\n"
             f"        id: app-token\n"
-            f"        uses: actions/create-github-app-token@v1\n"
+            f"        uses: {_APP_TOKEN_ACTION_REF}\n"
             f"        with:\n"
             f"          app-id: \"{self._publisher_app_id}\"\n"
             f"          private-key: \"{private_key_expr}\"\n"
@@ -242,14 +249,27 @@ class GitHubPlatformRenderer:
             f"\n"
             f"      - name: Invoke backend (stub)\n"
             f"        run: echo 'Backend invocation placeholder (spec:#205)'\n"
-            f"        env:\n"
-            f"          TRUSTED_COMMENTER_TOKEN: \"{trusted_commenter_expr}\"\n"
+            f"{backend_env_section}"
             f"\n"
             f"      - name: Publish result (stub)\n"
             f"        run: echo 'Result signaling placeholder (spec:#206)'\n"
             f"        env:\n"
             f"          STAGR_APP_TOKEN: \"{app_token_output_expr}\"\n"
         )
+
+    def _build_backend_env_section(self, plan: ExecutionPlan) -> str:
+        """Return the YAML env block for the backend invocation step.
+
+        Emits one line per resolved SecretRef, mapping alias → secrets.<env_name>.
+        Returns an empty string when the plan has no required secrets.
+        """
+        if not plan.required_secrets:
+            return ""
+        lines = ["        env:\n"]
+        for secret_ref in plan.required_secrets:
+            secret_expr = f"${{{{ secrets.{secret_ref.env_name} }}}}"
+            lines.append(f'          {secret_ref.alias}: "{secret_expr}"\n')
+        return "".join(lines)
 
     def _build_on_section(self, stage_triggers: tuple[StageTrigger, ...]) -> str:
         """Return the indented YAML lines for the ``on:`` trigger section.

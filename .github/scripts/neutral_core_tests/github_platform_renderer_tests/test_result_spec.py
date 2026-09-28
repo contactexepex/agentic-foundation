@@ -200,7 +200,9 @@ def test_pr_opened_and_pr_updated_combine_into_single_pull_request_target_block(
         output_dir = Path(temp_dir)
         renderer = build_renderer(output_dir=output_dir)
         renderer.render_stage(plan, stage, context)
-        yaml_content = (output_dir / "stagr-stage-review.yml").read_text(encoding="utf-8")
+        yaml_content = (
+            output_dir / ".github" / "workflows" / "stage-review.yml"
+        ).read_text(encoding="utf-8")
 
     # Should appear exactly once, not twice.
     assert yaml_content.count("pull_request_target:") == 1, (
@@ -220,7 +222,9 @@ def test_manual_trigger_produces_workflow_dispatch_only() -> None:
         output_dir = Path(temp_dir)
         renderer = build_renderer(output_dir=output_dir)
         renderer.render_stage(plan, stage, context)
-        yaml_content = (output_dir / "stagr-stage-review.yml").read_text(encoding="utf-8")
+        yaml_content = (
+            output_dir / ".github" / "workflows" / "stage-review.yml"
+        ).read_text(encoding="utf-8")
 
     assert "workflow_dispatch" in yaml_content
     assert "pull_request_target" not in yaml_content
