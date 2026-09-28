@@ -145,17 +145,22 @@ def test_dry_run_render_routing_raises_value_error() -> None:
         pass  # expected
 
 
-def test_live_mode_render_routing_raises_not_implemented_error() -> None:
-    """render_routing raises NotImplementedError in live mode (output_dir set)."""
+def test_live_mode_render_routing_writes_workflow_file() -> None:
+    """render_routing writes a routing.yml workflow file in live mode (output_dir set)."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        renderer = build_renderer(output_dir=Path(temp_dir))
+        output_dir = Path(temp_dir)
+        renderer = build_renderer(output_dir=output_dir)
         stage = build_stage()
         context = build_render_context(stage)
-        try:
-            renderer.render_routing(context)
-            assert False, "render_routing must raise NotImplementedError in live mode"  # noqa: B011
-        except NotImplementedError:
-            pass  # expected
+        renderer.render_routing(context)
+        routing_workflow_path = output_dir / ".github" / "workflows" / "routing.yml"
+        assert routing_workflow_path.exists(), (
+            f"render_routing must write routing.yml at {routing_workflow_path}"
+        )
+        routing_yaml_content = routing_workflow_path.read_text(encoding="utf-8")
+        assert routing_yaml_content.strip(), (
+            "render_routing must write non-empty routing.yml content"
+        )
 
 
 def test_dry_run_render_governance_raises_value_error() -> None:
