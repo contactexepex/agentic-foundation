@@ -1,25 +1,30 @@
-"""GitHubPlatformRenderer: Phase 1 stage execution artifact generator for GitHub Actions.
+"""GitHubPlatformRenderer: phase 1 and phase 2a artifact generator for GitHub Actions.
 
-Translates a (ExecutionPlan, NormalizedStage, RenderContext) triple into a GitHub
-Actions workflow file (.github/workflows/stage-<id>.yml) inside output_dir and returns a
-StageResultSpec that describes the Check Run this stage will emit at run time.
+Phase 1 (render_stage): translates a (ExecutionPlan, NormalizedStage, RenderContext)
+triple into a GitHub Actions workflow file (.github/workflows/stage-<id>.yml) inside
+output_dir and returns a StageResultSpec that describes the Check Run this stage will
+emit at run time.
 
-Security invariant: stages with required_secrets (privileged stages) MUST use
-``pull_request_target`` — never ``pull_request``. The ``pull_request`` event does
-not expose repository secrets, so any stage that needs them would fail silently.
-More critically, ``pull_request_target`` runs with the base-branch workflow
-definition, which is crucial for trusted execution. This renderer enforces the
-invariant at render time so a misconfiguration is caught before deployment.
+Phase 2a (render_routing): generates the routing artifact
+(.github/workflows/routing.yml) that classifies each PR head commit as FAST or NORMAL
+and publishes a ``RouteClassification`` Check Run authenticated by the Stagr GitHub App.
 
-Token isolation: the Stagr GitHub App installation token (acquired in step 1 and
-used in step 5 for Check Run creation) is NEVER passed to the backend invocation
-step (step 4). The backend step receives only the secrets declared in
-ExecutionPlan.required_secrets (resolved alias → env_name pairs). Mixing the App
-token with backend invocation calls would grant the backend write access to
-platform primitives (Check Runs) it must not control.
+Security invariant (stage workflows): stages with required_secrets (privileged stages)
+MUST use ``pull_request_target`` — never ``pull_request``. The ``pull_request`` event
+does not expose repository secrets, so any stage that needs them would fail silently.
+More critically, ``pull_request_target`` runs with the base-branch workflow definition,
+which is crucial for trusted execution. This renderer enforces the invariant at render
+time so a misconfiguration is caught before deployment.
 
-Workflow structure (Phase 1 scaffold; steps 2–5 are stubs awaiting later issues):
-  1. App token acquisition   — this issue; always emitted
+Token isolation (stage workflows): the Stagr GitHub App installation token (acquired
+in step 1 and used in step 5 for Check Run creation) is NEVER passed to the backend
+invocation step (step 4). The backend step receives only the secrets declared in
+ExecutionPlan.required_secrets (resolved alias → env_name pairs). Mixing the App token
+with backend invocation calls would grant the backend write access to platform
+primitives (Check Runs) it must not control.
+
+Stage workflow structure (Phase 1 scaffold; steps 2–5 are stubs awaiting later issues):
+  1. App token acquisition   — always emitted
   2. Eligibility check       — stub (spec: #207)
   3. Idempotency guard       — stub (spec: #205)
   4. Backend invocation      — stub (spec: #205); uses TRUSTED_COMMENTER_TOKEN
@@ -47,6 +52,10 @@ from stagr.core.models import (
     StageResultProvenance,
     StageResultSpec,
 )
+from stagr.platforms.github.routing_workflow import (
+    generate_routing_workflow_yaml,
+    ROUTING_WORKFLOW_FILENAME,
+)
 
 # Check Run name template — design-doc 08: stagr/stage/<stageId>
 _CHECK_RUN_NAME_PREFIX = "stagr/stage"
@@ -71,8 +80,14 @@ class GitHubPlatformRenderer:
     ``output_dir/.github/workflows/stage-<id>.yml`` (or dry-run when
     ``output_dir`` is None) and returns the StageResultSpec.
 
-    Phase 2 (render_routing, render_governance): raises ValueError in dry-run
-    mode; full implementation is out of scope for issue #194.
+    Phase 2a (render_routing): generates the routing workflow at
+    ``output_dir/.github/workflows/routing.yml`` that classifies PR head commits
+    and publishes an authenticated ``RouteClassification`` Check Run.
+
+    Phase 2b (render_governance): raises NotImplementedError in live mode until
+    implemented in a later issue (#196).
+
+    All three methods raise ``ValueError`` in dry-run mode (``output_dir`` is None).
     """
 
     def __init__(
@@ -147,19 +162,32 @@ class GitHubPlatformRenderer:
     def render_routing(self, render_context: RenderContext) -> None:
         """Phase 2a: write the routing artifact.
 
+        Generates ``.github/workflows/routing.yml`` inside ``output_dir``.  When
+        ``render_context.routing_policy.fast_path`` is ``None``, the workflow
+        immediately emits ``RouteClassification=NORMAL`` with no path analysis.
+        When a ``FastPathPolicy`` is present, the workflow fetches changed file
+        paths, tests them against the configured glob patterns, and emits FAST or
+        NORMAL accordingly.
+
+        In both cases the ``RouteClassification`` result is published as an
+        authenticated Check Run using the Stagr GitHub App installation token.
+
         Raises ValueError in dry-run mode (output_dir is None).
-        Raises NotImplementedError in live mode until the full implementation
-        lands in a later issue (#195/#196); fail-loud prevents Phase 2
-        orchestration from silently receiving an incomplete pipeline.
         """
         if self._output_dir is None:
             raise ValueError(
                 "render_routing cannot be called in dry-run mode (output_dir is None)"
             )
-        raise NotImplementedError(
-            "render_routing is not yet implemented for live mode "
-            "(full implementation is out of scope for issue #194)"
+        workflow_yaml = generate_routing_workflow_yaml(
+            fast_path_policy=render_context.routing_policy.fast_path,
+            publisher_app_id=self._publisher_app_id,
+            publisher_private_key_secret=self._publisher_private_key_secret,
         )
+        routing_workflow_path = (
+            self._output_dir / ".github" / "workflows" / ROUTING_WORKFLOW_FILENAME
+        )
+        routing_workflow_path.parent.mkdir(parents=True, exist_ok=True)
+        routing_workflow_path.write_text(workflow_yaml, encoding="utf-8")
 
     def render_governance(
         self,
