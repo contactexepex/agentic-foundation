@@ -67,6 +67,19 @@ from neutral_core_tests.test_dag import (
     test_dag_direct_two_stage_cycle_raises_v_s04,
     test_dag_cycle_error_excludes_downstream_dependents,
 )
+from neutral_core_tests.test_defaults import (
+    test_defaults_provider_propagates,
+    test_defaults_explicit_provider_not_overridden,
+    test_defaults_model_resolved_from_defaults,
+    test_defaults_model_absent_when_no_provider_default,
+    test_defaults_missing_provider_raises_config_error,
+    test_defaults_does_not_mutate_input,
+    test_defaults_empty_defaults_cfg,
+    test_defaults_explicit_model_binding_normalized_to_string,
+    test_defaults_provider_model_binding_with_tiers_preserved,
+    test_defaults_mixed_binding_with_tiers_preserved,
+    test_defaults_tier_only_binding_preserved,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -110,6 +123,17 @@ _TESTS = [
     test_dag_empty_active_stages_passes,
     test_dag_direct_two_stage_cycle_raises_v_s04,
     test_dag_cycle_error_excludes_downstream_dependents,
+    test_defaults_provider_propagates,
+    test_defaults_explicit_provider_not_overridden,
+    test_defaults_model_resolved_from_defaults,
+    test_defaults_model_absent_when_no_provider_default,
+    test_defaults_missing_provider_raises_config_error,
+    test_defaults_does_not_mutate_input,
+    test_defaults_empty_defaults_cfg,
+    test_defaults_explicit_model_binding_normalized_to_string,
+    test_defaults_provider_model_binding_with_tiers_preserved,
+    test_defaults_mixed_binding_with_tiers_preserved,
+    test_defaults_tier_only_binding_preserved,
 ]
 
 if __name__ == "__main__":
