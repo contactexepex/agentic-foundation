@@ -11,9 +11,10 @@ and ``model`` fields are resolved against ``defaults`` from the operator config.
 3. ``model``: if the stage has no ``model`` key, look up
    ``defaults.models[resolved_provider].default`` and apply it when found.
    If the stage already has a ``model`` key that is a ``modelBinding`` object
-   (per the config schema ``stage.model → modelBinding``), the binding is normalized
-   to the plain string in ``modelBinding.default`` so all code paths produce
-   a consistent ``str | None`` for downstream ``NormalizedStage.model``.
+   (per the config schema ``stage.model → modelBinding``), a binding that has only
+   a ``default`` key (no ``tiers``) is normalized to that plain string.  A binding
+   that contains ``tiers`` — whether or not it also has ``default`` — is preserved
+   unchanged so the downstream tier-selection step can use the full binding.
 
 After resolution, every stage must have a non-empty ``provider``; stages that still
 lack one raise ``ConfigError``.  The absence of ``backend`` is **not** an error at
@@ -52,10 +53,10 @@ def resolve_defaults(
     A stage that explicitly sets a field keeps its own value; this function never
     overrides a field the operator declared (even if its value is ``None``).
     Exception: an explicit ``model`` value that is a ``modelBinding`` object with a
-    ``default`` key is normalized to that plain string so all code paths produce a
-    consistent ``str | None`` representation for ``NormalizedStage.model``.  A tier-only
-    binding (no ``default`` key) is preserved unchanged for the downstream tier-selection
-    step.
+    ``default`` key and **no** ``tiers`` key is normalized to that plain string.
+    Any binding that contains ``tiers`` — with or without ``default`` — is preserved
+    unchanged; the downstream tier-selection step needs the full binding to choose the
+    right model string for the request tier.
 
     After applying defaults, a stage without a non-empty ``provider`` raises
     ``ConfigError``.  The absence of ``backend`` is not an error here.
@@ -103,9 +104,9 @@ def resolve_defaults(
                 resolved_stage["model"] = model_default
         elif "model" in resolved_stage and isinstance(resolved_stage["model"], dict):
             model_binding = resolved_stage["model"]
-            if model_binding.get("default") is not None:
+            if "tiers" not in model_binding and model_binding.get("default") is not None:
                 resolved_stage["model"] = model_binding["default"]
-            # tier-only bindings (no "default" key) are preserved for downstream tier selection
+            # bindings with tiers are preserved unchanged for downstream tier selection
 
         if not resolved_stage.get("provider"):
             raise ConfigError(

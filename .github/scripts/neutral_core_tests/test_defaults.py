@@ -145,6 +145,30 @@ def test_defaults_explicit_model_binding_normalized_to_string() -> None:
     )
 
 
+def test_defaults_mixed_binding_with_tiers_preserved() -> None:
+    """A modelBinding with both default and tiers is preserved unchanged.
+
+    Collapsing to the default string would discard explicit tier-specific overrides,
+    violating #181's rule that explicitly set fields keep their own value.
+    """
+    from stagr.core.defaults import resolve_defaults
+
+    mixed_binding = {"default": "gpt-base", "tiers": {"complex": "gpt-strong"}}
+    active_stages = [
+        {
+            "id": "review",
+            "type": "review",
+            "provider": "openai",
+            "model": mixed_binding,
+        }
+    ]
+    result = resolve_defaults(active_stages, {})
+
+    assert result[0]["model"] == mixed_binding, (
+        f"modelBinding with tiers must be preserved unchanged: got {result[0].get('model')}"
+    )
+
+
 def test_defaults_tier_only_binding_preserved() -> None:
     """A tier-only modelBinding (no default key) is preserved unchanged.
 
