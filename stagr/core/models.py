@@ -28,6 +28,16 @@ from .enums import (
 )
 
 
+class ConfigError(Exception):
+    """A normalization-time error caused by an unresolvable or invalid config field.
+
+    Raised by neutral-core normalization functions when a required field cannot be
+    resolved after all defaults are applied (e.g. a stage with no provider and no
+    defaults.provider). Callers must surface this as a user-visible error that names
+    the stage and the unresolvable field.
+    """
+
+
 def _deep_freeze(value: Any) -> Any:
     """Recursively convert mutable containers to immutable equivalents.
 

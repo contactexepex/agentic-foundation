@@ -55,6 +55,15 @@ from neutral_core_tests.test_normalize import (
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
 )
+from neutral_core_tests.test_defaults import (
+    test_defaults_provider_propagates,
+    test_defaults_explicit_provider_not_overridden,
+    test_defaults_model_resolved_from_defaults,
+    test_defaults_model_absent_when_no_provider_default,
+    test_defaults_missing_provider_raises_config_error,
+    test_defaults_does_not_mutate_input,
+    test_defaults_empty_defaults_cfg,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -88,6 +97,13 @@ _TESTS = [
     test_expand_profile_defaults_standard_includes_all_profile_stages,
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
+    test_defaults_provider_propagates,
+    test_defaults_explicit_provider_not_overridden,
+    test_defaults_model_resolved_from_defaults,
+    test_defaults_model_absent_when_no_provider_default,
+    test_defaults_missing_provider_raises_config_error,
+    test_defaults_does_not_mutate_input,
+    test_defaults_empty_defaults_cfg,
 ]
 
 if __name__ == "__main__":
