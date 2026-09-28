@@ -1,7 +1,8 @@
 """Platform-agnostic enumerations for the Stagr neutral core.
 
-All values are lowercase strings matching the config vocabulary. No platform-
-specific names (no GitHub event names, no CI YAML keys) appear here.
+All values are lowercase strings matching the neutral-core M2 contract defined in
+issue #173. No platform-specific CI YAML keys appear here. The M1 config schema
+uses a different vocabulary; normalization (Group C) translates between them.
 """
 from __future__ import annotations
 
@@ -11,44 +12,40 @@ from enum import Enum
 class StageKind(str, Enum):
     """The category of work a stage performs.
 
-    Values match the `type` enum in config.schema.json exactly.
+    Values match the neutral-core M2 contract (issue #173), not the M1 config schema.
+    The normalization layer maps M1 config stage types to these neutral values.
     """
 
-    PLAN = "plan"
-    IMPLEMENT = "implement"
-    SECURITY = "security"
-    TEST = "test"
-    INTEGRATION_TEST = "integration-test"
     REVIEW = "review"
-    DOCS = "docs"
-    RELEASE = "release"
+    SECURITY = "security"
+    BUILD = "build"
+    TEST = "test"
+    DEPLOY = "deploy"
     CUSTOM = "custom"
+    IMPLEMENT = "implement"
 
 
 class StageGate(str, Enum):
     """Whether a stage's conclusion blocks merge.
 
-    Values match the `gate` enum in config.schema.json exactly.
-    ADVISORY (formerly non_blocking) means a failure is surfaced but does not block merge.
+    Values match the neutral-core M2 contract (issue #173).
+    NON_BLOCKING means a failure is surfaced but does not block merge.
     """
 
     BLOCKING = "blocking"
-    ADVISORY = "advisory"
+    NON_BLOCKING = "non_blocking"
 
 
 class StageTrigger(str, Enum):
     """Event that causes a stage to be invoked.
 
-    Values match the `triggers` enum in config.schema.json exactly.
+    Values match the neutral-core M2 contract (issue #173).
     """
 
     PR_OPENED = "pr_opened"
     PR_UPDATED = "pr_updated"
     MANUAL = "manual"
     ISSUE_LABELED = "issue_labeled"
-    COMMENT_COMMAND = "comment_command"
-    PUSH = "push"
-    SCHEDULE = "schedule"
 
 
 class AuthorRole(str, Enum):
@@ -88,11 +85,9 @@ class InvocationKind(str, Enum):
     PR_COMMENT = "pr_comment"
     # Call the provider's API directly from a CI step.
     API_CALL = "api_call"
-    # Trigger a CI pipeline/workflow by name or id.
-    # Platform renderers map this to the native trigger mechanism (e.g. workflow_dispatch on
-    # GitHub Actions, pipeline triggers on GitLab CI). The neutral name avoids embedding a
-    # GitHub event name in the platform-agnostic contract.
-    TRIGGER_PIPELINE = "trigger_pipeline"
+    # Trigger a CI pipeline/workflow by name or id (workflow_dispatch on GitHub Actions,
+    # pipeline triggers on GitLab CI, etc.). Value matches the neutral-core M2 contract.
+    WORKFLOW_DISPATCH = "workflow_dispatch"
     # Insert a native CI component (Action, GitLab component, etc.).
     # Platform-dependent; validated at render time.
     CI_COMPONENT = "ci_component"

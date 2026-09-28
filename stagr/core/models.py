@@ -27,6 +27,22 @@ from .enums import (
     StageTrigger,
 )
 
+
+def _deep_freeze(value: Any) -> Any:
+    """Recursively convert mutable containers to immutable equivalents.
+
+    dict → MappingProxyType, list → tuple, set → frozenset.
+    Other values pass through unchanged.
+    """
+    if isinstance(value, dict):
+        return MappingProxyType({k: _deep_freeze(v) for k, v in value.items()})
+    if isinstance(value, list):
+        return tuple(_deep_freeze(v) for v in value)
+    if isinstance(value, set):
+        return frozenset(_deep_freeze(v) for v in value)
+    return value
+
+
 # ---------------------------------------------------------------------------
 # NormalizedStage (#174)
 # ---------------------------------------------------------------------------
@@ -69,10 +85,9 @@ class Invocation:
     params: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        # Wrap in MappingProxyType so the exposed mapping is truly read-only.
-        # frozen=True prevents re-assignment of the attribute; MappingProxyType
-        # prevents mutation through the value itself (e.g. params["k"] = v).
-        object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
+        # Deep-freeze so nested dicts/lists/sets are also immutable.
+        # frozen=True prevents re-assignment; _deep_freeze prevents mutation of nested values.
+        object.__setattr__(self, "params", _deep_freeze(dict(self.params)))
 
 
 @dataclass(frozen=True)

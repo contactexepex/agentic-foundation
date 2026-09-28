@@ -50,29 +50,24 @@ def test_enum_string_values() -> None:
         StageTrigger,
     )
 
-    # StageKind — must match config.schema.json stage.type enum exactly
-    assert StageKind("plan") is StageKind.PLAN
-    assert StageKind("implement") is StageKind.IMPLEMENT
-    assert StageKind("security") is StageKind.SECURITY
-    assert StageKind("test") is StageKind.TEST
-    assert StageKind("integration-test") is StageKind.INTEGRATION_TEST
+    # StageKind — neutral-core M2 contract (issue #173)
     assert StageKind("review") is StageKind.REVIEW
-    assert StageKind("docs") is StageKind.DOCS
-    assert StageKind("release") is StageKind.RELEASE
+    assert StageKind("security") is StageKind.SECURITY
+    assert StageKind("build") is StageKind.BUILD
+    assert StageKind("test") is StageKind.TEST
+    assert StageKind("deploy") is StageKind.DEPLOY
     assert StageKind("custom") is StageKind.CUSTOM
+    assert StageKind("implement") is StageKind.IMPLEMENT
 
-    # StageGate — must match config.schema.json stage.gate enum exactly
+    # StageGate — neutral-core M2 contract (issue #173)
     assert StageGate("blocking") is StageGate.BLOCKING
-    assert StageGate("advisory") is StageGate.ADVISORY
+    assert StageGate("non_blocking") is StageGate.NON_BLOCKING
 
-    # StageTrigger — must match config.schema.json stage.triggers enum exactly
+    # StageTrigger — neutral-core M2 contract (issue #173)
     assert StageTrigger("pr_opened") is StageTrigger.PR_OPENED
     assert StageTrigger("pr_updated") is StageTrigger.PR_UPDATED
     assert StageTrigger("manual") is StageTrigger.MANUAL
     assert StageTrigger("issue_labeled") is StageTrigger.ISSUE_LABELED
-    assert StageTrigger("comment_command") is StageTrigger.COMMENT_COMMAND
-    assert StageTrigger("push") is StageTrigger.PUSH
-    assert StageTrigger("schedule") is StageTrigger.SCHEDULE
 
     # AuthorRole — CONTRIBUTOR must exist but is not trusted by default
     assert AuthorRole("contributor") is AuthorRole.CONTRIBUTOR
@@ -86,8 +81,9 @@ def test_enum_string_values() -> None:
     assert MergeMode("auto") is MergeMode.AUTO
     assert MergeMode("manual") is MergeMode.MANUAL
 
-    # InvocationKind
+    # InvocationKind — neutral-core M2 contract (issue #173)
     assert InvocationKind("pr_comment") is InvocationKind.PR_COMMENT
+    assert InvocationKind("workflow_dispatch") is InvocationKind.WORKFLOW_DISPATCH
     assert InvocationKind("ci_component") is InvocationKind.CI_COMPONENT
 
     # StageResultSignalKind — all three variants exist
@@ -120,15 +116,14 @@ def test_enum_string_values() -> None:
     assert EvidenceKind("check_result") is EvidenceKind.CHECK_RESULT
     assert EvidenceKind("workflow_result") is EvidenceKind.WORKFLOW_RESULT
 
-    # No platform-specific names in enum values
+    # No platform-specific names in enum values (workflow_dispatch is the contracted M2 value)
     for enum_cls in [StageKind, StageGate, StageTrigger, AuthorRole, ForkPolicy,
                      MergeMode, InvocationKind, StageResultSignalKind,
                      StageResultState, StageResultConclusion, EvidenceKind,
                      EvidenceSuccessCondition, GateDispositionKind]:
         for member in enum_cls:
             val = member.value
-            for forbidden in ["pull_request_target", "workflow_dispatch",
-                               "permissions", "github_token"]:
+            for forbidden in ["pull_request_target", "permissions", "github_token"]:
                 assert forbidden not in val.lower(), \
                     f"{enum_cls.__name__}.{member.name} value '{val}' contains platform-specific name"
 
@@ -161,19 +156,19 @@ def test_normalized_stage_construction() -> None:
     assert stage.gate is StageGate.BLOCKING
     assert len(stage.triggers) == 2
 
-    # IMPLEMENT-type stage: skill is None, gate is ADVISORY (non-blocking)
+    # IMPLEMENT-type stage: skill is None, gate is NON_BLOCKING
     implement_stage = NormalizedStage(
         id="implement-claude",
         kind=StageKind.IMPLEMENT,
         provider="anthropic",
         backend="claude-code",
         skill=None,
-        gate=StageGate.ADVISORY,
+        gate=StageGate.NON_BLOCKING,
         triggers=(StageTrigger.MANUAL,),
         dependencies=(),
     )
     assert implement_stage.skill is None
-    assert implement_stage.gate is StageGate.ADVISORY
+    assert implement_stage.gate is StageGate.NON_BLOCKING
 
     # No `enabled` field
     assert not hasattr(stage, "enabled"), "NormalizedStage must not have an `enabled` field"
@@ -214,6 +209,43 @@ def test_invocation_params_immutable() -> None:
         assert False, "Should have raised TypeError on read-only mapping"
     except TypeError:
         pass
+
+
+def test_invocation_params_deep_immutable() -> None:
+    """Invocation.params is deeply immutable — nested dicts and lists are also frozen."""
+    from stagr.core.models import Invocation
+    from stagr.core.enums import InvocationKind
+    from types import MappingProxyType
+
+    nested = Invocation(
+        kind=InvocationKind.WORKFLOW_DISPATCH,
+        params={
+            "options": {"retries": 3, "flags": ["--verbose", "--fail-fast"]},
+            "tags": ["ci", "deploy"],
+        },
+    )
+
+    # Top-level mapping is frozen
+    try:
+        nested.params["new_key"] = "bad"  # type: ignore[index]
+        assert False, "Should have raised TypeError on top-level write"
+    except TypeError:
+        pass
+
+    # Nested dict is also a MappingProxyType (frozen)
+    assert isinstance(nested.params["options"], MappingProxyType), \
+        "Nested dict must become MappingProxyType"
+    try:
+        nested.params["options"]["retries"] = 99  # type: ignore[index]
+        assert False, "Should have raised TypeError on nested dict write"
+    except TypeError:
+        pass
+
+    # Nested list is converted to tuple
+    assert isinstance(nested.params["options"]["flags"], tuple), \
+        "Nested list must become tuple"
+    assert isinstance(nested.params["tags"], tuple), \
+        "Top-level list value must become tuple"
 
 
 def test_execution_plan_requires_gate_disposition() -> None:
@@ -484,6 +516,7 @@ _TESTS = [
     test_normalized_stage_construction,
     test_normalized_stage_empty_dependencies,
     test_invocation_params_immutable,
+    test_invocation_params_deep_immutable,
     test_execution_plan_requires_gate_disposition,
     test_execution_plan_valid,
     test_evidence_spec_construction,
