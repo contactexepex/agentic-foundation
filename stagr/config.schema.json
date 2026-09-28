@@ -250,6 +250,18 @@
           "enum": ["squash", "merge", "rebase"],
           "default": "squash",
           "description": "The merge method the auto-merge gate uses. The target repository must have this method enabled or GitHub rejects every merge. Default: squash."
+        },
+        "discussions": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Discussion-resolution requirement for the merge gate.",
+          "properties": {
+            "require_resolved": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, all open review discussions must be resolved before the merge gate passes. Default: false (discussion state is not checked)."
+            }
+          }
         }
       }
     }
