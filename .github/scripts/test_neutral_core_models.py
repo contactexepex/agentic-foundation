@@ -50,24 +50,29 @@ def test_enum_string_values() -> None:
         StageTrigger,
     )
 
-    # StageKind
-    assert StageKind("review") is StageKind.REVIEW
-    assert StageKind("security") is StageKind.SECURITY
-    assert StageKind("build") is StageKind.BUILD
-    assert StageKind("test") is StageKind.TEST
-    assert StageKind("deploy") is StageKind.DEPLOY
-    assert StageKind("custom") is StageKind.CUSTOM
+    # StageKind — must match config.schema.json stage.type enum exactly
+    assert StageKind("plan") is StageKind.PLAN
     assert StageKind("implement") is StageKind.IMPLEMENT
+    assert StageKind("security") is StageKind.SECURITY
+    assert StageKind("test") is StageKind.TEST
+    assert StageKind("integration-test") is StageKind.INTEGRATION_TEST
+    assert StageKind("review") is StageKind.REVIEW
+    assert StageKind("docs") is StageKind.DOCS
+    assert StageKind("release") is StageKind.RELEASE
+    assert StageKind("custom") is StageKind.CUSTOM
 
-    # StageGate
+    # StageGate — must match config.schema.json stage.gate enum exactly
     assert StageGate("blocking") is StageGate.BLOCKING
-    assert StageGate("non_blocking") is StageGate.NON_BLOCKING
+    assert StageGate("advisory") is StageGate.ADVISORY
 
-    # StageTrigger
+    # StageTrigger — must match config.schema.json stage.triggers enum exactly
     assert StageTrigger("pr_opened") is StageTrigger.PR_OPENED
     assert StageTrigger("pr_updated") is StageTrigger.PR_UPDATED
     assert StageTrigger("manual") is StageTrigger.MANUAL
     assert StageTrigger("issue_labeled") is StageTrigger.ISSUE_LABELED
+    assert StageTrigger("comment_command") is StageTrigger.COMMENT_COMMAND
+    assert StageTrigger("push") is StageTrigger.PUSH
+    assert StageTrigger("schedule") is StageTrigger.SCHEDULE
 
     # AuthorRole — CONTRIBUTOR must exist but is not trusted by default
     assert AuthorRole("contributor") is AuthorRole.CONTRIBUTOR
@@ -122,7 +127,7 @@ def test_enum_string_values() -> None:
                      EvidenceSuccessCondition, GateDispositionKind]:
         for member in enum_cls:
             val = member.value
-            for forbidden in ["pull_request_target", "workflow_dispatch_event",
+            for forbidden in ["pull_request_target", "workflow_dispatch",
                                "permissions", "github_token"]:
                 assert forbidden not in val.lower(), \
                     f"{enum_cls.__name__}.{member.name} value '{val}' contains platform-specific name"
@@ -156,19 +161,19 @@ def test_normalized_stage_construction() -> None:
     assert stage.gate is StageGate.BLOCKING
     assert len(stage.triggers) == 2
 
-    # IMPLEMENT-type stage: skill is None, gate is NON_BLOCKING
+    # IMPLEMENT-type stage: skill is None, gate is ADVISORY (non-blocking)
     implement_stage = NormalizedStage(
         id="implement-claude",
         kind=StageKind.IMPLEMENT,
         provider="anthropic",
         backend="claude-code",
         skill=None,
-        gate=StageGate.NON_BLOCKING,
+        gate=StageGate.ADVISORY,
         triggers=(StageTrigger.MANUAL,),
         dependencies=(),
     )
     assert implement_stage.skill is None
-    assert implement_stage.gate is StageGate.NON_BLOCKING
+    assert implement_stage.gate is StageGate.ADVISORY
 
     # No `enabled` field
     assert not hasattr(stage, "enabled"), "NormalizedStage must not have an `enabled` field"
@@ -195,6 +200,20 @@ def test_normalized_stage_empty_dependencies() -> None:
 # ---------------------------------------------------------------------------
 # #175 — ExecutionPlan
 # ---------------------------------------------------------------------------
+
+
+def test_invocation_params_immutable() -> None:
+    """Invocation.params is a read-only mapping — mutation raises TypeError."""
+    from stagr.core.models import Invocation
+    from stagr.core.enums import InvocationKind
+
+    inv = Invocation(kind=InvocationKind.PR_COMMENT, params={"key": "value"})
+    assert inv.params["key"] == "value"
+    try:
+        inv.params["key"] = "mutated"  # type: ignore[index]
+        assert False, "Should have raised TypeError on read-only mapping"
+    except TypeError:
+        pass
 
 
 def test_execution_plan_requires_gate_disposition() -> None:
@@ -225,7 +244,7 @@ def test_execution_plan_valid() -> None:
         stage_id="review",
         invocation=inv,
         gate_disposition=gate,
-        required_secrets=(SecretRef(alias="CODEX_API_KEY", env_name="OPENAI_API_KEY"),),
+        required_secrets=(SecretRef(alias="PROVIDER_API_KEY"),),
     )
     assert plan.stage_id == "review"
     assert plan.invocation.kind is InvocationKind.PR_COMMENT
@@ -257,8 +276,13 @@ def test_evidence_spec_construction() -> None:
         GateDispositionKind,
     )
 
-    secret = SecretRef(alias="API_KEY", env_name="OPENAI_API_KEY")
-    assert secret.alias == "API_KEY"
+    # BackendRenderer declares alias only — env_name is None until Phase 1 resolves it
+    secret = SecretRef(alias="PROVIDER_API_KEY")
+    assert secret.alias == "PROVIDER_API_KEY"
+    assert secret.env_name is None
+    # After Phase 1 resolution, env_name is filled in
+    resolved = SecretRef(alias="PROVIDER_API_KEY", env_name="OPENAI_API_KEY")
+    assert resolved.env_name == "OPENAI_API_KEY"
 
     # CorrelationSpec: head_sha + sha_field (not field + value)
     corr = CorrelationSpec(head_sha=True, sha_field="first_code_block_sha")
@@ -459,6 +483,7 @@ _TESTS = [
     test_enum_string_values,
     test_normalized_stage_construction,
     test_normalized_stage_empty_dependencies,
+    test_invocation_params_immutable,
     test_execution_plan_requires_gate_disposition,
     test_execution_plan_valid,
     test_evidence_spec_construction,

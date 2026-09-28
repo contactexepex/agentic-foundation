@@ -9,31 +9,46 @@ from enum import Enum
 
 
 class StageKind(str, Enum):
-    """The category of work a stage performs."""
+    """The category of work a stage performs.
 
-    REVIEW = "review"
-    SECURITY = "security"
-    BUILD = "build"
-    TEST = "test"
-    DEPLOY = "deploy"
-    CUSTOM = "custom"
+    Values match the `type` enum in config.schema.json exactly.
+    """
+
+    PLAN = "plan"
     IMPLEMENT = "implement"
+    SECURITY = "security"
+    TEST = "test"
+    INTEGRATION_TEST = "integration-test"
+    REVIEW = "review"
+    DOCS = "docs"
+    RELEASE = "release"
+    CUSTOM = "custom"
 
 
 class StageGate(str, Enum):
-    """Whether a stage's conclusion blocks merge."""
+    """Whether a stage's conclusion blocks merge.
+
+    Values match the `gate` enum in config.schema.json exactly.
+    ADVISORY (formerly non_blocking) means a failure is surfaced but does not block merge.
+    """
 
     BLOCKING = "blocking"
-    NON_BLOCKING = "non_blocking"
+    ADVISORY = "advisory"
 
 
 class StageTrigger(str, Enum):
-    """Event that causes a stage to be invoked."""
+    """Event that causes a stage to be invoked.
+
+    Values match the `triggers` enum in config.schema.json exactly.
+    """
 
     PR_OPENED = "pr_opened"
     PR_UPDATED = "pr_updated"
     MANUAL = "manual"
     ISSUE_LABELED = "issue_labeled"
+    COMMENT_COMMAND = "comment_command"
+    PUSH = "push"
+    SCHEDULE = "schedule"
 
 
 class AuthorRole(str, Enum):
@@ -73,8 +88,11 @@ class InvocationKind(str, Enum):
     PR_COMMENT = "pr_comment"
     # Call the provider's API directly from a CI step.
     API_CALL = "api_call"
-    # Trigger a CI workflow by name/id.
-    WORKFLOW_DISPATCH = "workflow_dispatch"
+    # Trigger a CI pipeline/workflow by name or id.
+    # Platform renderers map this to the native trigger mechanism (e.g. workflow_dispatch on
+    # GitHub Actions, pipeline triggers on GitLab CI). The neutral name avoids embedding a
+    # GitHub event name in the platform-agnostic contract.
+    TRIGGER_PIPELINE = "trigger_pipeline"
     # Insert a native CI component (Action, GitLab component, etc.).
     # Platform-dependent; validated at render time.
     CI_COMPONENT = "ci_component"

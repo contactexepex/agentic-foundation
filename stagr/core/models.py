@@ -8,7 +8,8 @@ structures; their derivation logic lives in stagr/core/policy.py (Group C).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 from .enums import (
     AuthorRole,
@@ -65,11 +66,13 @@ class Invocation:
     """
 
     kind: InvocationKind
-    params: dict[str, Any] = field(default_factory=dict)
+    params: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        # Make params immutable for frozen dataclass compatibility.
-        object.__setattr__(self, "params", dict(self.params))
+        # Wrap in MappingProxyType so the exposed mapping is truly read-only.
+        # frozen=True prevents re-assignment of the attribute; MappingProxyType
+        # prevents mutation through the value itself (e.g. params["k"] = v).
+        object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
 
 
 @dataclass(frozen=True)
@@ -146,12 +149,17 @@ class EvidenceSpec:
 class SecretRef:
     """A backend-declared secret requirement.
 
-    `alias` is the backend-defined opaque name (e.g., "CODEX_API_KEY").
-    `env_name` is the resolved platform secret name (e.g., "OPENAI_API_KEY").
+    `alias` is the semantic, backend-defined name describing the credential's
+    capability (e.g., "PROVIDER_API_KEY", "TRUSTED_COMMENTER_TOKEN"). BackendRenderers
+    declare only `alias` — they must NOT set `env_name`.
+
+    `env_name` is the resolved platform secret name (e.g., "OPENAI_API_KEY"). It is
+    None when produced by a BackendRenderer and is filled in by the Phase 1 alias
+    resolution step (see issue #193) before being passed to the PlatformRenderer.
     """
 
     alias: str
-    env_name: str
+    env_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -186,9 +194,10 @@ class ExecutionPlan:
 class StageResultProvenance:
     """Expected publisher identity for governance verification.
 
-    On GitHub, this is the GitHub App installation ID or a stable workflow
-    identity that created the Check Run. The governance artifact must reject
-    any signal whose publisher identity does not match the rendered provenance.
+    A platform-neutral string identifying the trusted publisher of a stage's
+    result signal. The PlatformRenderer fills this with the platform-specific
+    identity (e.g., a GitHub App ID on GitHub). The governance artifact must
+    reject any signal whose publisher identity does not match.
     """
 
     publisher_identity: str
