@@ -109,6 +109,21 @@ from neutral_core_tests.test_policy_routing import (
     test_routing_policy_routing_present_no_fast_path_key,
     test_routing_policy_absent_enabled_key_uses_default,
 )
+from neutral_core_tests.test_policy_trust import (
+    test_trust_policy_dogfood_config,
+    test_trust_policy_default_fork_policy_is_deny,
+    test_trust_policy_explicit_fork_policy,
+    test_trust_policy_default_human_merge_label,
+    test_trust_policy_custom_human_merge_label,
+    test_trust_policy_contributor_not_in_defaults,
+    test_trust_policy_absent_trusted_roles_key_uses_default,
+    test_trust_policy_unrecognized_role_raises,
+    test_trust_policy_unrecognized_role_names_bad_value,
+    test_trust_policy_absent_platform_section,
+    test_trust_policy_empty_trusted_roles,
+    test_trust_policy_returns_trust_policy_instance,
+    test_trust_policy_result_is_frozen,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -186,6 +201,19 @@ _TESTS = [
     test_routing_policy_no_error_on_dormant_config,
     test_routing_policy_routing_present_no_fast_path_key,
     test_routing_policy_absent_enabled_key_uses_default,
+    test_trust_policy_dogfood_config,
+    test_trust_policy_default_fork_policy_is_deny,
+    test_trust_policy_explicit_fork_policy,
+    test_trust_policy_default_human_merge_label,
+    test_trust_policy_custom_human_merge_label,
+    test_trust_policy_contributor_not_in_defaults,
+    test_trust_policy_absent_trusted_roles_key_uses_default,
+    test_trust_policy_unrecognized_role_raises,
+    test_trust_policy_unrecognized_role_names_bad_value,
+    test_trust_policy_absent_platform_section,
+    test_trust_policy_empty_trusted_roles,
+    test_trust_policy_returns_trust_policy_instance,
+    test_trust_policy_result_is_frozen,
 ]
 
 if __name__ == "__main__":

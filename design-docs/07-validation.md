@@ -99,6 +99,12 @@ resolvable: either an explicit mapping exists in provider configuration, or the 
 equals the platform secret name by convention. Static resolution means the alias is
 registered; run-time presence is checked by `stagr doctor`.
 
+### V-S14 — Trusted-role value validation
+
+Every string in `platform.trusted_roles` must be a recognised :class:`AuthorRole`
+value (``owner``, ``member``, ``collaborator``, ``contributor``). An unrecognised
+string is a hard static error.
+
 ---
 
 ## Environment validation (`stagr doctor`)
