@@ -51,7 +51,9 @@ from neutral_core_tests.github_platform_renderer_tests.test_routing_workflow imp
     test_all_paths_match_classifies_as_fast,
     test_any_path_mismatch_classifies_as_normal,
     test_routing_workflow_first_step_references_private_key_secret,
-    test_fast_path_configured_workflow_embeds_patterns_as_json_constant,
+    test_fast_path_configured_workflow_embeds_patterns_as_base64_constant,
+    test_routing_workflow_changed_files_step_aggregates_pages_safely,
+    test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern,
 )
 
 GITHUB_PLATFORM_RENDERER_TESTS = [
@@ -95,7 +97,9 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_all_paths_match_classifies_as_fast,
     test_any_path_mismatch_classifies_as_normal,
     test_routing_workflow_first_step_references_private_key_secret,
-    test_fast_path_configured_workflow_embeds_patterns_as_json_constant,
+    test_fast_path_configured_workflow_embeds_patterns_as_base64_constant,
+    test_routing_workflow_changed_files_step_aggregates_pages_safely,
+    test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern,
 ]
 
 __all__ = [
@@ -140,5 +144,7 @@ __all__ = [
     "test_all_paths_match_classifies_as_fast",
     "test_any_path_mismatch_classifies_as_normal",
     "test_routing_workflow_first_step_references_private_key_secret",
-    "test_fast_path_configured_workflow_embeds_patterns_as_json_constant",
+    "test_fast_path_configured_workflow_embeds_patterns_as_base64_constant",
+    "test_routing_workflow_changed_files_step_aggregates_pages_safely",
+    "test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern",
 ]

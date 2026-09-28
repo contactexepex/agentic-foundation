@@ -18,6 +18,7 @@ call. The App token is never written to GITHUB_OUTPUT or any artifact.
 """
 from __future__ import annotations
 
+import base64
 import json
 
 from stagr.core.models import FastPathPolicy
@@ -206,7 +207,8 @@ def _build_changed_files_step(app_token_output_expr: str) -> str:
         f"        run: |\n"
         f"          set -euo pipefail\n"
         f"          files_json=$(gh api \"repos/${{GITHUB_REPOSITORY}}/pulls/${{PR_NUMBER}}/files\" \\\n"
-        f"            --paginate --jq '[.[].filename] | @json')\n"
+        f"            --paginate --slurp \\\n"
+        f"            | jq -c '[.[][].filename]')\n"
         f'          echo "files_json=${{files_json}}" >> "$GITHUB_OUTPUT"\n'
     )
 
@@ -214,23 +216,26 @@ def _build_changed_files_step(app_token_output_expr: str) -> str:
 def _build_classify_step(patterns_json: str) -> str:
     """Return the YAML block for the step that classifies the route from changed files.
 
-    Embeds the fast_path patterns as a JSON constant and runs inline Python to
-    classify the route. Using ``fnmatch.fnmatch``, which treats ``*`` and ``**``
-    as matching any characters including path separators, implements the same
-    semantics as ``classify_route_from_changed_files``.
+    Embeds the fast_path patterns as a base64-encoded constant and runs inline Python
+    to classify the route. Base64 encoding is used so that glob patterns containing
+    apostrophes (e.g. ``docs/o'hare/**``) cannot break YAML single-quoted scalar syntax.
+    Using ``fnmatch.fnmatch``, which treats ``*`` and ``**`` as matching any characters
+    including path separators, implements the same semantics as
+    ``classify_route_from_changed_files``.
     """
+    patterns_b64 = base64.b64encode(patterns_json.encode()).decode()
     return (
         f"      - name: Classify route\n"
         f"        id: classify\n"
         f"        env:\n"
         f'          FILES_JSON: "${{{{ steps.changed-files.outputs.files_json }}}}"\n'
-        f"          FAST_PATH_PATTERNS_JSON: '{patterns_json}'\n"
+        f"          FAST_PATH_PATTERNS_B64: '{patterns_b64}'\n"
         f"        run: |\n"
         f"          set -euo pipefail\n"
         f"          python3 - <<'PYEOF'\n"
-        f"          import fnmatch, json, os\n"
+        f"          import base64, fnmatch, json, os\n"
         f"          files = json.loads(os.environ['FILES_JSON'])\n"
-        f"          patterns = json.loads(os.environ['FAST_PATH_PATTERNS_JSON'])\n"
+        f"          patterns = json.loads(base64.b64decode(os.environ['FAST_PATH_PATTERNS_B64']).decode())\n"
         f"          def matches_any_pattern(file_path):\n"
         f"              return any(fnmatch.fnmatch(file_path, pat) for pat in patterns)\n"
         f"          is_fast = bool(files) and all(matches_any_pattern(fp) for fp in files)\n"

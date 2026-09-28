@@ -105,28 +105,78 @@ def test_routing_workflow_first_step_references_private_key_secret() -> None:
     )
 
 
-def test_fast_path_configured_workflow_embeds_patterns_as_json_constant() -> None:
-    """When fast_path is configured the routing workflow embeds patterns as a JSON literal."""
+def test_fast_path_configured_workflow_embeds_patterns_as_base64_constant() -> None:
+    """When fast_path is configured the routing workflow embeds patterns as a base64 constant."""
     fast_path_policy = FastPathPolicy(
         match=PathMatchSpec(paths=("docs/*", "*.md")),
         stages=RouteStageMap(fast=(), normal=("review",)),
     )
-    routing_workflow_yaml = generate_routing_workflow_yaml(
+    yaml = generate_routing_workflow_yaml(
         fast_path_policy=fast_path_policy,
         publisher_app_id="99001",
         publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
     )
-    # Both patterns must appear as embedded JSON constants.
-    assert '"docs/*"' in routing_workflow_yaml, (
-        "fast_path configured workflow must embed 'docs/*' pattern as a JSON constant"
+    # Patterns must be embedded as a base64 env var, not raw JSON.
+    assert "FAST_PATH_PATTERNS_B64" in yaml, (
+        "fast_path configured workflow must embed patterns as FAST_PATH_PATTERNS_B64"
     )
-    assert '"*.md"' in routing_workflow_yaml, (
-        "fast_path configured workflow must embed '*.md' pattern as a JSON constant"
+    # The inline script must decode from base64.
+    assert "base64" in yaml, (
+        "fast_path configured workflow classify step must reference base64 for decoding"
     )
     # Changed-files retrieval and classification steps must be present.
-    assert "Get changed file paths" in routing_workflow_yaml, (
+    assert "Get changed file paths" in yaml, (
         "fast_path configured workflow must include a changed-files retrieval step"
     )
-    assert "Classify route" in routing_workflow_yaml, (
+    assert "Classify route" in yaml, (
         "fast_path configured workflow must include a route classification step"
+    )
+
+
+def test_routing_workflow_changed_files_step_aggregates_pages_safely() -> None:
+    """Changed-files step uses --paginate --slurp piped to jq, not --paginate --jq."""
+    fast_path_policy = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/*",)),
+        stages=RouteStageMap(fast=(), normal=("review",)),
+    )
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=fast_path_policy,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "--paginate --slurp" in yaml_content, (
+        "Changed-files step must use '--paginate --slurp' to aggregate all pages into "
+        "one JSON value before extracting filenames; '--paginate --jq' runs jq per page "
+        "and concatenates arrays, breaking json.loads"
+    )
+    assert "| jq" in yaml_content, (
+        "Changed-files step must pipe slurped output to jq for filename extraction"
+    )
+    assert "--paginate --jq" not in yaml_content, (
+        "Changed-files step must not use '--paginate --jq' which processes each page "
+        "independently and produces concatenated JSON that is invalid for json.loads"
+    )
+
+
+def test_routing_workflow_classify_step_handles_apostrophe_in_glob_pattern() -> None:
+    """Routing workflow generates safe YAML when a glob pattern contains an apostrophe."""
+    fast_path_policy = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/o'hare/**",)),
+        stages=RouteStageMap(fast=(), normal=("review",)),
+    )
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=fast_path_policy,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "FAST_PATH_PATTERNS_B64" in yaml_content, (
+        "Classify step must embed patterns as FAST_PATH_PATTERNS_B64 (base64-encoded) "
+        "to avoid YAML single-quoted-scalar breakage for apostrophe-containing globs"
+    )
+    assert "base64.b64decode" in yaml_content, (
+        "Classify step Python script must decode patterns from base64"
+    )
+    assert "o'hare" not in yaml_content, (
+        "The raw apostrophe-containing path must not appear unescaped in the YAML scalar; "
+        "base64 encoding must transport the patterns safely"
     )
