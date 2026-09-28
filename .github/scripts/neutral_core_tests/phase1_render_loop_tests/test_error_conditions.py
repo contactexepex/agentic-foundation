@@ -77,3 +77,48 @@ def test_phase1_unresolvable_alias_raises_before_platform_renderer() -> None:
         "PlatformRenderer.render_stage must NOT be called when alias resolution fails; "
         f"was called {len(platform_renderer.render_stage_calls)} time(s)"
     )
+
+
+def test_phase1_mismatched_stage_result_id_raises_value_error() -> None:
+    """run_phase1 raises ValueError when PlatformRenderer returns wrong stage_id."""
+    from stagr.core.render_loop import run_phase1
+    from stagr.core.backend_renderer_registry import BackendRendererRegistry
+    from neutral_core_tests.phase1_render_loop_tests.helpers import (
+        build_execution_plan,
+        build_stage_result_spec,
+    )
+
+    stage = build_stage("correct-stage-id")
+    render_context = build_minimal_render_context([stage])
+
+    class _MismatchingPlatformRenderer:
+        def render_stage(self, plan, stage_arg, ctx):
+            return build_stage_result_spec("wrong-stage-id")
+
+        def render_routing(self, ctx) -> None:
+            pass
+
+        def render_governance(self, specs, ctx) -> None:
+            pass
+
+    class _IdentityBackendRenderer:
+        provider = "testprovider"
+        backend = "testbackend"
+
+        def render(self, stage_arg):
+            return build_execution_plan(stage_arg.id)
+
+    registry = BackendRendererRegistry()
+    registry.register(_IdentityBackendRenderer())
+    provider_config: dict = {}
+
+    raised = False
+    try:
+        run_phase1(render_context, registry, _MismatchingPlatformRenderer(), provider_config)
+    except ValueError:
+        raised = True
+
+    assert raised, (
+        "Expected ValueError when PlatformRenderer returns a StageResultSpec "
+        "with a stage_id that does not match the stage being processed"
+    )

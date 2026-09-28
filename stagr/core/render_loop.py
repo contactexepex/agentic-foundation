@@ -106,6 +106,13 @@ def run_phase1(
         stage_result_spec: StageResultSpec = platform_renderer.render_stage(
             resolved_plan, stage, context
         )
+        if stage_result_spec.stage_id != stage.id:
+            raise ValueError(
+                f"PlatformRenderer returned a StageResultSpec with stage_id "
+                f"{stage_result_spec.stage_id!r} but was called for stage "
+                f"{stage.id!r}; the renderer must return a result for the "
+                f"stage it received."
+            )
         stage_result_specs.append(stage_result_spec)
 
     return stage_result_specs
