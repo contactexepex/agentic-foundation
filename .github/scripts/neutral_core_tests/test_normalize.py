@@ -294,14 +294,16 @@ def test_expand_profile_defaults_standard_includes_all_profile_stages() -> None:
 
 
 def test_expand_profile_defaults_nested_lists_are_not_shared() -> None:
-    """Mutating a nested list in one expansion result does not affect subsequent expansions.
+    """Mutating nested lists in expansion results does not pollute defaults or operator input.
 
-    Regression test for the mutable-reference bug: dict() produces only a shallow copy,
-    so nested lists such as 'triggers' and 'dependencies' would alias the module-level
-    _PROFILE_STAGE_DEFAULTS entries. This test verifies that deep copying is used.
+    Covers two aliasing paths:
+    1. Profile defaults: dict(stage_def) shallow-copies module-level data.
+    2. Operator input: dict(stage) shallow-copies caller-supplied dicts.
+    Both must use deep copies so returned nested containers are fully isolated.
     """
     from stagr.core.normalize import expand_profile_defaults
 
+    # --- path 1: profile defaults isolation ---
     first_result = expand_profile_defaults("standard", [])
     first_review = next(s for s in first_result if s["id"] == "review")
 
@@ -316,4 +318,16 @@ def test_expand_profile_defaults_nested_lists_are_not_shared() -> None:
     )
     assert second_review["dependencies"] == [], (
         f"Module-level dependencies were mutated via first result: {second_review['dependencies']}"
+    )
+
+    # --- path 2: operator input isolation ---
+    operator_stage = {"id": "review", "triggers": ["pr_opened"]}
+    operator_input = [operator_stage]
+    expansion_result = expand_profile_defaults("standard", operator_input)
+    expanded_review = next(s for s in expansion_result if s["id"] == "review")
+
+    expanded_review["triggers"].append("manual")
+
+    assert operator_stage["triggers"] == ["pr_opened"], (
+        f"Operator input triggers were mutated via expansion result: {operator_stage['triggers']}"
     )

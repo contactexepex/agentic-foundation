@@ -193,5 +193,5 @@ def _validate_and_copy_explicit_stages(
                 "each stage must have a unique id"
             )
         seen_ids.add(stage_id)
-        result.append(dict(stage))
+        result.append(copy.deepcopy(stage))
     return result
