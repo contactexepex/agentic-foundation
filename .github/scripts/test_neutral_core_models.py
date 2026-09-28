@@ -52,6 +52,7 @@ from neutral_core_tests.test_normalize import (
     test_expand_profile_defaults_is_idempotent,
     test_expand_profile_defaults_does_not_mutate_input,
     test_expand_profile_defaults_standard_includes_all_profile_stages,
+    test_expand_profile_defaults_nested_lists_are_not_shared,
 )
 
 _TESTS = [
@@ -84,6 +85,7 @@ _TESTS = [
     test_expand_profile_defaults_is_idempotent,
     test_expand_profile_defaults_does_not_mutate_input,
     test_expand_profile_defaults_standard_includes_all_profile_stages,
+    test_expand_profile_defaults_nested_lists_are_not_shared,
 ]
 
 if __name__ == "__main__":

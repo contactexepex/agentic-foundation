@@ -131,7 +131,7 @@ def test_expand_profile_defaults_minimal_shape() -> None:
     assert review["skill"] == "code-review"
     assert review["gate"] == "blocking"
     assert review["triggers"] == ["pr_opened", "pr_updated"]
-    assert review["depends_on"] == []
+    assert review["dependencies"] == []
 
 
 def test_expand_profile_defaults_standard_shape() -> None:
@@ -149,14 +149,14 @@ def test_expand_profile_defaults_standard_shape() -> None:
     assert review["skill"] == "code-review"
     assert review["gate"] == "blocking"
     assert review["triggers"] == ["pr_opened", "pr_updated"]
-    assert review["depends_on"] == []
+    assert review["dependencies"] == []
 
     assert security["type"] == "security"
     assert security["provider"] == "openai"
     assert security["skill"] == "security-review"
     assert security["gate"] == "blocking"
     assert security["triggers"] == ["pr_opened", "pr_updated"]
-    assert security["depends_on"] == []
+    assert security["dependencies"] == []
 
 
 def test_expand_profile_defaults_standard_fills_missing_fields() -> None:
@@ -171,7 +171,7 @@ def test_expand_profile_defaults_standard_fills_missing_fields() -> None:
     assert review_stage.get("gate") == "blocking"
     assert review_stage.get("skill") == "code-review"
     assert review_stage.get("triggers") == ["pr_opened", "pr_updated"]
-    assert review_stage.get("depends_on") == []
+    assert review_stage.get("dependencies") == []
 
 
 def test_expand_profile_defaults_custom_adds_no_fields() -> None:
@@ -291,3 +291,29 @@ def test_expand_profile_defaults_standard_includes_all_profile_stages() -> None:
     assert "review" in output_ids, "standard profile 'review' stage must be in output"
     assert "security" in output_ids, "standard profile 'security' stage must be in output"
     assert len(output_ids) == 2, f"standard profile must produce exactly 2 stages, got {output_ids}"
+
+
+def test_expand_profile_defaults_nested_lists_are_not_shared() -> None:
+    """Mutating a nested list in one expansion result does not affect subsequent expansions.
+
+    Regression test for the mutable-reference bug: dict() produces only a shallow copy,
+    so nested lists such as 'triggers' and 'dependencies' would alias the module-level
+    _PROFILE_STAGE_DEFAULTS entries. This test verifies that deep copying is used.
+    """
+    from stagr.core.normalize import expand_profile_defaults
+
+    first_result = expand_profile_defaults("standard", [])
+    first_review = next(s for s in first_result if s["id"] == "review")
+
+    first_review["triggers"].append("manual")
+    first_review["dependencies"].append("some-stage")
+
+    second_result = expand_profile_defaults("standard", [])
+    second_review = next(s for s in second_result if s["id"] == "review")
+
+    assert second_review["triggers"] == ["pr_opened", "pr_updated"], (
+        f"Module-level triggers were mutated via first result: {second_review['triggers']}"
+    )
+    assert second_review["dependencies"] == [], (
+        f"Module-level dependencies were mutated via first result: {second_review['dependencies']}"
+    )

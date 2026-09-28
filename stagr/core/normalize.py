@@ -2,10 +2,10 @@
 
 This module implements the first two steps of the normalization pipeline:
 
-1. **Disabled-stage removal** (``filter_disabled_stages``): removes stages with
-   ``enabled: false`` before any further processing.
-2. **Profile expansion** (``expand_profile_defaults``): merges profile-defined
+1. **Profile expansion** (``expand_profile_defaults``): merges profile-defined
    stage defaults with the operator's explicit stage list.
+2. **Disabled-stage removal** (``filter_disabled_stages``): removes stages with
+   ``enabled: false`` after profile expansion and operator override merging.
 
 Both functions run before backend/model resolution, dependency graph construction,
 policy derivation, and ``NormalizedStage[]`` production.
@@ -14,6 +14,7 @@ Design source: design-docs/02-canonical-stage-model.md
 """
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 
@@ -67,7 +68,7 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "skill": "code-review",
             "gate": "blocking",
             "triggers": ["pr_opened", "pr_updated"],
-            "depends_on": [],
+            "dependencies": [],
         },
     ],
     "standard": [
@@ -78,7 +79,7 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "skill": "code-review",
             "gate": "blocking",
             "triggers": ["pr_opened", "pr_updated"],
-            "depends_on": [],
+            "dependencies": [],
         },
         {
             "id": "security",
@@ -87,7 +88,7 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "skill": "security-review",
             "gate": "blocking",
             "triggers": ["pr_opened", "pr_updated"],
-            "depends_on": [],
+            "dependencies": [],
         },
     ],
     "custom": [],
@@ -158,7 +159,7 @@ def expand_profile_defaults(
     profile_stage_list = _PROFILE_STAGE_DEFAULTS[profile_name]
 
     stage_map: dict[str, dict[str, Any]] = {
-        stage_def["id"]: dict(stage_def) for stage_def in profile_stage_list
+        stage_def["id"]: copy.deepcopy(stage_def) for stage_def in profile_stage_list
     }
     output_ordering: list[str] = [stage_def["id"] for stage_def in profile_stage_list]
 
