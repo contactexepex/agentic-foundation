@@ -206,7 +206,10 @@ def _resolve_alias_statically(
     return None
 
 
-def _validate_secret_alias_resolution(cfg: dict[str, Any]) -> None:
+def _validate_secret_alias_resolution(
+    cfg: dict[str, Any],
+    renderer_registry: Any = None,
+) -> None:
     """V-S12: verify that every BackendRenderer-declared alias resolves to an env_name.
 
     For each active stage in the config, the registered BackendRenderer is invoked
@@ -217,6 +220,12 @@ def _validate_secret_alias_resolution(cfg: dict[str, Any]) -> None:
 
     Resolution is purely static: only the ``providers`` block of the config is
     consulted — no GitHub API call, no network access, no repository-secret lookup.
+
+    ``renderer_registry`` is accepted as an optional override for the registry used
+    to look up BackendRenderers.  When ``None`` (the default), the two built-in
+    renderers (AnthropicClaudeBackendRenderer and OpenAICodexBackendRenderer) are
+    registered automatically.  Pass a custom registry in tests to exercise code paths
+    that the built-in renderers cannot reach (e.g. an unresolvable alias).
 
     Callers (``_validate_semantics``) catch ``SecretAliasResolutionError`` and
     re-raise as ``RenderError`` so the error surfaces in the standard validation
@@ -232,9 +241,12 @@ def _validate_secret_alias_resolution(cfg: dict[str, Any]) -> None:
     from stagr.core.renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
     from stagr.core.errors import SecretAliasResolutionError as _CoreSecretError
 
-    local_registry = BackendRendererRegistry()
-    local_registry.register(AnthropicClaudeBackendRenderer())
-    local_registry.register(OpenAICodexBackendRenderer())
+    if renderer_registry is None:
+        local_registry = BackendRendererRegistry()
+        local_registry.register(AnthropicClaudeBackendRenderer())
+        local_registry.register(OpenAICodexBackendRenderer())
+    else:
+        local_registry = renderer_registry
 
     normalized_stages = normalize_config(cfg)
 

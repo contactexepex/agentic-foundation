@@ -262,6 +262,80 @@ def _test_resolve_alias_unknown_returns_none() -> bool:
     return result is None
 
 
+def _test_v_s12_unresolvable_alias_raises_error_with_alias_and_stage() -> bool:
+    """_validate_secret_alias_resolution raises SecretAliasResolutionError for an unresolvable alias.
+
+    Exercises the ``if env_name is None: raise _CoreSecretError(...)`` branch in
+    ``_validate_secret_alias_resolution``.  The built-in renderers cannot trigger
+    this branch because all their aliases have convention fallbacks, so a synthetic
+    stub renderer is injected via the optional ``renderer_registry`` parameter.
+
+    Asserts that the raised error names both the unresolvable alias and the stage id,
+    satisfying the V-S12 acceptance criterion: "SecretAliasResolutionError naming the
+    alias and stage."
+    """
+    from stagr.core.backend_renderer_registry import BackendRendererRegistry
+    from stagr.core.enums import GateDispositionKind, InvocationKind
+    from stagr.core.errors import SecretAliasResolutionError
+    from stagr.core.models import (
+        ExecutionPlan,
+        GateDispositionSpec,
+        Invocation,
+        NormalizedStage,
+        SecretRef,
+    )
+    from stagr.render.config import _validate_secret_alias_resolution
+
+    _STUB_PROVIDER = "stub_provider"
+    _STUB_BACKEND = "stub_backend"
+    _UNRESOLVABLE_ALIAS = "UNRESOLVABLE_ALIAS_FOR_VS12"
+    _STUB_STAGE_ID = "stub_stage"
+
+    class _StubBackendRenderer:
+        """Minimal stub that declares a SecretRef alias with no convention fallback."""
+
+        provider: str = _STUB_PROVIDER
+        backend: str = _STUB_BACKEND
+
+        def render(self, stage: NormalizedStage) -> ExecutionPlan:
+            return ExecutionPlan(
+                stage_id=stage.id,
+                invocation=Invocation(kind=InvocationKind.CI_COMPONENT, params={}),
+                gate_disposition=GateDispositionSpec(
+                    kind=GateDispositionKind.ALWAYS_PASS,
+                    selector="always",
+                ),
+                required_secrets=(SecretRef(alias=_UNRESOLVABLE_ALIAS),),
+            )
+
+    stub_registry = BackendRendererRegistry()
+    stub_registry.register(_StubBackendRenderer())
+
+    cfg: dict = {
+        "version": 2,
+        "profile": "custom",
+        "platform": {"type": "github", "default_branch": "main"},
+        "defaults": {"provider": _STUB_PROVIDER, "models": {}},
+        "routing": {"fast_path": {"enabled": False}},
+        "stages": [
+            {
+                "id": _STUB_STAGE_ID,
+                "type": "implement",
+                "provider": _STUB_PROVIDER,
+                "backend": _STUB_BACKEND,
+                "gate": "advisory",
+            }
+        ],
+    }
+
+    try:
+        _validate_secret_alias_resolution(cfg, renderer_registry=stub_registry)
+        return False  # expected an error — test fails if none raised
+    except SecretAliasResolutionError as exc:
+        error_message = str(exc)
+        return _UNRESOLVABLE_ALIAS in error_message and _STUB_STAGE_ID in error_message
+
+
 # ---------------------------------------------------------------------------
 # Test runner
 # ---------------------------------------------------------------------------
@@ -328,4 +402,8 @@ def test_static_validation() -> None:
     check(
         _test_resolve_alias_unknown_returns_none(),
         "V-S12: unknown alias with no mapping returns None",
+    )
+    check(
+        _test_v_s12_unresolvable_alias_raises_error_with_alias_and_stage(),
+        "V-S12: _validate_secret_alias_resolution raises error naming alias and stage id",
     )
