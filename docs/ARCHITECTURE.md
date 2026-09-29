@@ -5,11 +5,11 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 **any SCM platform**, and **any language**.
 
 > **Scope note.** The contract described here is **generic** — it can express any stage type
-> (`plan`, `implement`, `security`, `test`, `review`, `docs`, `release`, `custom`). stagr's
+> (`implement`, `review`, `security`, `build`, `test`, `deploy`, `custom`). stagr's
 > **product scope**, however, is the **development lane** (approved story → merged PR). Planning
 > and CD/deploy are delivered by **separate sibling toolkits** that reuse this same contract, not
-> by stagr's reference lane. Read any single `plan … release` pipeline below as the *contract's*
-> reach across the toolkit family, not as stagr's own span. The authoritative, refined design and
+> by stagr's reference lane. The contract's reach across the toolkit family is wider than
+> stagr's own span. The authoritative, refined design and
 > roadmap live in [`stagr/`](stagr/README.md) — start with [`stagr/overview.md`](stagr/overview.md).
 
 ---
@@ -17,12 +17,12 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 ## 1. Mental model: a pipeline is a graph of stages
 
 A repository's agentic pipeline is an **ordered, extensible graph of stages**. Each
-**stage is one agent** in the SDLC/STLC — `plan`, `implement`, `security`, `test`,
-`integration-test`, `review`, `docs`, `release`, or `custom` — bound to:
+**stage is one agent** in the SDLC/STLC — `implement`, `review`, `security`, `build`, `test`,
+`deploy`, or `custom` — bound to:
 
 - a **provider + model** (the knob — `anthropic` or `openai` today; mix per stage),
 - a **backend** (the executor/tool; derived from the provider, overridable),
-- **triggers** (issue label, PR/MR opened/updated, comment command, push, schedule, manual),
+- **triggers** (issue label, PR/MR opened or updated, manual),
 - a **gate** (advisory = comment only; blocking = emits a required status check),
 - **dependencies** (`depends_on`) that define the graph edges.
 
@@ -30,9 +30,9 @@ A repository's agentic pipeline is an **ordered, extensible graph of stages**. E
 The same contract expresses a two-stage pipeline or a full SDLC of a dozen stages.
 
 ```
-issue ──▶ [plan] ──▶ [implement] ─┬─▶ [security]          ──┐
-                                   ├─▶ [integration-test]  ──┤─▶ gates ─▶ PR/MR ─▶ (auto_merge?) ─▶ human
-                                   └─▶ [review]            ──┘
+issue ──▶ [implement] ─┬─▶ [security] ──┐
+                     ├─▶ [test]     ──┤─▶ gates ─▶ PR/MR ─▶ human
+                     └─▶ [review]   ──┘
 ```
 
 ---
@@ -44,10 +44,10 @@ The toolkit is deliberately split so each concern can change without disturbing 
 | Layer | Responsibility | Configured by |
 |---|---|---|
 | **1. Contract** | Declarative, platform-neutral description of the pipeline. | `.agentic/config.yml` (this schema) |
-| **2. Provider adapters** | Talk to a model vendor (Claude / OpenAI / Gemini / local / gateway). Give true provider-agnosticism. | `providers`, `defaults.models`, `models.aliases` |
+| **2. Provider adapters** | Talk to a model vendor (Claude / OpenAI / Gemini / local / gateway). Give true provider-agnosticism. | `providers`, `defaults.models` |
 | **3. Agent tools** | Execute a stage. The tool is derived from the provider (`anthropic` → Claude Code, `openai` → Codex); roadmap adapters wrap other OSS agents. | `stages[].provider` (or `stages[].backend` to pin) |
 | **4. Platform/SCM adapters** | Render the neutral pipeline into a concrete CI system and normalize concepts (PR↔MR, roles, checks). | `platform` |
-| **5. Installer / CLI** | `init` / `doctor` / `plan` / `apply`: validate, render for the target platform, open the bootstrap PR/MR. | — |
+| **5. CLI** | Today only `stagr help`. Planned: `plan` (list the files a config produces), `apply` (write them), `init`, `doctor`. | — |
 
 The **contract never names a language, a vendor SDK, or a CI system directly** — those
 live in layers 2–4, so a repo swaps any of them by editing config, not workflows.
@@ -63,63 +63,57 @@ contract layer**: a stage names a **provider**, and the toolkit derives the codi
 (the *backend*) and wires it in. Normally a stage sets only `provider`; an explicit
 `backend` pins a tool or adopts a roadmap adapter.
 
-| Backend (tool) | Wraps | Derived from | Rendered today? |
+| Backend (tool) | Wraps | Derived from | Status |
 |---|---|---|---|
-| `claude-code-action` | Anthropic's Claude Code | `anthropic` | ✅ implement |
+| `claude-code-action` | Anthropic's Claude Code | `anthropic` | backend renderer exists; the GitHub renderer cannot render it yet (see below) |
+| `codex` | OpenAI Codex | `openai` | rendered on GitHub: review, security |
 | `claude-code-cli` | Anthropic's Claude Code (CLI runner) | — (override only) | roadmap |
-| `codex` | OpenAI Codex | `openai` | ✅ review, security |
-| `generic` | Built-in prompt-runner (provider adapter + prompt + tools) | — | roadmap |
 | `openhands` | OpenHands issue resolver | — | roadmap |
 | `swe-agent` | SWE-agent | — | roadmap |
 | `pr-agent` | Qodo/PR-Agent | — | roadmap |
-| `custom` | Any action ref / container image via `backend.uses` | — | roadmap |
 
-`backend.with` passes tool-specific inputs through unchanged. The tool follows the provider;
-an explicit `backend` override lets you pin one or adopt a roadmap adapter later without
-touching the rest of the pipeline.
+`backend` is a plain string. The tool follows the provider; an explicit `backend` override lets you
+pin one or adopt a roadmap adapter later without touching the rest of the pipeline.
+
+The GitHub renderer renders only backends that are started by a pull-request comment (the
+`PR_COMMENT` invocation kind, which is how Codex runs). The Claude Code implement backend needs a
+different kind (`CI_COMPONENT`), so validation (V-S08) rejects an `implement` stage on GitHub until
+that kind can be rendered.
 
 ---
 
-## 3a. Skills and agents — content vs. wiring
+## 3a. Skills — content vs. wiring
 
-Three distinct concepts, cleanly layered so the domain knowledge is reusable and portable:
+Two distinct concepts, cleanly layered so the domain knowledge is reusable and portable:
 
 | Concept | Is | Lives in | Referenced by |
 |---|---|---|---|
-| **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `stagr/templates/skills/<id>/SKILL.md` (+ your own via the `skills` registry) | `stages[].skill` |
-| **Agent preset** | A *pre-wired stage* — type + default skill + provider + gate + triggers, and an **optional** model binding (presets may omit it; the Anthropic implementer resolves via `defaults`, Codex supplies its own). | `stagr/templates/agents/<id>.yml` | `stages[].from` |
+| **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `.agentic/skills/<id>/SKILL.md` in your repo (reference copies ship in `stagr/templates/skills/<id>/`) | `stages[].skill` |
 | **Stage** | An agent *placed in the pipeline graph* (with `depends_on`, overrides). | `.agentic/config.yml` `stages[]` | the pipeline |
 
 Why the split:
 
-- **Skills are the crown jewel** — the portable domain knowledge. The `generic` backend consumes a
-  skill directly as its instructions; other backends' adapters map it to their own prompt/rule format,
-  so the *same* skill drives any backend.
-- **Layered & overridable** — register a skill by id, pin a `version`, or `extends` a built-in with a
-  house style; org→team→repo layering via `extends` applies to skills too.
-- **Agent presets** make profiles expand into *working* agents, and let a repo adopt a ready stage
-  with one line (`from: code-review`) then override only what it needs.
-- **No vendor/model assumptions** in a skill, and **no secrets** — skills are templates; guardrails
-  (untrusted-input handling) apply to everything a skill ingests.
+- **Skills are the crown jewel** — the portable domain knowledge. A backend adapter maps a skill to
+  its own prompt/rule format, so the *same* skill drives any backend.
+- **Profiles expand into working stages** that already name the right skill, so a repo adopts a
+  ready stage without writing one.
+- **No vendor/model assumptions** in a skill, and **no secrets** — skills are templates.
 
-Starter skills: `code-review`, `security-review` (with matching agent presets). The catalog grows
-(`planning`, `execution-plan`, `unit-test-authoring`, `integration-test`, `docs`, `release-notes`).
+Starter skills: `code-review`, `security-review`. Validation (V-S06) fails if a stage names a skill
+whose `SKILL.md` file is missing. The catalog may grow (`planning`, `execution-plan`,
+`unit-test-authoring`, `integration-test`, `docs`, `release-notes`).
 
 ## 4. Provider/model resolution
 
-Per stage, per change tier, the model resolves **most-specific-first**:
+Per stage, the model resolves **most-specific-first**:
 
-1. **Per-request override** (dispatch input / command)
-2. **Stage model** — `stages[].model.tiers.<tier>` → `.default`
-3. **Org/account default** — `defaults.models.<provider>.tiers.<tier>` → `.default`
+1. **Stage model** — `stages[].model.default`
+2. **Org/account default** — `defaults.models.<provider>.default`
 
-A resolved value that matches a `models.aliases` name expands to that alias's model ID
-for the stage's provider. `tier` (trivial/standard/complex) comes from the deterministic
-classifier (change size + paths) only when tiering is on. There is **no hidden toolkit
-fallback**: for an `anthropic` stage (Claude Code consumes a contract model), if none of layers 1–3
-yields a model the toolkit **fails loudly** and never guesses a version. An `openai` stage (Codex)
-supplies its own model, so the rule does not apply to it. This is how "same provider, different
-models" or "mix Anthropic and OpenAI" is expressed — independently per stage.
+There is **no hidden toolkit fallback**: for an `anthropic` stage (Claude Code consumes a contract
+model), if neither layer yields a model the toolkit **fails loudly** and never guesses a version. An
+`openai` stage (Codex) supplies its own model, so the rule does not apply to it. This is how "same
+provider, different models" or "mix Anthropic and OpenAI" is expressed — independently per stage.
 
 ---
 
@@ -127,7 +121,7 @@ models" or "mix Anthropic and OpenAI" is expressed — independently per stage.
 
 The contract is written once and rendered per platform. `platform.type` selects the
 renderer (`github` ships first; `gitlab`, `azure_devops`, `bitbucket`, `gitea` follow).
-`platform.host` supports self-hosted / enterprise. The renderer normalizes platform
+The renderer normalizes platform
 concepts:
 
 | Neutral concept | GitHub | GitLab | Azure DevOps |
@@ -143,11 +137,10 @@ The same `.agentic/config.yml` therefore drives any of them; only layer 4 differ
 
 ## 6. Easy vs. granular
 
-- **Newcomer:** set `profile` + `platform` (+ `build`). The profile expands to a default
-  stage graph. Model IDs come from `defaults` (or the org base via `extends`).
-- **Expert:** define `stages` explicitly — per-stage provider/model/tiers/backend/
-  triggers/gate/dependencies, per-stage budgets, custom backends, and org→team→repo
-  layering via `extends`.
+- **Newcomer:** set `profile` + `platform`. The profile expands to a default stage graph. Model IDs
+  come from `defaults`.
+- **Expert:** define `stages` explicitly — per-stage provider/model/backend/triggers/gate/
+  dependencies.
 
 Profiles and explicit stages compose: listed stages are **merged onto** the profile's
 (same id overrides), so you can accept the standard graph and tweak just one stage.
@@ -156,9 +149,8 @@ Profile expansions:
 
 | Profile | Stages |
 |---|---|
-| `minimal` | implement, review (advisory; humans merge) |
-| `standard` | implement, review (blocking), security (advisory) |
-| `full` | implement, security, test, integration-test, review |
+| `minimal` | review (blocking) |
+| `standard` | review (blocking), security (blocking) — independent, neither waits for the other |
 | `custom` | none — you define every stage |
 
 ---
@@ -166,22 +158,19 @@ Profile expansions:
 ## 7. Cross-cutting invariants
 
 - **Secrets** are referenced by **name** only; never logged, printed, stored, or placed
-  in config. Always redacted from observability output.
-- **Language-agnostic**: `build.commands` are the only definition of "green"; stages run
-  exactly those.
-- **Budgets, guardrails, observability** apply across stages (with per-stage overrides
-  where it makes sense) and adapt to whatever an org/team/user configures — nothing about
-  hosting, endpoints, or telemetry is hardcoded.
+  in config.
+- **Language-agnostic**: the contract never names a language. How a repo declares what "green"
+  means is designed in `design-docs/09-check-stages.md`; the config does not read it yet.
 
 ---
 
 ## 8. Status & roadmap
 
-- **M1 — contract layer (current):** schema, config template, docs. Platform-neutral,
-  stage-graph, profiles, provider/model resolution, backends, and cross-cutting policy
-  defined as the contract.
-- **M2 — GitHub renderer + generic backend:** installer renders the graph to GitHub
-  Actions; `generic` runner + `claude-code-action`/`pr-agent` adapters.
-- **M3 — CLI:** `doctor`, `plan`, `apply`.
-- **M4 — more backends & platforms:** OpenHands/Codex/SWE-agent adapters; `claude-code-cli`
+- **M1 — contract layer and neutral core (current):** schema, config validation, profiles,
+  provider/backend/model resolution, and the stage graph.
+- **M2 — GitHub renderer (current):** per-stage, routing, and governance (merge-gate) workflows built
+  from the graph. The renderer returns artifacts and never writes files.
+- **M3 — CLI:** `plan` and `apply` (issues #201, #202), `doctor` (issue #203), then `init`. Today the
+  only command is `help`.
+- **M4 — more backends & platforms:** OpenHands/SWE-agent/PR-Agent adapters; `claude-code-cli`
   backend; GitLab and Azure DevOps renderers.

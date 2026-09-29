@@ -12,10 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .enums import AuthorRole, ForkPolicy, MergeMode, StageGate
+from .enums import AuthorRole, ForkPolicy, StageGate
 from .models import (
     DiscussionPolicy,
-    ExternalGate,
     FastPathPolicy,
     MergePolicy,
     NormalizedStage,
@@ -25,10 +24,6 @@ from .models import (
     StaticValidationError,
     TrustPolicy,
 )
-
-_SONAR_CHECK_RUN_NAME = "sonarqubecloud"
-_SONAR_REQUIRED_PRESENCE = "when_present"
-_SONAR_REQUIRED_CONCLUSION = "success"
 
 _DEFAULT_HUMAN_MERGE_LABEL = "human-merge"
 _DEFAULT_TRUSTED_ROLES: tuple[AuthorRole, ...] = (
@@ -181,20 +176,9 @@ def derive_merge_policy(
       :attr:`~stagr.core.enums.StageGate.BLOCKING`.  Stages with
       ``gate == NON_BLOCKING`` and any disabled stage (removed before
       normalization) are absent.
-    - ``mode``: :attr:`~stagr.core.enums.MergeMode.AUTO` when
-      ``modules.auto_merge: true``; :attr:`~stagr.core.enums.MergeMode.MANUAL`
-      when the key is absent or ``false``.
     - ``require_head_bound``: always ``True`` in V1.
     - ``discussion_policy``: derived from ``merge.discussions.require_resolved``
       when the key is present; ``None`` otherwise.
-    - ``external_gates``: when ``modules.sonar: true``, a single
-      :class:`~stagr.core.models.ExternalGate` for ``sonarqubecloud`` is
-      included (``required_presence="when_present"``,
-      ``required_conclusion="success"``).  Absent check runs are tolerated
-      in V1 (fail-open).
-
-    V-S10 (non-empty ``blocking_stage_ids`` when ``auto_merge: true``) is NOT
-    enforced here; it belongs in the static validation pass.
 
     Parameters
     ----------
@@ -214,16 +198,12 @@ def derive_merge_policy(
         An immutable merge-policy dataclass.
     """
     blocking_stage_ids = _derive_blocking_stage_ids(normalized_stages)
-    mode = _derive_merge_mode(config)
     discussion_policy = _derive_discussion_policy(config)
-    external_gates = _derive_external_gates(config)
 
     return MergePolicy(
-        mode=mode,
         blocking_stage_ids=blocking_stage_ids,
         require_head_bound=True,
         discussion_policy=discussion_policy,
-        external_gates=external_gates,
     )
 
 
@@ -235,30 +215,9 @@ def _derive_blocking_stage_ids(
     )
 
 
-def _derive_merge_mode(config: dict[str, Any]) -> MergeMode:
-    modules_cfg: dict[str, Any] = config.get("modules", {}) or {}
-    if modules_cfg.get("auto_merge", False):
-        return MergeMode.AUTO
-    return MergeMode.MANUAL
-
-
 def _derive_discussion_policy(config: dict[str, Any]) -> DiscussionPolicy | None:
     merge_cfg: dict[str, Any] = config.get("merge", {}) or {}
     discussions_cfg: dict[str, Any] = merge_cfg.get("discussions", {}) or {}
     if "require_resolved" not in discussions_cfg:
         return None
     return DiscussionPolicy(require_resolved=bool(discussions_cfg["require_resolved"]))
-
-
-def _derive_external_gates(config: dict[str, Any]) -> tuple[ExternalGate, ...]:
-    modules_cfg: dict[str, Any] = config.get("modules", {}) or {}
-    gates: list[ExternalGate] = []
-    if modules_cfg.get("sonar", False):
-        gates.append(
-            ExternalGate(
-                check_run_name=_SONAR_CHECK_RUN_NAME,
-                required_presence=_SONAR_REQUIRED_PRESENCE,
-                required_conclusion=_SONAR_REQUIRED_CONCLUSION,
-            )
-        )
-    return tuple(gates)

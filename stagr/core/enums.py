@@ -71,13 +71,6 @@ class ForkPolicy(str, Enum):
     ALLOW_UNPRIVILEGED = "allow_unprivileged"
 
 
-class MergeMode(str, Enum):
-    """Whether the governance artifact auto-merges when all conditions are met."""
-
-    AUTO = "auto"
-    MANUAL = "manual"
-
-
 class InvocationKind(str, Enum):
     """How a BackendRenderer asks the platform to execute a stage."""
 

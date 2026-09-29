@@ -180,7 +180,6 @@ time.
 
 ```
 MergePolicy {
-  mode:             MergeMode
   blockingStageIds: string[]              // derived: all stages where gate == BLOCKING
   discussionPolicy: DiscussionPolicy | null  // null = no discussion requirement
   requireHeadBound: boolean               // true = all StageResultSignals must match current headSha
@@ -205,16 +204,9 @@ Platform mappings:
 
 When `discussionPolicy` is null, the merge gate does not check discussion state.
 
-### MergeMode
-
-| Value | Meaning |
-|---|---|
-| `AUTO` | Foundation lane: the governance artifact merges automatically when all conditions are met. No human approval required. |
-| `MANUAL` | Human-gated lane: the governance artifact enforces all conditions but does not merge. A human must merge. |
-
 ### Two merge lanes
 
-**Foundation lane (`mode: AUTO`):** For PRs that build or maintain the toolkit itself.
+**Foundation lane:** For PRs that build or maintain the toolkit itself.
 Merges automatically once all of the following are true:
 - PR is open, non-draft, same-repo, targets the default branch
 - Author association is in `TrustPolicy.trustedRoles`
@@ -229,8 +221,8 @@ Merges automatically once all of the following are true:
   open review discussions remain (checked via platform API — separate from `StageResultSignal`)
 - `RouteClassification.headSha` matches the current head SHA
 
-**Human-gated lane (`mode: MANUAL`):** Any PR that carries `TrustPolicy.humanMergeLabel`
-is automatically placed in the human-gated lane, regardless of `mode`. This is a hard
+**Human-gated lane:** Any PR that carries `TrustPolicy.humanMergeLabel`
+is automatically placed in the human-gated lane. This is a hard
 stop: the governance artifact enforces all conditions but does not auto-merge. A human
 must perform the merge.
 
@@ -271,4 +263,3 @@ The governance artifact passes if and only if all of the following hold:
 8. `discussionPolicy`: if `discussionPolicy` is non-null and `requireResolved` is true,
    zero open review discussions remain (checked via platform discussion API — a separate
    governance condition not derived from `StageResultSignal`)
-9. `mode = AUTO` (if `MANUAL`, stop here and require human merge)

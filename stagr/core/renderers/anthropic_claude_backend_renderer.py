@@ -9,6 +9,7 @@ Phase 1 alias-resolution step (see issue #193) before the PlatformRenderer is in
 """
 from __future__ import annotations
 
+from stagr.core.backend_names import BACKEND_CLAUDE_CODE_ACTION, PROVIDER_ANTHROPIC
 from stagr.core.enums import GateDispositionKind, InvocationKind
 from stagr.core.models import (
     ExecutionPlan,
@@ -33,8 +34,8 @@ class AnthropicClaudeBackendRenderer:
     names.
     """
 
-    provider: str = "anthropic"
-    backend: str = "claude-code-action"
+    provider: str = PROVIDER_ANTHROPIC
+    backend: str = BACKEND_CLAUDE_CODE_ACTION
 
     def render(self, stage: NormalizedStage) -> ExecutionPlan:
         """Produce an ExecutionPlan for the given implement stage.

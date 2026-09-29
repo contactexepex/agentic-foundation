@@ -43,7 +43,8 @@ Stage workflow structure (see stage_workflow.py):
                  3. Idempotency guard and   — PR_COMMENT backends (spec: #205): one step checks the
                     backend invocation        completion guard and the in-flight lease, then posts
                                               the comment; holds only the TRUSTED_COMMENTER_TOKEN
-                                              secret. Other invocation kinds keep placeholder steps.
+                                              secret. Other invocation kinds keep placeholder steps
+                                              (V-S08 rejects them before a config is rendered).
                  4. Result signaling        — Check Run carrying the StageResultSignal (spec: #206);
                                               the only step that creates the Check Run
   reconcile job  issue_comment wakeup; updates the Check Run in place (spec: #206)
@@ -105,15 +106,11 @@ class GitHubPlatformRenderer:
     No method writes to the file system.
     """
 
-    # GitHub Actions supports all current InvocationKind values: native CI steps
-    # (CI_COMPONENT / Actions), pull-request comments (PR_COMMENT), direct API
-    # calls from a workflow step (API_CALL), and workflow_dispatch triggers
-    # (WORKFLOW_DISPATCH).
+    # Only the invocation kinds the stage workflow really performs are declared. A backend whose
+    # plan uses another kind (CI_COMPONENT, API_CALL, WORKFLOW_DISPATCH) is rejected by V-S08
+    # instead of being rendered as a workflow that would report PASS without doing the work.
     SUPPORTED_INVOCATION_KINDS: frozenset[InvocationKind] = frozenset({
         InvocationKind.PR_COMMENT,
-        InvocationKind.API_CALL,
-        InvocationKind.CI_COMPONENT,
-        InvocationKind.WORKFLOW_DISPATCH,
     })
 
     def __init__(

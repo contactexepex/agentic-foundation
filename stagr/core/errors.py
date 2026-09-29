@@ -3,6 +3,9 @@
 ``ConfigVersionError`` is raised by ``parse_config`` (V-S02) when the version
 field in a config file is not the supported integer 2.
 
+``ConfigSchemaError`` is raised by ``validate_config`` when the config does not conform to
+``stagr/config.schema.json``.
+
 ``SecretAliasResolutionError`` is raised during the Phase 1 rendering loop. It
 is distinct from normalization-time errors (``ConfigError``,
 ``StaticValidationError`` in models.py) because it occurs after the normalized
@@ -29,6 +32,14 @@ class ConfigVersionError(ValueError):
             f"unsupported config version {found_version!r}; "
             "the only supported version is 2 (integer)"
         )
+
+
+class ConfigSchemaError(ValueError):
+    """Raised when the config does not conform to ``stagr/config.schema.json``.
+
+    The message lists every violation as ``<path>: <problem>``; the value of a
+    ``*_secret`` field is never included (see ``describe_schema_error``).
+    """
 
 
 class SecretAliasResolutionError(Exception):

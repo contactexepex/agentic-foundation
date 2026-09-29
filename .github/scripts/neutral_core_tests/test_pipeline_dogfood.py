@@ -19,62 +19,30 @@ def _load_dogfood_config() -> dict:
         return yaml.safe_load(config_file)
 
 
-def test_pipeline_dogfood_config_produces_three_stages() -> None:
-    """The dogfood config has 4 declared stages; 1 is disabled → exactly 3 active."""
+def test_pipeline_dogfood_config_produces_two_stages() -> None:
+    """The dogfood config declares exactly two stages, review and security → exactly 2 active."""
     from stagr.core.pipeline import normalize_config
 
     config = _load_dogfood_config()
     result = normalize_config(config)
 
-    assert len(result) == 3, (
-        f"Expected 3 NormalizedStage objects from dogfood config, got {len(result)}: "
+    assert len(result) == 2, (
+        f"Expected 2 NormalizedStage objects from dogfood config, got {len(result)}: "
         f"{[s.id for s in result]}"
     )
 
 
 def test_pipeline_dogfood_config_stage_ids_present() -> None:
-    """Active stage ids include implement-claude, review, and security."""
+    """Active stage ids are exactly review and security."""
     from stagr.core.pipeline import normalize_config
 
     config = _load_dogfood_config()
     result = normalize_config(config)
 
     actual_ids = {stage.id for stage in result}
-    expected_ids = {"implement-claude", "review", "security"}
+    expected_ids = {"review", "security"}
     assert actual_ids == expected_ids, (
         f"Expected stage ids {expected_ids}, got {actual_ids}"
-    )
-
-
-def test_pipeline_dogfood_config_implement_claude() -> None:
-    """implement-claude stage has the exact field values from the acceptance criteria."""
-    from stagr.core.enums import StageGate, StageKind, StageTrigger
-    from stagr.core.pipeline import normalize_config
-
-    config = _load_dogfood_config()
-    result = normalize_config(config)
-
-    matching = [s for s in result if s.id == "implement-claude"]
-    assert matching, "Expected 'implement-claude' stage in pipeline output"
-    stage = matching[0]
-
-    assert stage.kind is StageKind.IMPLEMENT, (
-        f"implement-claude kind: expected IMPLEMENT, got {stage.kind}"
-    )
-    assert stage.provider == "anthropic", (
-        f"implement-claude provider: expected 'anthropic', got {stage.provider!r}"
-    )
-    assert stage.skill is None, (
-        f"implement-claude skill: expected None, got {stage.skill!r}"
-    )
-    assert stage.gate is StageGate.NON_BLOCKING, (
-        f"implement-claude gate: expected NON_BLOCKING, got {stage.gate}"
-    )
-    assert stage.triggers == (StageTrigger.MANUAL,), (
-        f"implement-claude triggers: expected (MANUAL,), got {stage.triggers}"
-    )
-    assert stage.dependencies == (), (
-        f"implement-claude dependencies: expected (), got {stage.dependencies}"
     )
 
 
@@ -156,20 +124,14 @@ def test_pipeline_dogfood_config_no_enabled_field() -> None:
 
 
 def test_pipeline_dogfood_config_backend_derived_from_provider() -> None:
-    """Backend is derived from PROVIDER_TOOL when not set per-stage in the dogfood config."""
+    """Backend is derived from the provider default when not set per-stage in the dogfood config."""
     from stagr.core.pipeline import normalize_config
-    from stagr.render.constants import BACKEND_CLAUDE_ACTION, BACKEND_CODEX
+    from stagr.core.backend_names import BACKEND_CODEX
 
     config = _load_dogfood_config()
     result = normalize_config(config)
 
     stages_by_id = {s.id: s for s in result}
-
-    implement_claude = stages_by_id["implement-claude"]
-    assert implement_claude.backend == BACKEND_CLAUDE_ACTION, (
-        f"implement-claude backend: expected '{BACKEND_CLAUDE_ACTION}', "
-        f"got {implement_claude.backend!r}"
-    )
 
     review = stages_by_id["review"]
     assert review.backend == BACKEND_CODEX, (

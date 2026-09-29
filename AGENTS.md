@@ -5,6 +5,13 @@ instructions apply to Codex and any other engineering agent working in this repo
 dogfoods its own vision: Claude implements, Codex reviews, CI gates, and the fail-closed foundation
 gate merges.
 
+## Pre-release: zero consumers
+
+Stagr is pre-release and has **zero consumers**. Change or delete schemas, commands, workflows, and
+behavior wherever the target design needs it. Do not add migration paths, compatibility layers,
+deprecated aliases, or legacy behavior kept for its own sake, and do not raise review findings that
+ask for them. Backward-compatibility findings apply only once a release has consumers.
+
 ## Threat model (project context)
 
 - Agentic automation here is driven only by **trusted authors** (`author_association` OWNER / MEMBER
@@ -56,6 +63,8 @@ meaningful test gap for changed code.
   enforcement mechanism already in the codebase. A documented convention alone — without schema or
   runtime backing — does not count: documentation describes intent, not enforcement.
 - **Style/cosmetic**: no functional, correctness, or safety impact.
+- **Migration or compatibility**: the finding asks for a migration path, compatibility layer, or
+  deprecated alias. Stagr is pre-release with zero consumers (see "Pre-release: zero consumers").
 - **Operator-conformance guard on reference templates, schemas, or config files**: the finding asks
   for extra test assertions, validation, or guardrails against hypothetical future operator edits to
   a reference template, schema, or configuration file. These artifacts declare the contract;
@@ -106,7 +115,9 @@ clarification, treat the answer as evidence and re-run the affected validation.
   converged (completed + clean on the head) a single security review runs as the final pre-merge step
   (`request-final-security-review.yml`). The merge gate requires a head-bound Codex *code* review AND a
   head-bound *security* review to have completed, plus zero unresolved review threads; a finding — code
-  or security — blocks via its thread. Self-review never substitutes for a required review.
+  or security — blocks via its thread. Self-review never substitutes for a required review. This
+  sequencing is how this repository's own hand-written review process runs; it is not part of the
+  Stagr contract, where the `review` and `security` stages of the `standard` profile are independent.
 - Keep changes scoped to the requested task; read existing code before replacing it.
 - Do not overwrite unrelated human changes; do not force-push over concurrent work.
 - Do not merge a PR while mandatory CI, tests, or security checks are red or pending.

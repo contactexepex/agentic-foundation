@@ -103,7 +103,7 @@ def test_codex_renderer_protocol_conformance() -> None:
 
 def test_codex_renderer_provider_and_backend_match_config() -> None:
     """renderer.provider == 'openai' and renderer.backend matches the BACKEND_CODEX constant."""
-    from stagr.render.constants import BACKEND_CODEX
+    from stagr.core.backend_names import BACKEND_CODEX
 
     renderer = build_renderer()
 

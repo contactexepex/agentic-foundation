@@ -25,7 +25,6 @@ _PROVIDER_API_KEY_ALIAS = "PROVIDER_API_KEY"
 _TRUSTED_COMMENTER_TOKEN_ALIAS = "TRUSTED_COMMENTER_TOKEN"
 
 # Default CI secret names when providers.<provider>.api_key_secret is absent.
-# Mirrors DEFAULT_KEY_SECRET in stagr/backends/generic/runner.py.
 _DEFAULT_PROVIDER_API_KEY_SECRETS: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
@@ -34,7 +33,6 @@ _DEFAULT_PROVIDER_API_KEY_SECRETS: dict[str, str] = {
 }
 
 # Default CI secret name when platform.auth.token_secret is absent from config.
-# Mirrors DEFAULT_TOKEN_SECRET in stagr/render/constants.py.
 _DEFAULT_TRUSTED_COMMENTER_SECRET = "REMEDIATION_TOKEN"
 
 

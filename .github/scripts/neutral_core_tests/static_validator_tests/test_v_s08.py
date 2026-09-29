@@ -84,11 +84,45 @@ def test_v_s08_names_stage_in_error() -> None:
         )
 
 
-def test_v_s08_github_renderer_supports_ci_component() -> None:
-    """GitHubPlatformRenderer.SUPPORTED_INVOCATION_KINDS includes CI_COMPONENT."""
+def test_v_s08_github_renderer_declares_only_what_it_really_renders() -> None:
+    """GitHubPlatformRenderer declares PR_COMMENT and nothing else: the only kind it performs."""
     from stagr.core.enums import InvocationKind
     from stagr.platforms.github.renderer import GitHubPlatformRenderer
 
-    assert InvocationKind.CI_COMPONENT in GitHubPlatformRenderer.SUPPORTED_INVOCATION_KINDS, (
-        "GitHubPlatformRenderer must support CI_COMPONENT"
+    assert GitHubPlatformRenderer.SUPPORTED_INVOCATION_KINDS == frozenset({InvocationKind.PR_COMMENT}), (
+        "GitHubPlatformRenderer must declare exactly {PR_COMMENT}; other kinds render placeholder steps"
     )
+
+
+def test_v_s08_rejects_implement_stage_on_github() -> None:
+    """The shipped Claude Code implement backend (CI_COMPONENT) is rejected for GitHub; Codex review passes."""
+    from stagr.core.enums import StageGate, StageKind, StageTrigger
+    from stagr.core.models import NormalizedStage, StaticValidationError
+    from stagr.core.renderers.anthropic_claude_backend_renderer import AnthropicClaudeBackendRenderer
+    from stagr.core.renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
+    from stagr.core.static_validator import validate_platform_invocation_compatibility
+    from stagr.platforms.github.renderer import GitHubPlatformRenderer
+
+    registry = make_fresh_registry()
+    registry.register(AnthropicClaudeBackendRenderer())
+    registry.register(OpenAICodexBackendRenderer())
+    supported_kinds = GitHubPlatformRenderer.SUPPORTED_INVOCATION_KINDS
+
+    def make_stage(stage_id: str, kind: StageKind, provider: str, backend: str, gate: StageGate) -> NormalizedStage:
+        return NormalizedStage(
+            id=stage_id, kind=kind, provider=provider, backend=backend, skill=None,
+            gate=gate, triggers=(StageTrigger.MANUAL,), dependencies=(),
+        )
+
+    review_stage = make_stage("review", StageKind.REVIEW, "openai", "codex", StageGate.BLOCKING)
+    validate_platform_invocation_compatibility((review_stage,), registry, supported_kinds)
+
+    implement_stage = make_stage(
+        "implement", StageKind.IMPLEMENT, "anthropic", "claude-code-action", StageGate.NON_BLOCKING
+    )
+    try:
+        validate_platform_invocation_compatibility((implement_stage,), registry, supported_kinds)
+    except StaticValidationError as error:
+        assert "V-S08" in str(error) and "implement" in str(error), str(error)
+        return
+    raise AssertionError("expected V-S08 to reject the CI_COMPONENT implement stage on GitHub")

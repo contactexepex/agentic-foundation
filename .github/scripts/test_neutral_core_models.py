@@ -75,14 +75,12 @@ from neutral_core_tests.test_defaults import (
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
     test_defaults_explicit_model_binding_normalized_to_string,
-    test_defaults_provider_model_binding_with_tiers_preserved,
-    test_defaults_mixed_binding_with_tiers_preserved,
-    test_defaults_tier_only_binding_preserved,
+    test_defaults_provider_binding_applies_its_default_string,
+    test_defaults_binding_without_default_is_left_unchanged,
 )
 from neutral_core_tests.test_pipeline_dogfood import (
-    test_pipeline_dogfood_config_produces_three_stages,
+    test_pipeline_dogfood_config_produces_two_stages,
     test_pipeline_dogfood_config_stage_ids_present,
-    test_pipeline_dogfood_config_implement_claude,
     test_pipeline_dogfood_config_review,
     test_pipeline_dogfood_config_security,
     test_pipeline_dogfood_config_no_enabled_field,
@@ -97,7 +95,6 @@ from neutral_core_tests.test_pipeline_edge_cases import (
     test_pipeline_gate_defaults_to_non_blocking_when_absent,
     test_pipeline_advisory_gate_maps_to_non_blocking,
     test_pipeline_dependencies_tuple_from_depends_on,
-    test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
 )
 from neutral_core_tests.test_policy_routing import (
     test_routing_policy_dogfood_config,
@@ -129,19 +126,12 @@ from neutral_core_tests.test_policy_merge_blocking import (
     test_merge_policy_non_blocking_excluded,
     test_merge_policy_empty_stages_produces_empty_blocking_ids,
     test_merge_policy_mixed_gates_only_blocking_included,
-    test_merge_policy_unknown_module_key_raises_schema_error,
 )
 from neutral_core_tests.test_policy_merge_derivation import (
-    test_merge_policy_mode_auto_when_auto_merge_true,
-    test_merge_policy_mode_manual_when_auto_merge_false,
-    test_merge_policy_mode_manual_when_modules_absent,
     test_merge_policy_require_head_bound_always_true,
     test_merge_policy_discussion_policy_absent_is_none,
     test_merge_policy_discussion_policy_require_resolved_true,
     test_merge_policy_discussion_policy_require_resolved_false,
-    test_merge_policy_sonar_true_adds_external_gate,
-    test_merge_policy_sonar_false_no_external_gate,
-    test_merge_policy_sonar_absent_no_external_gate,
     test_merge_policy_returns_merge_policy_instance,
     test_merge_policy_result_is_frozen,
 )
@@ -185,6 +175,7 @@ from neutral_core_tests.test_config_parser import CONFIG_PARSER_TESTS
 from neutral_core_tests.test_static_validator import STATIC_VALIDATOR_TESTS
 from neutral_core_tests.test_publisher_config import PUBLISHER_CONFIG_TESTS
 from neutral_core_tests.test_secret_value_redaction import SECRET_VALUE_REDACTION_TESTS
+from neutral_core_tests.test_config_schema import CONFIG_SCHEMA_TESTS
 
 
 _TESTS = [
@@ -236,12 +227,10 @@ _TESTS = [
     test_defaults_does_not_mutate_input,
     test_defaults_empty_defaults_cfg,
     test_defaults_explicit_model_binding_normalized_to_string,
-    test_defaults_provider_model_binding_with_tiers_preserved,
-    test_defaults_mixed_binding_with_tiers_preserved,
-    test_defaults_tier_only_binding_preserved,
-    test_pipeline_dogfood_config_produces_three_stages,
+    test_defaults_provider_binding_applies_its_default_string,
+    test_defaults_binding_without_default_is_left_unchanged,
+    test_pipeline_dogfood_config_produces_two_stages,
     test_pipeline_dogfood_config_stage_ids_present,
-    test_pipeline_dogfood_config_implement_claude,
     test_pipeline_dogfood_config_review,
     test_pipeline_dogfood_config_security,
     test_pipeline_dogfood_config_no_enabled_field,
@@ -254,7 +243,6 @@ _TESTS = [
     test_pipeline_gate_defaults_to_non_blocking_when_absent,
     test_pipeline_advisory_gate_maps_to_non_blocking,
     test_pipeline_dependencies_tuple_from_depends_on,
-    test_pipeline_tiered_model_binding_raises_not_silently_collapsed,
     test_routing_policy_dogfood_config,
     test_routing_policy_absent_routing_key,
     test_routing_policy_disabled_fast_path,
@@ -280,17 +268,10 @@ _TESTS = [
     test_merge_policy_non_blocking_excluded,
     test_merge_policy_empty_stages_produces_empty_blocking_ids,
     test_merge_policy_mixed_gates_only_blocking_included,
-    test_merge_policy_unknown_module_key_raises_schema_error,
-    test_merge_policy_mode_auto_when_auto_merge_true,
-    test_merge_policy_mode_manual_when_auto_merge_false,
-    test_merge_policy_mode_manual_when_modules_absent,
     test_merge_policy_require_head_bound_always_true,
     test_merge_policy_discussion_policy_absent_is_none,
     test_merge_policy_discussion_policy_require_resolved_true,
     test_merge_policy_discussion_policy_require_resolved_false,
-    test_merge_policy_sonar_true_adds_external_gate,
-    test_merge_policy_sonar_false_no_external_gate,
-    test_merge_policy_sonar_absent_no_external_gate,
     test_merge_policy_returns_merge_policy_instance,
     test_merge_policy_result_is_frozen,
     test_backend_renderer_protocol_conformance,
@@ -325,6 +306,7 @@ _TESTS = [
     *STATIC_VALIDATOR_TESTS,
     *PUBLISHER_CONFIG_TESTS,
     *SECRET_VALUE_REDACTION_TESTS,
+    *CONFIG_SCHEMA_TESTS,
 ]
 
 if __name__ == "__main__":

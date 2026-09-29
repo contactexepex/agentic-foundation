@@ -10,7 +10,8 @@ from typing import Any
 
 from neutral_core_tests.harness import REPO_ROOT  # noqa: F401  (sets up sys.path)
 from neutral_core_tests.test_publisher_config import _config_with_publisher
-from stagr import render
+from stagr.core.config_validation import describe_schema_error, validate_config
+from stagr.core.errors import ConfigSchemaError
 
 PEM_KEY = (
     "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -22,8 +23,8 @@ KEY_FRAGMENTS = ("BEGIN RSA", "supersecretkeymaterial", "END RSA")
 
 def _validation_error_text(config: dict[str, Any]) -> str:
     try:
-        render.validate_config(config)
-    except render.RenderError as error:
+        validate_config(config)
+    except ConfigSchemaError as error:
         return str(error)
     raise AssertionError("expected the config to be rejected")
 
@@ -61,9 +62,9 @@ def test_describe_schema_error_only_redacts_secret_named_fields() -> None:
         def __init__(self, path: list[Any], message: str) -> None:
             self.path, self.message = path, message
 
-    assert "withheld" in render.config.describe_schema_error(FakeError(["x", "api_key_secret"], "'v' bad"))
-    assert render.config.describe_schema_error(FakeError(["x", "branch"], "'v' bad")) == "'v' bad"
-    assert render.config.describe_schema_error(FakeError([], "root bad")) == "root bad"
+    assert "withheld" in describe_schema_error(FakeError(["x", "api_key_secret"], "'v' bad"))
+    assert describe_schema_error(FakeError(["x", "branch"], "'v' bad")) == "'v' bad"
+    assert describe_schema_error(FakeError([], "root bad")) == "root bad"
 
 
 SECRET_VALUE_REDACTION_TESTS = [

@@ -10,7 +10,6 @@ from neutral_core_tests.github_platform_renderer_tests.helpers import (
 from stagr.core.enums import (
     AuthorRole,
     ForkPolicy,
-    MergeMode,
     StageGate,
     StageResultSignalKind,
 )
@@ -66,7 +65,6 @@ def _render_governance_to_string(
         stages=stages,
         routing_policy=RoutingPolicy(fast_path=fast_path_policy),
         merge_policy=MergePolicy(
-            mode=MergeMode.AUTO,
             blocking_stage_ids=blocking_ids,
             require_head_bound=True,
             discussion_policy=DiscussionPolicy(require_resolved=False),

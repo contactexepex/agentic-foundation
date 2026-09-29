@@ -65,13 +65,11 @@ implement/review/test/deploy map naturally onto discrete, event-driven CI stages
 ## Scope alignment with older docs
 
 The generic contract in [`../ARCHITECTURE.md`](../ARCHITECTURE.md) can express *any* stage type
-(`plan`, `implement`, `security`, `test`, `review`, `docs`, `release`, `custom`). That stays
+(`implement`, `review`, `security`, `build`, `test`, `deploy`, `custom`). That stays
 true — the contract is generic on purpose. What this design **bounds is stagr's product
-scope**: stagr ships and owns the **dev-lane** stages and their gate. The `plan`-family and
-`release`/deploy stage types remain expressible by the shared contract, but they are
-**delivered by the Planning and CD sibling toolkits**, not by stagr's reference lane. Where
-`ARCHITECTURE.md` shows a single pipeline spanning `plan … release`, read it as the *contract's*
-reach across the toolkit family, not as stagr's own scope.
+scope**: stagr ships and owns the **dev-lane** stages and their gate. The `deploy` stage type
+remains expressible by the shared contract, but deploying is **delivered by the CD sibling
+toolkit**, and planning by the Planning toolkit, not by stagr's reference lane.
 
 ## Why this shape wins
 

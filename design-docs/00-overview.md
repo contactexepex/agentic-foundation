@@ -24,6 +24,10 @@ The three-layer model:
 Stagr operates only at the **Render** layer. It writes the wiring; the platform runs
 the work.
 
+Today the only Stagr command is `stagr help`. `stagr plan`, `stagr apply`, `stagr init` and
+`stagr doctor` are planned; this set describes them as they will work. The renderers already
+return the artifacts that `plan` will list and `apply` will write.
+
 ---
 
 ## Control plane litmus test

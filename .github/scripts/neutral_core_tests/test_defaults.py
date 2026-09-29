@@ -145,71 +145,26 @@ def test_defaults_explicit_model_binding_normalized_to_string() -> None:
     )
 
 
-def test_defaults_provider_model_binding_with_tiers_preserved() -> None:
-    """When defaults.models[provider] contains tiers, the full binding is applied to the stage.
-
-    Only extracting the default string would discard explicit provider-level tier overrides,
-    violating #181's resolution chain for tiered provider defaults.
-    """
+def test_defaults_provider_binding_applies_its_default_string() -> None:
+    """A provider binding in defaults.models supplies its ``default`` string to the stage."""
     from stagr.core.defaults import resolve_defaults
 
-    provider_binding = {"default": "gpt-base", "tiers": {"complex": "gpt-strong"}}
     active_stages = [{"id": "review", "type": "review", "provider": "openai"}]
-    defaults_cfg = {
-        "models": {
-            "openai": provider_binding,
-        },
-    }
-    result = resolve_defaults(active_stages, defaults_cfg)
+    result = resolve_defaults(active_stages, {"models": {"openai": {"default": "gpt-base"}}})
 
-    assert result[0]["model"] == provider_binding, (
-        f"Provider model binding with tiers must be preserved in full: got {result[0].get('model')}"
+    assert result[0]["model"] == "gpt-base", (
+        f"Provider binding must apply its default string: got {result[0].get('model')}"
     )
 
 
-def test_defaults_mixed_binding_with_tiers_preserved() -> None:
-    """A modelBinding with both default and tiers is preserved unchanged.
-
-    Collapsing to the default string would discard explicit tier-specific overrides,
-    violating #181's rule that explicitly set fields keep their own value.
-    """
+def test_defaults_binding_without_default_is_left_unchanged() -> None:
+    """A stage modelBinding with no ``default`` key is left as it is; nothing invents a model."""
     from stagr.core.defaults import resolve_defaults
 
-    mixed_binding = {"default": "gpt-base", "tiers": {"complex": "gpt-strong"}}
-    active_stages = [
-        {
-            "id": "review",
-            "type": "review",
-            "provider": "openai",
-            "model": mixed_binding,
-        }
-    ]
+    empty_binding: dict = {}
+    active_stages = [{"id": "review", "type": "review", "provider": "openai", "model": empty_binding}]
     result = resolve_defaults(active_stages, {})
 
-    assert result[0]["model"] == mixed_binding, (
-        f"modelBinding with tiers must be preserved unchanged: got {result[0].get('model')}"
-    )
-
-
-def test_defaults_tier_only_binding_preserved() -> None:
-    """A tier-only modelBinding (no default key) is preserved unchanged.
-
-    resolve_defaults must not replace a tier-only binding with None; tier selection
-    is handled in a later pipeline step that has backend context.
-    """
-    from stagr.core.defaults import resolve_defaults
-
-    tier_only_binding = {"tiers": {"complex": "gpt-x"}}
-    active_stages = [
-        {
-            "id": "review",
-            "type": "review",
-            "provider": "openai",
-            "model": tier_only_binding,
-        }
-    ]
-    result = resolve_defaults(active_stages, {})
-
-    assert result[0]["model"] == tier_only_binding, (
-        f"Tier-only modelBinding must be preserved unchanged: got {result[0].get('model')}"
+    assert result[0]["model"] == empty_binding, (
+        f"A binding without default must be preserved unchanged: got {result[0].get('model')}"
     )

@@ -117,7 +117,7 @@ def test_governance_workflow_fast_path_only_evaluates_fast_route_stages() -> Non
 
 def test_governance_route_publisher_authentication_rejects_forged_app() -> None:
     """Route-reading block verifies app.id matches STAGR_APP_ID before trusting classification."""
-    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.enums import AuthorRole, ForkPolicy, StageResultSignalKind
     from stagr.core.models import (
         DiscussionPolicy,
         MergePolicy,
@@ -136,7 +136,6 @@ def test_governance_route_publisher_authentication_rejects_forged_app() -> None:
     render_ctx = RenderContext(
         stages=(),
         merge_policy=MergePolicy(
-            mode=MergeMode.AUTO,
             blocking_stage_ids=("lint", "review"),
             require_head_bound=True,
             discussion_policy=DiscussionPolicy(require_resolved=False),
@@ -177,7 +176,7 @@ def test_governance_route_publisher_authentication_rejects_forged_app() -> None:
 
 def test_non_blocking_stage_call_has_or_true_suffix() -> None:
     """Non-blocking stage evaluation calls include '|| true' to survive set -euo pipefail."""
-    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.enums import AuthorRole, ForkPolicy, StageResultSignalKind
     from stagr.core.models import (
         DiscussionPolicy,
         MergePolicy,
@@ -192,7 +191,6 @@ def test_non_blocking_stage_call_has_or_true_suffix() -> None:
     render_ctx = RenderContext(
         stages=(),
         merge_policy=MergePolicy(
-            mode=MergeMode.AUTO,
             blocking_stage_ids=(),
             require_head_bound=True,
             discussion_policy=DiscussionPolicy(require_resolved=False),
@@ -228,7 +226,7 @@ def test_non_blocking_stage_call_has_or_true_suffix() -> None:
 
 def test_unrouted_stage_absent_from_generated_script() -> None:
     """A stage absent from both stages.fast and stages.normal is not evaluated."""
-    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.enums import AuthorRole, ForkPolicy, StageResultSignalKind
     from stagr.core.models import (
         DiscussionPolicy,
         MergePolicy,
@@ -247,7 +245,6 @@ def test_unrouted_stage_absent_from_generated_script() -> None:
     render_ctx = RenderContext(
         stages=(),
         merge_policy=MergePolicy(
-            mode=MergeMode.AUTO,
             blocking_stage_ids=("lint", "review", "orphan"),
             require_head_bound=True,
             discussion_policy=DiscussionPolicy(require_resolved=False),
@@ -297,7 +294,7 @@ def test_unrouted_stage_absent_from_generated_script() -> None:
 
 def test_stage_check_run_query_uses_filter_all() -> None:
     """Stage signal check-run query includes filter=all to detect duplicates across suites."""
-    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode, StageResultSignalKind
+    from stagr.core.enums import AuthorRole, ForkPolicy, StageResultSignalKind
     from stagr.core.models import (
         DiscussionPolicy,
         MergePolicy,
@@ -312,7 +309,6 @@ def test_stage_check_run_query_uses_filter_all() -> None:
     render_ctx = RenderContext(
         stages=(),
         merge_policy=MergePolicy(
-            mode=MergeMode.AUTO,
             blocking_stage_ids=("lint",),
             require_head_bound=True,
             discussion_policy=DiscussionPolicy(require_resolved=False),

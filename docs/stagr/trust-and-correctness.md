@@ -1,9 +1,14 @@
 # Trust & correctness — why the gate cannot be tricked or bypassed
 
 The gate is stagr's product. If it can be fooled into merging unready code, nothing else matters.
-This page is the threat model and the invariants that make the gate sound. Every rule is
-**statically or behaviourally tested** against the rendered workflow (see
-[roadmap.md](roadmap.md) — the renderer's own test strategy).
+This page is the threat model and the invariants that make the gate sound. Every rule needs a
+**static or behavioural test** (see [roadmap.md](roadmap.md)).
+
+> **What implements this today.** The gate described here is implemented by this repository's
+> hand-written workflows — the foundation gate (`auto-merge-foundation-prs.yml`), `validate.yml`,
+> and the Codex review workflows. Stagr's own governance workflow is smaller: it publishes a check
+> that blocks when a blocking stage fails (see [dev-lane.md](dev-lane.md)). **[shipped]** on this
+> page means "in those hand-written workflows"; the rest is the **[target]** for what Stagr renders.
 
 ## The adversary
 
@@ -31,8 +36,8 @@ to:
    commit crafted to share a reviewed head's short prefix could satisfy the fallback. Removing the
    abbreviated fallback in favour of the full machine-readable marker/object (exact-only binding) is
    an open hardening item ([roadmap.md](roadmap.md)).
-   **Base-retarget gap [target].** Evidence is bound to the **head** SHA only — `validate.yml` and
-   `request-review.yml` do not re-trigger on a **base change** (retarget). So a PR reviewed/validated
+   **Base-retarget gap [target].** Evidence is bound to the **head** SHA only — the
+   validate and review workflows do not re-trigger on a **base change** (retarget). So a PR reviewed/validated
    against one base and then **retargeted to the default branch with the same head** can be merged on
    **stale evidence** while `mergeable_state == clean`, even though the effective diff changed. Binding
    evidence to the base revision (or invalidating + rerunning on retarget) is an open hardening item.
@@ -74,8 +79,10 @@ to:
 
 ## Sequencing code vs. security review
 
-The Codex backend **errors if a code review and a security review run concurrently** on one PR.
-Therefore:
+This repository's contract (`AGENTS.md`) runs the two reviews in sequence, and the hand-written
+workflows do so. Whether the Codex backend really **errors if a code review and a security review
+run concurrently** on one PR is not verified, so in the `standard` profile the two stages are
+independent and sequencing is a **[target]** default. The hand-written workflows work like this:
 
 - the **code-review loop runs per push** until it converges (completed + clean on the head);
 - the **single security review** is triggered **only after** convergence;

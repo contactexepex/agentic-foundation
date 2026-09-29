@@ -31,7 +31,8 @@ than duplicating branches, commits, or PRs.
 - Make the smallest coherent change that satisfies the acceptance criteria; avoid unrelated churn.
 - Add or update tests/checks for changed behavior and plausible regressions.
 - Prefer deterministic checks over extra model calls. Common local checks here:
-  - `python .github/scripts/validate_config.py` (schema + example configs + skills/agents)
+  - `python .github/scripts/validate_config.py` (schema + the dogfood config through the front door + skills)
+  - `python .github/scripts/test_neutral_core_models.py` and `python .github/scripts/test_cli.py` (unit tests)
   - `python -m py_compile` on any changed `.py`
 - Read the exact failure, fix the root cause, and rerun the narrowest failing check first.
 - Allow at most three attempts for the same failing condition, then stop and report evidence.
@@ -47,7 +48,8 @@ review runs immediately; never hand-merge it. The PR description states the task
 criteria, what changed and why, checks run with results, and assumptions or open questions. **Every
 PR is sent to Codex for code + security review; findings block the merge as unresolved threads** (see
 "Codex review handoff"). Code and security review run in sequence, never concurrently: the code review
-iterates per push, then a single security review runs as the final pre-merge step. The gate requires a
+iterates per push, then a single security review runs as the final pre-merge step (this is how this
+repository's own hand-written review process runs, not a rule of the Stagr contract). The gate requires a
 head-bound *code* review AND a head-bound *security* review to have completed, plus zero unresolved
 threads. The fast-path lane is disabled for this repository (`.agentic/config.yml` →
 `routing.fast_path.enabled: false`), so every PR — documentation included — goes through Codex review;
@@ -67,7 +69,8 @@ finding — review comments require judgment, not blind acceptance.
 - A genuine correctness or logic error reproducible with valid or realistically reachable inputs
   (including adversarial inputs at untrusted system boundaries).
 - A concrete security risk with a plausible exploit path under realistic operator config.
-- A broken API/schema contract or backward-compatibility issue.
+- A broken API/schema contract. (Stagr has zero consumers, so backward-compatibility and migration
+  findings do not apply; see `AGENTS.md`, "Pre-release: zero consumers".)
 - A meaningful gap in test coverage for changed code paths or closely related behavior.
 
 **Decline** a finding when it does not meet that bar. Grounds for declining:
@@ -79,6 +82,8 @@ finding — review comments require judgment, not blind acceptance.
   runtime enforcement mechanism in the codebase. A documented convention alone does not count:
   documentation describes intent, not enforcement.
 - **Style/cosmetic**: no functional, correctness, or security impact.
+- **Migration or compatibility**: asks for a migration path, compatibility layer, or deprecated alias.
+  Stagr is pre-release with zero consumers.
 - **Operator-conformance guard on reference templates, schemas, or config files**: the finding asks
   for extra test assertions, validation, or guardrails against hypothetical future operator edits to
   a reference template, schema, or configuration file. These artifacts declare the contract;

@@ -57,12 +57,11 @@ def _build_minimal_render_context():
         TrustPolicy,
         DiscussionPolicy,
     )
-    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode
+    from stagr.core.enums import AuthorRole, ForkPolicy
 
     stage = _build_minimal_normalized_stage()
     routing_policy = RoutingPolicy(fast_path=None)
     merge_policy = MergePolicy(
-        mode=MergeMode.AUTO,
         blocking_stage_ids=(stage.id,),
         require_head_bound=True,
         discussion_policy=DiscussionPolicy(require_resolved=False),

@@ -7,14 +7,11 @@ validation step. It has no network access and only reads repository files.
 
 Checks:
   1. stagr/config.schema.json is valid JSON Schema (2020-12).
-  2. stagr/templates/config/agentic.config.yml.tmpl validates against the schema.
-  3. The repo's own .agentic/config.yml validates against the schema (dogfood).
-  4. A representative minimal config validates.
-  5. Stage-graph invariants the schema cannot express: unique stage ids, every
-     `depends_on` names an existing stage, and no dependency cycles.
-  6. Every agent preset (stagr/templates/agents/*.yml) is a mapping with a `type` and,
-     if it names a `skill`, that skill dir exists.
-  7. Every skill (stagr/templates/skills/*/SKILL.md) has parseable YAML frontmatter with
+  2. The repo's own .agentic/config.yml (dogfood) passes the neutral core's front door
+     (`stagr.core.config_validation.validate_config`): schema, publisher block, profile,
+     dependency references and cycles, provider resolution, and skill files.
+  3. Representative minimal and publisher configs validate; a pasted key is rejected.
+  4. Every skill (stagr/templates/skills/*/SKILL.md) has parseable YAML frontmatter with
      the required keys and a `verdict:` line inside a fenced code block.
 
 Exit code 0 = all pass; non-zero = at least one failure (details on stderr).
@@ -33,10 +30,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SKILL_REQUIRED_KEYS = {"id", "name", "stage_type", "version"}
 errors: list[str] = []
 
-# Reuse the toolkit's OWN canonical validator (schema + semantic coherence + templating safety) rather
-# than reimplementing those checks here — so CI exercises the same front door `stagr validate` uses.
+# Reuse the toolkit's OWN front door rather than reimplementing its checks here, so CI exercises
+# the same validation `stagr plan` and `stagr apply` run.
 sys.path.insert(0, str(ROOT))
-from stagr import render  # noqa: E402
+from stagr.core.config_validation import describe_schema_error, validate_config  # noqa: E402
+from stagr.core.models import ConfigError  # noqa: E402
 
 
 def fail(msg: str) -> None:
@@ -46,69 +44,6 @@ def fail(msg: str) -> None:
 def load_yaml(path: Path):
     with path.open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
-
-
-def check_stage_graph(cfg, label: str) -> None:
-    """Unique ids, resolvable depends_on, and acyclicity — not expressible in JSON Schema."""
-    if not isinstance(cfg, dict):
-        return
-    stages = cfg.get("stages")
-    if not isinstance(stages, list) or not stages:
-        return
-    stage_ids: list[str] = []
-    dependencies: dict[str, list[str]] = {}
-    for stage in stages:
-        if not isinstance(stage, dict):
-            continue
-        stage_id = stage.get("id")
-        if not isinstance(stage_id, str):
-            continue
-        stage_ids.append(stage_id)
-        raw_depends = stage.get("depends_on")
-        # A schema-invalid but plausible value (e.g. `depends_on: 1`) is reported by the schema
-        # validator; guard here so graph checking never crashes on a non-list before that report.
-        dependencies[stage_id] = (
-            [dep for dep in raw_depends if isinstance(dep, str)] if isinstance(raw_depends, list) else []
-        )
-
-    duplicates = sorted({stage_id for stage_id in stage_ids if stage_ids.count(stage_id) > 1})
-    if duplicates:
-        fail(f"{label}: duplicate stage id(s): {', '.join(duplicates)}")
-    known_ids = set(stage_ids)
-
-    # `depends_on` may reference profile-provided stages that a non-`custom` config does not list
-    # here (the profile is expanded by the renderer, not by this file). So only enforce that a
-    # dependency names an EXISTING stage when the config carries the complete graph (profile: custom).
-    # Self-dependency is always invalid; cycle detection below considers only listed edges, so it is
-    # safe for any profile.
-    complete_graph = cfg.get("profile", "standard") == "custom"
-    for stage_id, targets in dependencies.items():
-        for target in targets:
-            if target == stage_id:
-                fail(f"{label}: stage '{stage_id}' depends_on itself")
-            elif complete_graph and target not in known_ids:
-                fail(f"{label}: stage '{stage_id}' depends_on missing stage '{target}'")
-
-    # Cycle detection over the resolvable edges (DFS with colors).
-    UNVISITED, IN_PROGRESS, DONE = 0, 1, 2
-    color = {stage_id: UNVISITED for stage_id in known_ids}
-
-    def visit(node: str, path: list[str]) -> None:
-        color[node] = IN_PROGRESS
-        for neighbor in dependencies.get(node, []):
-            if neighbor not in known_ids or neighbor == node:
-                continue
-            if color[neighbor] == IN_PROGRESS:
-                cycle = " -> ".join(path[path.index(neighbor):] + [neighbor]) if neighbor in path \
-                    else f"{node} -> {neighbor}"
-                fail(f"{label}: dependency cycle: {cycle}")
-            elif color[neighbor] == UNVISITED:
-                visit(neighbor, path + [neighbor])
-        color[node] = DONE
-
-    for stage_id in known_ids:
-        if color[stage_id] == UNVISITED:
-            visit(stage_id, [stage_id])
 
 
 def check_skill(skill_md: Path) -> None:
@@ -172,36 +107,29 @@ def main() -> int:
         if schema_errors:
             for error in schema_errors:
                 location = "/".join(str(part) for part in error.path) or "(root)"
-                fail(f"{label}: {location}: {render.config.describe_schema_error(error)}")
+                fail(f"{label}: {location}: {describe_schema_error(error)}")
         else:
             print(f"OK  {label} validates against schema")
 
-    # 2/3. Real config files that must conform to the schema (+ graph invariants).
-    for rel in ("stagr/templates/config/agentic.config.yml.tmpl", ".agentic/config.yml"):
-        path = ROOT / rel
-        if not path.exists():
-            fail(f"{rel}: expected file is missing")
-            continue
+    # 2. The repo's own config must pass the neutral core's front door.
+    dogfood_path = ROOT / ".agentic" / "config.yml"
+    dogfood_label = dogfood_path.relative_to(ROOT).as_posix()
+    if not dogfood_path.exists():
+        fail(f"{dogfood_label}: expected file is missing")
+    else:
         try:
-            cfg = load_yaml(path)
+            dogfood_config = load_yaml(dogfood_path)
         except Exception as exc:  # noqa: BLE001
-            fail(f"{rel}: cannot parse: {exc}")
-            continue
-        validate(cfg, rel)
-        check_stage_graph(cfg, rel)
-        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) +
-        # templating safety (no ${{ }} / breakout char in any operator literal) + V-S06 skill file
-        # existence. Same code path as `stagr validate` / `stagr plan` / `stagr apply`.
-        # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g.
-        # a <anthropic-default-model>) that a real config replaces and that resolution would reject.
-        if rel == ".agentic/config.yml":
+            fail(f"{dogfood_label}: cannot parse: {exc}")
+        else:
+            validate(dogfood_config, dogfood_label)
             try:
-                render.validate_config(cfg, project_root=ROOT)
-                print(f"OK  {rel} passes canonical validation (schema + semantics + templating + V-S06)")
-            except render.RenderError as exc:
-                fail(f"{rel}: canonical validation failed: {exc}")
+                validate_config(dogfood_config, project_root=ROOT)
+                print(f"OK  {dogfood_label} passes the front door (schema, stage graph, providers, skill files)")
+            except (ValueError, ConfigError) as exc:
+                fail(f"{dogfood_label}: front-door validation failed: {exc}")
 
-    # 4. Minimal config.
+    # 3. Minimal config.
     validate(
         {
             "version": 2,
@@ -212,7 +140,7 @@ def main() -> int:
         "minimal config",
     )
 
-    # 4b. platform.publisher example: valid block validates; a credential-looking secret is rejected.
+    # 3b. platform.publisher example: valid block validates; a credential-looking secret is rejected.
     publisher_example = {
         "version": 2,
         "profile": "standard",
@@ -230,45 +158,7 @@ def main() -> int:
     else:
         print("OK  platform.publisher.private_key_secret rejects a literal key value")
 
-    # 5. CLI backend example config — verifies the claude-code-cli enum value is accepted.
-    validate(
-        {
-            "version": 2,
-            "profile": "custom",
-            "platform": {"type": "github", "default_branch": "main"},
-            "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "claude-sonnet-4"}}},
-            "stages": [
-                {
-                    "id": "implement",
-                    "type": "implement",
-                    "backend": {"name": "claude-code-cli"},
-                }
-            ],
-        },
-        "CLI backend example config",
-    )
-
-    # 6. Agent presets.
-    for preset in sorted((ROOT / "stagr" / "templates" / "agents").glob("*.yml")):
-        rel = preset.relative_to(ROOT).as_posix()
-        try:
-            preset_data = load_yaml(preset)
-        except Exception as exc:  # noqa: BLE001
-            fail(f"{rel}: cannot parse: {exc}")
-            continue
-        if not isinstance(preset_data, dict):
-            fail(f"{rel}: must be a YAML mapping")
-            continue
-        if "type" not in preset_data:
-            fail(f"{rel}: missing required 'type'")
-            continue
-        skill = preset_data.get("skill")
-        if skill and not (ROOT / "stagr" / "templates" / "skills" / skill).is_dir():
-            fail(f"{rel}: references missing skill '{skill}'")
-            continue
-        print(f"OK  agent preset {preset.name}" + (f" -> skill '{skill}'" if skill else " (no skill)"))
-
-    # 7. Skills.
+    # 4. Skills.
     for skill_md in sorted((ROOT / "stagr" / "templates" / "skills").glob("*/SKILL.md")):
         check_skill(skill_md)
 

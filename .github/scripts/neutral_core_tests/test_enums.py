@@ -11,7 +11,6 @@ def test_enum_string_values() -> None:
         ForkPolicy,
         GateDispositionKind,
         InvocationKind,
-        MergeMode,
         StageGate,
         StageKind,
         StageResultConclusion,
@@ -46,10 +45,6 @@ def test_enum_string_values() -> None:
     # ForkPolicy
     assert ForkPolicy("deny") is ForkPolicy.DENY
     assert ForkPolicy("allow_unprivileged") is ForkPolicy.ALLOW_UNPRIVILEGED
-
-    # MergeMode
-    assert MergeMode("auto") is MergeMode.AUTO
-    assert MergeMode("manual") is MergeMode.MANUAL
 
     # InvocationKind — neutral-core M2 contract (issue #173)
     assert InvocationKind("pr_comment") is InvocationKind.PR_COMMENT
@@ -88,7 +83,7 @@ def test_enum_string_values() -> None:
 
     # No platform-specific names in enum values (workflow_dispatch is the contracted M2 value)
     for enum_cls in [StageKind, StageGate, StageTrigger, AuthorRole, ForkPolicy,
-                     MergeMode, InvocationKind, StageResultSignalKind,
+                     InvocationKind, StageResultSignalKind,
                      StageResultState, StageResultConclusion, EvidenceKind,
                      EvidenceSuccessCondition, GateDispositionKind]:
         for member in enum_cls:
