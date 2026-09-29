@@ -247,12 +247,46 @@ def _build_token_acquisition_step(publisher_app_id: str, private_key_secret_expr
     )
 
 
+def _build_selector_jq_predicates(selector: str) -> str:
+    """Build jq select() predicates for a (possibly compound) selector string.
+
+    Designed for embedding in a SINGLE-QUOTED shell string passed to jq, so
+    no shell-level backslash escaping is needed for the double-quotes inside
+    the jq expression — the shell passes single-quoted content verbatim.
+
+    The selector is space-separated where:
+    - The first token is a literal prefix, checked via contains().
+    - Subsequent key=value tokens are treated as JSON field assertions:
+      contains('"key":"value"'), matching the literal JSON field in the
+      comment body (e.g. "status":"completed" from the security marker JSON).
+
+    Returns jq pipe-chained select() predicates with a leading space and
+    trailing pipe, or an empty string when selector is empty.
+    """
+    parts = selector.split()
+    if not parts:
+        return ""
+    predicates = [f' select(.body | contains("{parts[0]}")) |']
+    for token in parts[1:]:
+        if "=" in token:
+            key, _, value = token.partition("=")
+            predicates.append(
+                f' select(.body | contains("\\"{key}\\":\\"{value}\\"")) |'
+            )
+    return "".join(predicates)
+
+
 def _build_evidence_detection_lines_reconcile(plan: ExecutionPlan) -> str:
     """Return bash lines that detect declared evidence in a reconcile step.
 
-    When evidence is declared, fetches comments and exits 0 when none match
-    the declared selector and the current head SHA. When no evidence is
-    declared, returns an empty string (gate eval proceeds immediately).
+    When evidence is declared, paginates all PR comments and exits 0 when none
+    match the declared selector (including compound key=value JSON field checks)
+    and the current head SHA. When no evidence is declared, returns an empty
+    string (gate eval proceeds immediately).
+
+    Uses gh api --paginate to avoid missing evidence on comment-heavy PRs.
+    Compound selectors (space-separated key=value tokens after the prefix) are
+    expanded into separate jq predicates so each token is checked individually.
 
     When EvidenceSpec.github_app_id is set, only comments posted by that GitHub
     App are accepted; this prevents forgery by ordinary commenters.
@@ -260,17 +294,19 @@ def _build_evidence_detection_lines_reconcile(plan: ExecutionPlan) -> str:
     if not plan.evidence:
         return ""
     evidence_spec = plan.evidence[0]
-    full_selector = evidence_spec.selector
+    selector_predicates = _build_selector_jq_predicates(evidence_spec.selector)
     app_id_filter = ""
     if evidence_spec.github_app_id is not None:
         app_id_filter = (
-            f" select(.performed_via_github_app.id | tostring =="
-            f" \\\"{evidence_spec.github_app_id}\\\") |"
+            f' select(.performed_via_github_app.id | tostring'
+            f' == "{evidence_spec.github_app_id}") |'
         )
     return (
-        f'          evidence=$(gh api "repos/${{GITHUB_REPOSITORY}}/issues/${{pr_number}}/comments" \\\n'
-        f"            --jq \".[] |{app_id_filter} select(.body | contains(\\\"{full_selector}\\\")) |"
-        f" select(.body | contains(\\\"${{head_sha}}\\\")) | .id\" | head -1)\n"
+        f'          evidence=$(gh api --paginate "repos/${{GITHUB_REPOSITORY}}/issues/${{pr_number}}/comments" \\\n'
+        f"            --jq '.[]' \\\n"
+        f"            | jq --arg sha \"${{head_sha}}\" -r \\\n"
+        f"            '{app_id_filter}{selector_predicates} select(.body | contains($sha)) | .id' \\\n"
+        f"            | head -1)\n"
         f'          if [[ -z "${{evidence}}" ]]; then exit 0; fi\n'
     )
 
@@ -278,9 +314,13 @@ def _build_evidence_detection_lines_reconcile(plan: ExecutionPlan) -> str:
 def _build_evidence_detection_lines_sweep(plan: ExecutionPlan, stage_id: str) -> str:
     """Return bash lines that detect declared evidence inside a sweep loop iteration.
 
-    When evidence is declared, fetches comments and continues to the next PR when
-    none match the declared selector and HEAD_SHA. When no evidence is declared,
-    returns an empty string (gate eval proceeds immediately for each eligible PR).
+    When evidence is declared, paginates all PR comments and continues to the
+    next PR when none match the declared selector and HEAD_SHA. When no evidence
+    is declared, returns an empty string (gate eval proceeds immediately).
+
+    Uses gh api --paginate to avoid missing evidence on comment-heavy PRs.
+    Compound selectors are expanded into separate jq predicates (see
+    _build_selector_jq_predicates).
 
     When EvidenceSpec.github_app_id is set, only comments posted by that GitHub
     App are accepted; this prevents forgery by ordinary commenters.
@@ -288,17 +328,19 @@ def _build_evidence_detection_lines_sweep(plan: ExecutionPlan, stage_id: str) ->
     if not plan.evidence:
         return ""
     evidence_spec = plan.evidence[0]
-    full_selector = evidence_spec.selector
+    selector_predicates = _build_selector_jq_predicates(evidence_spec.selector)
     app_id_filter = ""
     if evidence_spec.github_app_id is not None:
         app_id_filter = (
-            f" select(.performed_via_github_app.id | tostring =="
-            f" \\\"{evidence_spec.github_app_id}\\\") |"
+            f' select(.performed_via_github_app.id | tostring'
+            f' == "{evidence_spec.github_app_id}") |'
         )
     return (
-        f'            evidence=$(gh api "repos/${{GITHUB_REPOSITORY}}/issues/${{pr_number}}/comments" \\\n'
-        f"              --jq \".[] |{app_id_filter} select(.body | contains(\\\"{full_selector}\\\")) |"
-        f" select(.body | contains(\\\"${{HEAD_SHA}}\\\")) | .id\" | head -1)\n"
+        f'            evidence=$(gh api --paginate "repos/${{GITHUB_REPOSITORY}}/issues/${{pr_number}}/comments" \\\n'
+        f"              --jq '.[]' \\\n"
+        f"              | jq --arg sha \"${{HEAD_SHA}}\" -r \\\n"
+        f"              '{app_id_filter}{selector_predicates} select(.body | contains($sha)) | .id' \\\n"
+        f"              | head -1)\n"
         f'            if [[ -z "${{evidence}}" ]]; then continue; fi\n'
     )
 

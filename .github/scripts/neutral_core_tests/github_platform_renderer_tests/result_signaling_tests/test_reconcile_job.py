@@ -61,8 +61,11 @@ def test_reconcile_job_detects_evidence_via_declared_selector() -> None:
     reconcile_index = yaml_content.find("reconcile:")
     assert reconcile_index != -1, "Must have reconcile: job"
     reconcile_block = yaml_content[reconcile_index:]
-    assert "codex-review:v1 status=completed" in reconcile_block, (
-        "Reconcile job must use the full declared evidence selector (not just the prefix)"
+    assert "codex-review:v1" in reconcile_block, (
+        "Reconcile job must use the evidence selector prefix"
+    )
+    assert '\\"status\\":\\"completed\\"' in reconcile_block, (
+        "Reconcile job must use compound key=value predicate for status=completed"
     )
     assert "performed_via_github_app" in reconcile_block, (
         "Reconcile job must filter evidence comments by App ID when github_app_id is declared"

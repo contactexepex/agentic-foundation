@@ -85,8 +85,11 @@ def test_sweep_job_checks_evidence_before_gate_eval() -> None:
     sweep_index = yaml_content.find("sweep:")
     assert sweep_index != -1, "Must have sweep: job"
     sweep_block = yaml_content[sweep_index:]
-    assert "codex-review:v1 status=completed" in sweep_block, (
-        "Sweep job must use the full declared evidence selector (not just the prefix)"
+    assert "codex-review:v1" in sweep_block, (
+        "Sweep job must use the evidence selector prefix"
+    )
+    assert '\\"status\\":\\"completed\\"' in sweep_block, (
+        "Sweep job must use compound key=value predicate for status=completed"
     )
     assert "performed_via_github_app" in sweep_block, (
         "Sweep job must filter evidence comments by App ID when github_app_id is declared"

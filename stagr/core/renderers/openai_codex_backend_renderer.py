@@ -140,10 +140,19 @@ class OpenAICodexBackendRenderer:
     kind. Gate disposition is NO_OPEN_THREADS scoped to the Codex bot identity
     and the current head SHA (see module docstring). Raises ValueError for any
     other stage kind.
+
+    Args:
+        github_app_id: Optional GitHub App ID for the Codex connector. When set,
+            generated evidence detection filters comments by this App ID, preventing
+            forgery by ordinary commenters. Operators should supply the real Codex
+            App ID for hardened deployments; ``None`` (the default) omits the filter.
     """
 
     provider: str = "openai"
     backend: str = "codex"
+
+    def __init__(self, github_app_id: int | None = None) -> None:
+        self.github_app_id = github_app_id
 
     def render(self, stage: NormalizedStage) -> ExecutionPlan:
         """Produce an ExecutionPlan for the given review or security stage.
@@ -201,6 +210,7 @@ class OpenAICodexBackendRenderer:
                     sha_field=_REVIEW_SUMMARY_SHA_FIELD,
                 ),
                 success_condition=EvidenceSuccessCondition.COMPLETED,
+                github_app_id=self.github_app_id,
             )
         if stage_kind is StageKind.SECURITY:
             return EvidenceSpec(
@@ -211,6 +221,7 @@ class OpenAICodexBackendRenderer:
                     sha_field=_SECURITY_REVIEW_MARKER_SHA_FIELD,
                 ),
                 success_condition=EvidenceSuccessCondition.MATCH_FOUND,
+                github_app_id=self.github_app_id,
             )
         raise ValueError(
             f"OpenAICodexBackendRenderer does not support stage kind {stage_kind!r}; "
