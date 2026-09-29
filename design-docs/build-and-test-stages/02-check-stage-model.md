@@ -73,11 +73,17 @@ reports as "stage did not complete successfully".
 
 CI platforms create a new attempt when a job is re-run. Rules:
 
-1. Attempts of the **same job** (same producer, same pipeline run lineage) are ordered; the latest
-   attempt is authoritative *until the stage has published a `PASS` for the head*.
-2. **`PASS` is final for a head** (as in today's runtime). A later red re-run of the same commit does
-   not revoke it; a new push starts every stage again. Flaky-test policy belongs to the team's tests.
+1. Attempts of the **same job** (same verified producer, same pipeline / job attempt lineage) are
+   ordered, and the **latest terminal attempt is authoritative**. A red re-run after a `PASS`
+   turns the published result into `COMPLETED` + `FAILED`; a green re-run after a red one turns it
+   into `PASS`. A re-run of the same trusted job is fresh evidence about the same head, and keeping
+   an older `PASS` would leave the result stale by design (P5: every blocking stage must be green
+   *now*). Only attempts that reached an outcome count; an attempt still running is not one.
    (Decision D9 in 08.)
+2. Only a pull request event or an explicit re-run starts new work (06); a wake-up never re-runs
+   work. The cost is that a flaky test can turn a green stage red on a re-run and block the merge
+   until a later attempt is green. That is the correct fail-closed outcome; flaky-test policy
+   belongs to the team's tests.
 3. Two results with the same name that do **not** share an attempt lineage (for example a second
    job added by the pull request) are ambiguous and fail closed. "Latest wins" never applies
    across lineages, otherwise a later forged result could override a real red one.
@@ -92,13 +98,14 @@ PENDING   (a dependency has not passed, or the platform has not started the work
    |
 RUNNING   (the platform reports the work queued or in progress)
    |
-   +--> COMPLETED + PASS     final for this head
-   +--> COMPLETED + FAILED   work failed; re-evaluated on re-run or new evidence
+   +--> COMPLETED + PASS     until a later terminal attempt of the same lineage ends red
+   +--> COMPLETED + FAILED   work failed; replaced by a later attempt (re-run) or a new head
    +--> COMPLETED + BLOCKED  (review stages only) findings open; re-evaluated
    +--> FAILED               Stagr could not evaluate; final until the stage is re-run
 ```
 
-A new head starts every stage again at `PENDING`.
+A new head starts every stage again at `PENDING`. An explicit re-run moves a stage from any
+`COMPLETED` result, including `PASS`, back to `RUNNING` before the work starts (the lease, 06).
 
 ## Signal contents
 

@@ -36,7 +36,7 @@ not versioned in V1; it changes together with the code in one pull request.
 | `read_foreign_results` | yes / no | Can a trusted unit read results produced by another system (observed mode)? |
 | `fork_isolation` | `no_secrets_for_forks` \| `none` | Do fork pipelines run without secrets by default? |
 | `ephemeral_runners` | yes / no | Is a clean runner per job the default or available (S14)? |
-| `attempt_lineage` | yes / no | Can two results of the same name be told apart as re-run attempts versus separate jobs (02)? |
+| `attempt_lineage` | yes / no | Can two results of the same name be told apart as re-run attempts versus separate jobs, and can the attempts of one lineage be ordered so the latest terminal one is found (02)? |
 
 ### What the core does with the answers
 
@@ -85,7 +85,7 @@ row.
 | Required for merge (native) | Branch protection / ruleset requires the check | "Pipelines must succeed" + external status checks (**verify**) | Branch policy: status or build validation | Merge check: successful builds | SCM plugin / provider rule |
 | Fork isolation | **None natively:** `pull_request_target` gives fork PRs secrets and a write token, so the eligibility unit must deny forks (fork policy, design doc `05-governance-and-trust.md`) | A fork MR pipeline runs in the fork project with the fork's config and variables | Fork builds withhold secrets by default for GitHub-hosted repos; not for GitHub Enterprise Server (**verify** for Azure Repos) | Secured variables withheld for forks (**verify**) | Fork trust policy (**verify**) |
 | Timeout | `timeout-minutes` | `timeout` | `timeoutInMinutes` (must be non-zero; `0` means the maximum) | `max-time` | `timeout(time:, unit:)` wrapper |
-| Cancel superseded | `concurrency` (a newer pending run also replaces an older pending one) | `interruptible` / `workflow:auto_cancel` | GitHub repos: `pr.autoCancel` (default true); Azure Repos: **verify** | Not verified | `disableConcurrentBuilds(abortPrevious: true)` / `milestone()` |
+| Cancel superseded | `concurrency` (a newer pending job or run also replaces an older pending one in the same group, so a job that must always run, such as publish, gets a group nobody else shares) | `interruptible` / `workflow:auto_cancel` | GitHub repos: `pr.autoCancel` (default true); Azure Repos: **verify** | Not verified | `disableConcurrentBuilds(abortPrevious: true)` / `milestone()` |
 | Secrets by name | Repository / environment secrets | CI/CD variables (masked/protected) | Variable groups / Key Vault | Repository / workspace variables (secured) | Credentials store |
 
 Two things to notice:
@@ -104,7 +104,8 @@ A platform renderer for check stages must:
 1. Render the three units (eligibility, work, publish) or, for observed stages, the
    eligibility and publish units only.
 2. Declare its capability descriptor truthfully and completely, and give every work unit a timeout
-   and its own cancel-superseded concurrency (04, S6 and T11).
+   and its own cancel-superseded concurrency (04, S6 and T11). Where the platform lets a queued
+   job replace a pending one, keep eligibility and publish out of one shared group (06, "The lease").
 3. Keep all platform words (event names, job keys, API paths) inside its own package.
 4. Pass every conformance vector (07) using only the neutral interface.
 5. Carry the same stage-result contract (`StageResultSignal`, schema version 1). Only the

@@ -23,13 +23,16 @@ A managed check stage renders **three units of work**, in this order:
    trusted author, same repository, pull request open and not a draft, head matches the event,
    route applies, and every dependency has passed. Failing any check publishes nothing and starts
    nothing. Only after **all** of them pass does it write the stage's `RUNNING` result for the head
-   (the lease, rules in 06), then start the work.
+   (the lease, rules in 06), then start the work. It is the **only** unit that creates the stage's
+   result (the Check Run on GitHub); every other trusted writer only updates it.
 2. **Work** (untrusted). Checks out the exact head commit, runs the configured commands, ends with
    an exit status. Nothing else leaves this unit.
 3. **Publish** (trusted). Runs even if the work failed or was cancelled. Reads the platform's
    native outcome of *work*, maps it (02), and publishes the head-bound stage result. It is the
-   **only** writer of the stage's final result. The `RUNNING` result is written only by the
-   eligibility unit, never by the work unit.
+   **only** writer of the stage's final result, and it only *updates* the result that eligibility
+   created. The `RUNNING` result is written only by the eligibility unit, never by the work unit.
+   Eligibility and publish never share a concurrency group, so a later job can never evict a
+   queued publisher (06, "The lease").
 
 Note the naming: today's generated GitHub workflow has one job called `execute` that holds
 eligibility, invocation and publish steps together. Splitting it into three separate jobs is a
@@ -72,7 +75,7 @@ is the renderer's business (05).
 | T8 | Poisoned dependency, cache or action in the rendered pipeline | Pinning (S8); no cache steps (S10); residual risk R1 below | Test: every rendered `uses`/image is pinned; no cache step present |
 | T9 | Secret values leaked through config, Stagr output or errors | Names only in config; schema rejects invalid names; errors never echo secret-named fields. Leak by the code under test itself: R4 | Redaction tests + `run.secrets` case |
 | T10 | Config or event text injected into a shell command | Data-not-code delivery (S7); YAML serialized by a library, not string-built | Test: hostile command/branch strings render as inert data |
-| T11 | Runaway or repeated jobs burn runner time | Mandatory timeout (S6); a wake-up never re-runs work that already has a result for the head (06); the work unit has its own cancel-superseded concurrency group, separate from the serialized publish unit | Tests: timeout present; wake-up chatter starts no second run; group keys |
+| T11 | Runaway or repeated jobs burn runner time | Mandatory timeout (S6); a wake-up never re-runs work that already has a result for the head (06); the work unit has its own cancel-superseded concurrency group; eligibility has its own non-cancelling group per stage and pull request; publish has a group per workflow run (06) | Tests: timeout present; wake-up chatter starts no second run; a later wake-up does not evict a queued publisher; group keys |
 | T12 | Persistent self-hosted runner carries state between jobs | Blocking managed stages require ephemeral runners (S14) | Capability refusal test (05) |
 | T13 | A same-repository branch workflow reads repository secrets, including the publisher key | Credential scoped to the trusted default-branch definition (S11); `doctor` checks the scope when the platform exposes it | `doctor` test with a fake platform |
 | T14 | Dependency-update bots or other non-trusted authors deadlock the gate | Not solved by loosening trust. Decision D10: bot pull requests get no managed stages and need a human to re-author or a documented allowlist | See 08 |

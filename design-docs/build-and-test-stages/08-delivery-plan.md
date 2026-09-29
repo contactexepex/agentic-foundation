@@ -18,12 +18,12 @@ Reviewers: please confirm or change each one (D1 to D14). Nothing below is built
 | D6 | Advisory stage that fails | Stagr's published result shows an informational (non-failing) value; the signal payload still says `FAILED`; the work unit's own check keeps its real outcome | Show red: trips "all checks must pass" rules by accident. `continue-on-error`: destroys the attested outcome |
 | D7 | Granularity of `build` | One `build` stage runs install, build, lint, typecheck; `unit-test` separate (it repeats `install`, since stages share nothing); extra stages are config | One stage per command: many signals, slower, more noise |
 | D8 | Upstream not green | Dependents **wait** on every non-`PASS` upstream, including state `FAILED`, instead of failing terminally (06) | Keep propagation: paid review stages stuck after a fixed test or a transient `build` error |
-| D9 | Re-run after a published `PASS` | `PASS` is final for a head (matches today's runtime); a new push resets. The work unit's own platform check may turn red on a later re-run while Stagr's result stays `PASS` | Latest attempt always wins: flip-flopping results and a rewrite of the reconcile rule |
+| D9 | Re-run after a published `PASS` | Within the same verified producer and pipeline / job lineage the **latest terminal attempt decides**: a red explicit re-run turns `PASS` into `COMPLETED` + `FAILED`, a green re-run turns it back to `PASS`. Different lineages or producers stay ambiguous and fail closed. The gate is closed during the re-run because eligibility first replaces the result with `RUNNING` (06). Needs a runtime change (06, non-normative section) | `PASS` is final for a head. It matches today's runtime write policy (nothing ever rewrites `pass`), so it needs no runtime change and results never flip. The cost: a red re-run of the same trusted job is ignored, so Stagr can say `PASS` while the platform's own check for the same work is red; the result is stale by design and conflicts with P5 and with "every blocking stage must be green". Owners may still choose it |
 | D10 | Dependency-update bots and other non-trusted authors | No managed stages for them and no loosening of trust; the team either re-authors the change or adds an explicit, reviewed allowlist in a later design | Trust bots by default: widens the attack surface the threat model closes |
 | D11 | Order of code review and security review | Owners decide. This repository's contract says in sequence; design doc 08 plans independent stages. This plan works with either | Choosing silently in this plan: would contradict one of the two documents |
 | D12 | Compile step in `build:` | Add optional `build.commands.build` with a default per preset | Leave as is: "compiles" is not guaranteed by `install`/`test` for every preset |
 | D13 | Cache poisoning residual risk on GitHub (04, R1) | Accept and document for trusted same-repository authors | Run PR code on `pull_request`: gives up base-branch workflow definition (S4) |
-| D14 | Who writes the `RUNNING` lease | The trusted eligibility unit, after its checks pass, inside the serialized group (06). It holds the publisher credential but runs no pull-request code (S1) | The work unit: has no credential (S1, S3). The publish unit only: it runs after the work, too late to prevent a double run |
+| D14 | Who writes the `RUNNING` lease | The trusted eligibility unit, after its checks pass, in its own non-cancelling group per stage and pull request (06). It is the only creator of the Check Run and holds the publisher credential but runs no pull-request code (S1) | The work unit: has no credential (S1, S3). The publish unit only: it runs after the work, too late to prevent a double run |
 
 ## Phases
 
@@ -46,7 +46,8 @@ P7 needs P3 and P4.
 
 **I2. Core: native-outcome interpretation.**
 - Acceptance: one pure function maps a neutral native outcome plus attempt data to
-  `(state, conclusion, reason)` exactly as table 02; attempt-lineage rules and `PASS`-final (D9); head
+  `(state, conclusion, reason)` exactly as table 02; attempt-lineage rules and the latest-terminal-attempt rule (D9: red after `PASS` gives
+  `COMPLETED` + `FAILED`, green after red gives `PASS`, another lineage or producer is ambiguous); head
   binding; no platform words in the module; conformance vector groups V-N, V-H, V-A committed.
 - Test: `test_neutral_core_models.py` runs every vector; a mutation of any table row fails a test.
 
@@ -76,17 +77,27 @@ P7 needs P3 and P4.
 - Acceptance: security rules S1 to S14 hold in the rendered artifact; the work job has a read-only,
   non-persisted token, no secrets unless declared, mandatory timeout, its own cancel-superseded
   group; eligibility and publish hold the credential and never check out code; publish runs
-  `always()` and is the only writer of the final result; eligibility and publish share one
-  serialized group; the published result follows table 02 including the fail-closed inversion
+  `always()` and is the only writer of the final result and only updates the Check Run; eligibility
+  is the only creator, in its own non-cancelling group per stage and pull request, and publish has
+  a group keyed by the workflow run id, so the two never share a group and a later job cannot evict
+  a queued publisher; a `RUNNING` older than the stage timeout plus a margin is replaced on the
+  next pull request event or explicit re-run (not automatically); the published result follows table 02 including the fail-closed inversion
   of today's mapping (cancelled publishes `FAILED`; only `success` passes); the eligibility job writes
-  `RUNNING` after all its checks pass, following the lease rules in 06 (skip on a wake-up; replace a
-  failed or stale one on a PR event or re-run; never replace `PASS`), and the work job writes no
-  result; hostile commands and branch names are inert; all third-party
+  `RUNNING` after all its checks pass, following the lease rules in 06 (skip on a wake-up and on a
+  fresh `RUNNING`; replace a failed or stale one on a PR event or explicit re-run; an explicit re-run
+  also replaces `PASS`, so the gate is closed during the re-run), the work job writes no result,
+  and the runtime relaxes its early return on `COMPLETED` + `PASS` only for an explicit re-run or a
+  new attempt of the same lineage; hostile commands and branch names are inert; all third-party
   actions are pinned; superseded runs cannot publish for a stale head; managed stages refuse
   forks.
 - Test: render-structure tests for every rule; behavioural tests with the fake CLI for
   success, failure, timeout, cancelled, skipped, re-run, moved head, and two concurrent wake-ups
-  (only one starts the work), a stale `RUNNING` after a dead runner, and a re-run after `FAILED`; interop with the real merge
+  (only one starts the work), a stale `RUNNING` after a dead runner, and a re-run after `FAILED`;
+  `PASS`, then a red explicit re-run (the gate blocks), then a green re-run (the gate passes); a
+  second same-name result from another lineage stays ambiguous; a later wake-up's eligibility job
+  does not evict a queued publisher; a dead publisher leaves `RUNNING` that the next re-run
+  replaces; a rendered-structure check that eligibility and publish groups differ and that only
+  eligibility creates the Check Run; interop with the real merge
   gate; actionlint clean; mutation checks results in the PR.
 
 ### P4 Init, plan, apply, doctor
