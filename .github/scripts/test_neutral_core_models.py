@@ -184,6 +184,8 @@ from neutral_core_tests.test_platform_renderer import (
 from neutral_core_tests.phase1_render_loop_tests import PHASE1_RENDER_LOOP_TESTS
 from neutral_core_tests.github_platform_renderer_tests import GITHUB_PLATFORM_RENDERER_TESTS
 from neutral_core_tests.test_config_parser import CONFIG_PARSER_TESTS
+from neutral_core_tests.test_static_validator import STATIC_VALIDATOR_TESTS
+
 
 _TESTS = [
     test_enum_string_values,
@@ -322,6 +324,7 @@ _TESTS = [
     *PHASE1_RENDER_LOOP_TESTS,
     *GITHUB_PLATFORM_RENDERER_TESTS,
     *CONFIG_PARSER_TESTS,
+    *STATIC_VALIDATOR_TESTS,
 ]
 
 if __name__ == "__main__":

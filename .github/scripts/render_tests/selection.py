@@ -49,16 +49,21 @@ def _check_minimal_config_lane_selection(minimal: dict) -> None:
 
 
 def _check_auto_merge_implement_only_graph(minimal: dict) -> None:
-    """auto_merge: true on an implement-only graph renders the gate without requiring Codex reviews."""
-    auto = {**minimal, "modules": {"auto_merge": True}}
-    r_auto = render.render_all(auto, "github")
-    am = r_auto.get("auto-merge.yml", "")
-    check("auto-merge.yml" in r_auto, "select: auto-merge lane emitted when modules.auto_merge is on")
-    check('REQUIRE_CODEX_CODE_REVIEW: "false"' in am
-          and 'REQUIRE_CODEX_SECURITY_REVIEW: "false"' in am,
-          "auto-merge: implement-only graph does not require a Codex review (no deadlock)")
-    check("REQUIRED_STATUS_CHECKS: '[]'" in am,
-          "auto-merge: no external checks required without merge.required_status_checks")
+    """V-S10: auto_merge: true with no BLOCKING stages is rejected at both validate and render time.
+
+    An implement-only graph (advisory gate) with auto_merge turned on is a trivially-satisfied
+    merge gate — every PR would merge without any blocking review or check.  V-S10 rejects it
+    loudly rather than silently emitting a gate that provides no protection.
+    """
+    advisory_auto = {**minimal, "modules": {"auto_merge": True}}
+    expect_raises(
+        lambda: render.render_all(advisory_auto, "github"),
+        "V-S10: implement-only (advisory) + auto_merge=true is rejected at render time",
+    )
+    expect_raises(
+        lambda: render.validate_config(advisory_auto),
+        "V-S10: implement-only (advisory) + auto_merge=true is rejected at validate time",
+    )
 
 
 def _check_auto_merge_blocking_codex_review_requirements() -> None:
@@ -114,11 +119,15 @@ def _check_auto_merge_advisory_and_deadlock_guards(advisory_config: dict) -> Non
     check('REQUIRE_CODEX_CODE_REVIEW: "false"' in am_adv,
           "auto-merge: an advisory codex review is not a merge requirement (#5)")
 
-    # blocking review + fast_path ON -> deadlock
-    fast_path_on = {**advisory_config, "stages": [
-        {"id": "review", "type": "review", "backend": {"name": "codex"},
-         "gate": "blocking", "triggers": ["pr_opened", "pr_updated"]},
-    ]}
+    # blocking review + fast_path ON -> deadlock (standalone config; no routing key → fast_path
+    # defaults to enabled, triggering the deadlock guard regardless of advisory_config's routing).
+    fast_path_on = {"version": 2, "profile": "custom",
+                    "platform": {"type": "github", "default_branch": "main",
+                                 "auth": {"token_secret": "REMEDIATION_TOKEN"}},
+                    "defaults": {"provider": "openai", "models": {}},
+                    "modules": {"auto_merge": True},
+                    "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"},
+                                "gate": "blocking", "triggers": ["pr_opened", "pr_updated"]}]}
     expect_raises(lambda: render.render_all(fast_path_on, "github"),
                   "auto-merge: blocking review + fast_path enabled fails loud (deadlock) (#2, render)")
     expect_raises(lambda: render.validate_config(fast_path_on),
@@ -250,7 +259,8 @@ def _check_auto_merge_coherence_matrix() -> None:
     matrix_rows = [
         ("advisory", OU, "blocking", OU, None),
         ("blocking", OU, "blocking", OU, None),
-        ("advisory", O,  "advisory", O,  None),
+        # V-S10: advisory-only (no blocking stage) → rejected; was previously accepted.
+        ("advisory", O,  "advisory", O,  "v-s10"),
         ("blocking", OU, "advisory", OU, None),
         ("blocking", U,  "blocking", U,  None),
         ("advisory", O,  "blocking", O,  "b-security"),
@@ -371,13 +381,21 @@ def test_pipeline_selection() -> None:
     _check_auto_merge_implement_only_graph(minimal)
     _check_auto_merge_blocking_codex_review_requirements()
 
+    # V-S10 requires at least one BLOCKING stage when auto_merge is on. This config uses an
+    # advisory code-review alongside a blocking security stage so it satisfies V-S10 while
+    # still exercising the "advisory code-review is not a merge requirement" path.
     advisory_config = {"version": 2, "profile": "custom",
                        "platform": {"type": "github", "default_branch": "main",
                                     "auth": {"token_secret": "REMEDIATION_TOKEN"}},
                        "defaults": {"provider": "openai", "models": {}},
                        "modules": {"auto_merge": True},
-                       "stages": [{"id": "review", "type": "review", "backend": {"name": "codex"},
-                                   "gate": "advisory", "triggers": ["pr_opened", "pr_updated"]}]}
+                       "routing": {"fast_path": {"enabled": False}},
+                       "stages": [
+                           {"id": "review", "type": "review", "backend": {"name": "codex"},
+                            "gate": "advisory", "triggers": ["pr_opened", "pr_updated"]},
+                           {"id": "security", "type": "security", "backend": {"name": "codex"},
+                            "gate": "blocking", "triggers": ["pr_opened", "pr_updated"]},
+                       ]}
     _check_auto_merge_advisory_and_deadlock_guards(advisory_config)
     _check_auto_merge_coherence_matrix()
     _check_review_graph_lane_selection()
