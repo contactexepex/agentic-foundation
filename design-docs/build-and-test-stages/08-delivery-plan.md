@@ -16,7 +16,7 @@ Reviewers: please confirm or change each one (D1 to D13). Nothing below is built
 | D4 | Where `build` sits | `build` first; `unit-test` and both reviews depend on it and not on each other's outcome (except as D11 decides for the two reviews) | Reviews after unit tests: slower, no added safety. Everything parallel: pays for reviews of code that does not compile |
 | D5 | `modules.sonar` | Keep as a deprecated alias for one release, warn, then remove | Remove now: breaking. Keep forever: two fail-open/fail-closed behaviours |
 | D6 | Advisory stage that fails | Stagr's published result shows an informational (non-failing) value; the signal payload still says `FAILED`; the work unit's own check keeps its real outcome | Show red: trips "all checks must pass" rules by accident. `continue-on-error`: destroys the attested outcome |
-| D7 | Granularity of `build` | One `build` stage runs install, lint, typecheck; `unit-test` separate; extra stages are config | One stage per command: many signals, slower, more noise |
+| D7 | Granularity of `build` | One `build` stage runs install, build, lint, typecheck; `unit-test` separate (it repeats `install`, since stages share nothing); extra stages are config | One stage per command: many signals, slower, more noise |
 | D8 | Upstream not green | Dependents **wait** on every non-`PASS` upstream, including state `FAILED`, instead of failing terminally (06) | Keep propagation: paid review stages stuck after a fixed test or a transient `build` error |
 | D9 | Re-run after a published `PASS` | `PASS` is final for a head (matches today's runtime); a new push resets | Latest attempt always wins: flip-flopping results and a rewrite of the reconcile rule |
 | D10 | Dependency-update bots and other non-trusted authors | No managed stages for them and no loosening of trust; the team either re-authors the change or adds an explicit, reviewed allowlist in a later design | Trust bots by default: widens the attack surface the threat model closes |
@@ -75,9 +75,9 @@ P7 needs P3 and P4.
 - Acceptance: security rules S1 to S14 hold in the rendered artifact; the work job has a read-only,
   non-persisted token, no secrets unless declared, mandatory timeout, its own cancel-superseded
   group; publish holds the credential, never checks out code, runs `always()` and is the only
-  Check Run creator; the published result follows table 02 including the fail-closed inversion
-  of today's mapping (cancelled publishes `FAILED`; only `success` passes); the work job writes
-  `RUNNING` before executing; hostile commands and branch names are inert; all third-party
+  writer of the final result; the published result follows table 02 including the fail-closed inversion
+  of today's mapping (cancelled publishes `FAILED`; only `success` passes); the eligibility job creates
+  `RUNNING` (if none exists for the head) before the work starts and the work job writes no result; hostile commands and branch names are inert; all third-party
   actions are pinned; superseded runs cannot publish for a stale head; managed stages refuse
   forks.
 - Test: render-structure tests for every rule; behavioural tests with the fake CLI for

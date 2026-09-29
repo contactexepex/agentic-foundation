@@ -78,8 +78,9 @@ Stages that wait need a nudge when their upstream changes. The mechanism exists 
   Only a pull request event (opened, reopened, updated, ready for review) or an explicit re-run
   starts work again. Without this rule, unrelated check chatter would re-run tests and, worse,
   re-trigger paid stages in a loop.
-- The work unit writes `RUNNING` (a lease) before executing, so two concurrent wake-ups cannot both
-  run.
+- The trusted eligibility unit creates `RUNNING` (a lease) before the work starts, and creates it
+  only if none exists for the head, so two concurrent wake-ups cannot both run. The work unit
+  never writes it: it has no credential (04, S1, S3).
 
 **Observed stages** have their own wake-up need: the result comes from another system, so the
 trigger is that system's completion event for the named result (filtered by name and producer), and
@@ -164,5 +165,5 @@ that runs the configured commands with a read-only, non-persisted token and no s
 `publish` job that runs `always()` (not `!cancelled()`), reads the work job's result
 (`needs.<job>.result`) as `WORKFLOW_RESULT` evidence, and writes the Check Run through the
 publisher App. Reconcile and sweep stay update-only. This is a restructuring, including
-re-establishing that publish is the only Check Run creator, plus two runtime changes: the
+re-establishing that only the trusted eligibility and publish jobs write results, plus two runtime changes: the
 dependency rule above (Phase 2) and the inverted, fail-closed outcome mapping (Phase 3, see 02).

@@ -31,7 +31,7 @@ How `build:` maps to stages:
 | `build.commands.*` | Runs in stage | Notes |
 |---|---|---|
 | `install`, `build`, `lint`, `typecheck` | `build` | Dependencies, compile / package, static checks, in this order. Any failing step fails the stage |
-| `test` | `unit-test` | Runs after `build` (dependency). Fails the stage if it fails |
+| `install`, then `test` | `unit-test` | Runs after `build` (dependency). Stages share nothing (06), so it installs dependencies again on its own runner; a `test` command must build whatever it needs (the preset defaults do). Fails the stage if a step fails |
 
 **Schema addition (Decision D12):** `build.commands` has no compile/package key today (its
 `install` for some presets, for example Maven, does not compile). This plan adds an optional

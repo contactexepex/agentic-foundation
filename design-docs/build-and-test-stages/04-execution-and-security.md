@@ -20,12 +20,14 @@ A managed check stage renders **three units of work**, in this order:
 
 1. **Eligibility** (trusted, cheap). Decides whether this pull request may run this stage at all:
    trusted author, same repository, pull request open and not a draft, head matches the event.
-   Failing eligibility publishes nothing and starts nothing.
+   Failing eligibility publishes nothing and starts nothing. On success it creates the stage's
+   `RUNNING` result for the head, only if none exists yet (the lease, see 06), then starts the work.
 2. **Work** (untrusted). Checks out the exact head commit, runs the configured commands, ends with
    an exit status. Nothing else leaves this unit.
 3. **Publish** (trusted). Runs even if the work failed or was cancelled. Reads the platform's
    native outcome of *work*, maps it (02), and publishes the head-bound stage result. It is the
-   **only** creator of the stage's result, as the current runtime already requires.
+   **only** writer of the stage's final result. The `RUNNING` result is written only by the
+   eligibility unit, never by the work unit.
 
 Note the naming: today's generated GitHub workflow has one job called `execute` that holds
 eligibility, invocation and publish steps together. Splitting it into three separate jobs is a
@@ -66,7 +68,7 @@ is the renderer's business (05).
 | T6 | `skipped`, `neutral`, `cancelled` accepted as a pass | Only `success` passes (02) | Vectors V-N* (07) |
 | T7 | Fork pull request gets secrets or runs code | Managed stages refuse forks (S13) | Test: fork event produces no work unit |
 | T8 | Poisoned dependency, cache or action in the rendered pipeline | Pinning (S8); no cache steps (S10); residual risk R1 below | Test: every rendered `uses`/image is pinned; no cache step present |
-| T9 | Secret values leaked through config, logs or errors | Names only in config; schema rejects invalid names; errors never echo secret-named fields | Redaction tests + `run.secrets` case |
+| T9 | Secret values leaked through config, Stagr output or errors | Names only in config; schema rejects invalid names; errors never echo secret-named fields. Leak by the code under test itself: R4 | Redaction tests + `run.secrets` case |
 | T10 | Config or event text injected into a shell command | Data-not-code delivery (S7); YAML serialized by a library, not string-built | Test: hostile command/branch strings render as inert data |
 | T11 | Runaway or repeated jobs burn runner time | Mandatory timeout (S6); a wake-up never re-runs work that already has a result for the head (06); the work unit has its own cancel-superseded concurrency group, separate from the serialized publish unit | Tests: timeout present; wake-up chatter starts no second run; group keys |
 | T12 | Persistent self-hosted runner carries state between jobs | Blocking managed stages require ephemeral runners (S14) | Capability refusal test (05) |
@@ -99,13 +101,18 @@ change being reviewed. Code review and security review cover them; Stagr does no
 | R1 | Cache poisoning through the CI platform's cache service | On GitHub, a job running on `pull_request_target` uses the base branch's cache scope, and the job's runtime cache token is reachable from any command it runs. Rendering no cache steps (S10) does not remove that token | Accepted for trusted same-repository authors (the threat model already excludes others); revisit when a platform offers a per-job cache-off switch or a required-workflow mechanism. Decision D13 |
 | R2 | A malicious change inside the code under test | Stagr runs what the repository says | Covered by code and security review, not by Stagr |
 | R3 | Platform runner isolation flaws | Outside Stagr | The platform's responsibility; teams with stricter needs use `execution: observed` with hardened CI |
+| R4 | Code in a stage with `run.secrets` can leak that secret (encode, send, print) | Stagr must run the pull-request code with the secret to do the job; masking is exact-match only | Accepted for trusted same-repository authors. Use disposable, least-privilege credentials; anything that needs stronger isolation uses `execution: observed` with hardened CI |
 
 ## Secrets in check stages
 
 - Default: **no secrets**. Build and unit test need none.
 - A stage that needs one (for example an integration test against a database) lists the secret
-  **name** in `run.secrets`. The renderer maps names to the platform's secret store. Values
-  never appear in config, rendered files, logs or errors.
+  **name** in `run.secrets`. The renderer maps names to the platform's secret store. Stagr never
+  writes values into config, rendered files, its own output or errors.
+- The work unit still runs pull-request code, so that code can read the value. Platform log
+  masking only matches the exact text and does not stop code from encoding or sending it
+  elsewhere (R4). Give such a stage a disposable, least-privilege test credential, never a
+  production one.
 - A stage with secrets is *privileged*. It follows the existing privileged-workflow rules
   (design doc 05): trusted author, same repository, definition from the trusted base.
 - S1 is unconditional: a privileged work unit still never receives the publisher credential.
