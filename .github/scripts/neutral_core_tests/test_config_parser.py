@@ -209,3 +209,16 @@ def test_parse_config_error_message_names_found_version() -> None:
         assert raised, "Expected ConfigVersionError for version: 99"
     finally:
         config_path.unlink(missing_ok=True)
+
+
+CONFIG_PARSER_TESTS: list = [
+    test_parse_config_dogfood_config_succeeds,
+    test_parse_config_returns_full_config_dict,
+    test_parse_config_raises_config_version_error_when_version_absent,
+    test_parse_config_raises_config_version_error_for_string_version,
+    test_parse_config_raises_config_version_error_for_unsupported_integer_version,
+    test_parse_config_raises_config_version_error_for_non_mapping_document,
+    test_parse_config_raises_config_version_error_for_float_version,
+    test_parse_config_raises_config_version_error_for_bool_version,
+    test_parse_config_error_message_names_found_version,
+]
