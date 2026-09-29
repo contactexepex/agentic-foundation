@@ -105,16 +105,30 @@ registered; run-time presence is checked by `stagr doctor`.
 governance workflow that `stagr plan` / `stagr apply` generate never queries external check
 runs. A non-empty list is therefore a **hard static error** (a requirement the operator wrote
 must never be silently dropped). `modules.sonar: true` produces a **warning** only: it is the
-V1 fail-open external gate, which the generated workflow does not evaluate either. Enforcement of
+V1 fail-open external gate, which the generated workflow does not evaluate either. The same
+warning is given for `modules.auto_merge: true`: the generated `governance.yml` only evaluates stage
+signals and never merges, so no merge actor is generated (nothing is merged automatically, which is
+the safe direction, but the operator must not believe otherwise). Enforcement of
 external gates with producer identity is V2 scope (see `05-governance-and-trust.md`).
 
 ### V-S16 — Profile shortcut semantics
 
 `profile: minimal` and `profile: standard` expand to the neutral definitions in
 `02-canonical-stage-model.md` (blocking code review; plus a blocking security review for
-`standard`; no implement stage). These differ from the legacy renderer's profiles, so using either
+`standard`; no implement stage). A config that omits `profile` gets the schema default,
+`standard`. These differ from the legacy renderer's profiles, so using either
 produces a **warning** naming the difference. `profile: full` has no neutral definition and is
 rejected (V-S01) with a pointer to `profile: custom`.
+
+### V-S17 — Unenforced fast-path restrictions
+
+The neutral routing workflow classifies a change as `FAST` from `routing.fast_path.globs` alone.
+If an **enabled** fast path also sets `max_files`, `max_lines` or `exclude`, those would be silently
+dropped, so an oversized or excluded (for example security-sensitive) change could take the fast
+route. That is a **hard static error**; the same keys on a disabled fast path are dormant. Also,
+when `routing.fast_path.stages.normal` is omitted or empty, the NORMAL route runs **every enabled
+stage** (an empty set would make every stage inapplicable and the merge gate would evaluate
+nothing).
 
 ### V-S14 — Trusted-role value validation
 

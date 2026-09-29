@@ -168,6 +168,30 @@ def derive_routing_policy(config: dict[str, Any]) -> RoutingPolicy:
     return RoutingPolicy(fast_path=fast_path)
 
 
+def default_normal_route_to_all_stages(
+    routing_policy: RoutingPolicy,
+    normalized_stages: tuple[NormalizedStage, ...],
+) -> RoutingPolicy:
+    """Give the NORMAL route every enabled stage when the operator listed none.
+
+    ``routing.fast_path.stages.normal`` omitted or empty means "no scoped subset" (the config
+    template says so), i.e. a NORMAL pull request runs all eligible stages. Leaving the set empty
+    would mark every stage inapplicable and let the merge gate pass with nothing evaluated.
+    A non-empty operator list is kept exactly. ``fast`` is never defaulted: empty means the
+    glob/size gate approves without a model review.
+    """
+    fast_path = routing_policy.fast_path
+    if fast_path is None or fast_path.stages.normal:
+        return routing_policy
+    all_stage_ids = tuple(stage.id for stage in normalized_stages)
+    return RoutingPolicy(
+        fast_path=FastPathPolicy(
+            match=fast_path.match,
+            stages=RouteStageMap(fast=fast_path.stages.fast, normal=all_stage_ids),
+        )
+    )
+
+
 def derive_merge_policy(
     config: dict[str, Any],
     normalized_stages: tuple[NormalizedStage, ...],

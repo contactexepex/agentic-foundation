@@ -148,7 +148,10 @@ routing keys kept while `fast_path` is disabled) go to stderr and do not change 
 Two more settings are not silently ignored (see `design-docs/07-validation.md`): a non-empty
 `merge.required_status_checks` **fails** with V-S15, because the governance workflow that `plan` and
 `apply` generate cannot enforce external check runs yet; `modules.sonar: true` and the
-`minimal`/`standard` profile shortcuts (V-S15, V-S16) only warn. `--out` is refused when it, or any
+`minimal`/`standard` profile shortcuts (V-S15, V-S16) only warn; so does `modules.auto_merge: true`,
+because the generated `governance.yml` never merges. An enabled `routing.fast_path` that sets
+`max_files`, `max_lines` or `exclude` **fails** with V-S17 (the generated routing workflow does not
+enforce them). A config that omits `profile` is treated as `standard`. `--out` is refused when it, or any
 directory between the project root and it, is a symlink.
 
 One warning is worth acting on: a stage whose backend uses a `CI_COMPONENT`, `API_CALL` or

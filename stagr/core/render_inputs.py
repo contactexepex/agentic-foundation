@@ -42,7 +42,12 @@ from .errors import ConfigVersionError, RenderPipelineError
 from .models import ConfigError, RenderContext, StaticValidationError
 from .pipeline import normalize_config
 from .platform_targets import PlatformTarget, get_platform_target
-from .policy import derive_merge_policy, derive_routing_policy, derive_trust_policy
+from .policy import (
+    default_normal_route_to_all_stages,
+    derive_merge_policy,
+    derive_routing_policy,
+    derive_trust_policy,
+)
 from .publisher import PublisherConfig, derive_publisher_config
 from .renderers.anthropic_claude_backend_renderer import AnthropicClaudeBackendRenderer
 from .renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
@@ -50,9 +55,10 @@ from .skill_validator import validate_skill_file_existence
 from .static_validator import (
     collect_dormant_routing_warnings,
     collect_profile_shortcut_warnings,
-    collect_unenforced_sonar_warnings,
+    collect_unenforced_merge_warnings,
     collect_placeholder_invocation_warnings,
     validate_backend_renderer_availability,
+    validate_fast_path_restrictions_are_enforceable,
     validate_merge_policy_has_blocking_stages,
     validate_merge_settings_are_enforceable,
     validate_platform_invocation_compatibility,
@@ -60,6 +66,8 @@ from .static_validator import (
 )
 
 DEFAULT_PLATFORM_NAME = "github"
+# Mirrors the `profile` default in stagr/config.schema.json.
+SCHEMA_DEFAULT_PROFILE = "standard"
 
 
 @dataclass(frozen=True)
@@ -119,13 +127,16 @@ def _load_render_inputs(
     platform_name = platform_override or (raw_config.get("platform") or {}).get("type") or DEFAULT_PLATFORM_NAME
     platform_target = get_platform_target(platform_name)
 
+    # The schema's default profile is `standard`; normalize_config's own fallback is `custom`, which would
+    # let a config that omits `profile` pass with no review or security stage at all.
+    raw_config.setdefault("profile", SCHEMA_DEFAULT_PROFILE)
     normalized_stages = normalize_config(raw_config)
     validate_skill_file_existence(
         [{"id": stage.id, "skill": stage.skill} for stage in normalized_stages], project_root
     )
 
     trust_policy = derive_trust_policy(raw_config)
-    routing_policy = derive_routing_policy(raw_config)
+    routing_policy = default_normal_route_to_all_stages(derive_routing_policy(raw_config), normalized_stages)
     merge_policy = derive_merge_policy(raw_config, normalized_stages, trust_policy)
     publisher_config = _derive_publisher_or_explain(raw_config)
 
@@ -137,6 +148,7 @@ def _load_render_inputs(
     validate_route_dependency_closure(routing_policy, normalized_stages)
     validate_merge_policy_has_blocking_stages(merge_policy)
     validate_merge_settings_are_enforceable(raw_config)
+    validate_fast_path_restrictions_are_enforceable(raw_config)
 
     render_context = RenderContext(
         stages=normalized_stages,
@@ -153,7 +165,7 @@ def _load_render_inputs(
         backend_registry=backend_registry,
         platform_target=platform_target,
         warnings=collect_dormant_routing_warnings(raw_config)
-        + collect_unenforced_sonar_warnings(raw_config)
+        + collect_unenforced_merge_warnings(raw_config)
         + collect_profile_shortcut_warnings(raw_config)
         + collect_placeholder_invocation_warnings(
             normalized_stages, backend_registry, platform_target.functional_invocation_kinds

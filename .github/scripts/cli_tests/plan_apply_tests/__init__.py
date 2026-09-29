@@ -36,6 +36,13 @@ from .test_merge_and_profile_settings import (
     test_profile_shortcuts_warn_and_full_explains_how_to_proceed,
     test_required_status_checks_are_rejected_rather_than_silently_dropped,
 )
+from .test_routing_and_profile_defaults import (
+    test_a_config_without_profile_gets_the_schema_default_standard,
+    test_auto_merge_warns_that_the_generated_governance_does_not_merge,
+    test_an_explicit_normal_route_list_is_kept_exactly,
+    test_enabled_fast_path_without_stage_map_runs_every_stage_on_the_normal_route,
+    test_fast_path_restrictions_that_cannot_be_enforced_are_rejected,
+)
 from .test_plan import (
     test_placeholder_invocation_stages_are_warned_about_by_plan_and_apply,
     test_plan_after_apply_reports_everything_unchanged,
@@ -88,4 +95,9 @@ PLAN_APPLY_TESTS = [
     test_empty_required_status_checks_are_accepted,
     test_modules_sonar_warns_that_the_generated_gate_does_not_evaluate_it,
     test_profile_shortcuts_warn_and_full_explains_how_to_proceed,
+    test_enabled_fast_path_without_stage_map_runs_every_stage_on_the_normal_route,
+    test_an_explicit_normal_route_list_is_kept_exactly,
+    test_fast_path_restrictions_that_cannot_be_enforced_are_rejected,
+    test_auto_merge_warns_that_the_generated_governance_does_not_merge,
+    test_a_config_without_profile_gets_the_schema_default_standard,
 ]
