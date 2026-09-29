@@ -17,16 +17,17 @@ receive. Renderers translate it; they never modify or extend it.
 
 ### StageKind
 
-The kind of work a stage performs. Determines which BackendRenderer handles the stage.
+The kind of work a stage performs. Together with the stage's executor (see "NormalizedStage
+object") it determines what handles the stage.
 
 | Value | Semantics |
 |---|---|
-| `REVIEW` | Code-quality review by a model-backed provider. Completes when the reviewer finishes processing the head commit; findings may be present. |
-| `SECURITY` | Security-focused review. Same completion semantics as REVIEW. Runs independently of REVIEW unless explicitly declared otherwise in `dependencies`. |
-| `BUILD` | Compile/package step. Completes when the build finishes; conclusion is PASS only when the build succeeds. |
-| `TEST` | Automated test run. Completes when tests finish; conclusion is PASS only when all tests pass. |
+| `REVIEW` | Code-quality review by a model-backed provider. Completes when the reviewer finishes processing the head commit; findings may be present. Always an `agent` stage. |
+| `SECURITY` | Security-focused review. Same completion semantics as REVIEW. Always an `agent` stage. The `standard` profile makes it depend on REVIEW. |
+| `BUILD` | Compile/package step. Completes when the build finishes; conclusion is PASS only when the build succeeds. Never an `agent` stage. |
+| `TEST` | Automated test run. Completes when tests finish; conclusion is PASS only when all tests pass. Never an `agent` stage. |
 | `DEPLOY` | Deployment step. Environment-specific semantics. |
-| `CUSTOM` | Operator-defined. Semantics declared by the referenced skill. |
+| `CUSTOM` | Operator-defined. With an `agent` executor its semantics come from the referenced skill; with a `commands` or `observed` executor, from those commands or that observed result. |
 | `IMPLEMENT` | Agentic implementation step. An AI agent (e.g., Claude Code, Codex) reads the task and produces code changes. Completes when the agent finishes its implementation run. Unlike `REVIEW` and `SECURITY`, findings are not expected — the output is a commit or PR update, not a report. |
 
 ### StageGate
@@ -37,6 +38,10 @@ Controls whether a stage's conclusion must be PASS before the merge gate passes.
 |---|---|
 | `BLOCKING` | The merge gate requires this stage to have reached conclusion=PASS on the current head SHA before the PR can merge. |
 | `NON_BLOCKING` | The stage runs and its result is reported, but the merge gate does not wait for it. |
+
+A stage that does not declare a gate is `BLOCKING`, whatever its kind. `REVIEW` and
+`SECURITY` stages must be `BLOCKING` (see "Gate-semantics constraint" in
+`06-runtime-boundary.md`); `NON_BLOCKING` exists for `commands` and `observed` stages.
 
 `MergePolicy.blockingStageIds` is derived at normalization time as the list of all
 stage IDs where `gate == BLOCKING`. It is never re-derived at render time or run time.
@@ -68,22 +73,39 @@ gaps. This is what every renderer receives.
 NormalizedStage {
   id:           string          // unique within the config
   kind:         StageKind
+  gate:         StageGate
+  triggers:     StageTrigger[]
+  dependencies: string[]        // ids of stages that must reach PASS before this starts
+  executor:     AgentExecutor | CommandsExecutor | ObservedExecutor
+}
+
+AgentExecutor {                 // an AI backend does the work (review, security, implement)
   provider:     string          // e.g. "openai", "anthropic", "deepseek"
   backend:      string          // e.g. "codex", "claude-code", "generic"
   model:        string | null   // e.g. "gpt-4o"; null = backend default
   skill:        string          // skill id → .agentic/skills/<id>/SKILL.md
-  gate:         StageGate
-  triggers:     StageTrigger[]
-  dependencies: string[]        // ids of stages that must reach PASS before this starts
+}
+
+CommandsExecutor {              // a CI job rendered by Stagr runs the commands
+  commands:       string[]      // at least one, run in order
+  timeoutMinutes: integer       // 1..360
+}
+
+ObservedExecutor {              // the team's own CI or a service does the work
+  check:        string          // name of the result to read
+  producer:     string          // identity allowed to author it
 }
 ```
+
+See `09-check-stages.md` for the executor rules and the check-stage result model.
 
 `NormalizedStage` does **not** carry an `enabled` field. Disabled stages are removed
 during preprocessing — before this object is produced. See "Stage activation and the
 `enabled` field" below.
 
-See `03-provider-backend-model.md` for how `provider`, `backend`, and `model` relate
-and how defaults are resolved.
+See `03-provider-backend-model.md` for how an `AgentExecutor`'s `provider`, `backend`,
+and `model` relate and how defaults are resolved. A `CommandsExecutor` or
+`ObservedExecutor` has none of them.
 
 ---
 
@@ -146,16 +168,14 @@ graph is validated for:
 > **A dependent stage becomes eligible to start only when all of its declared
 > dependencies have reached `conclusion = PASS`.**
 
-**While any dependency is `BLOCKED`:** The dependent stage remains `PENDING`. It does
-not start, and its own conclusion is not set. `BLOCKED` is a mutable state — the
-upstream stage may reconcile to `PASS` when findings are resolved without a new push
-(see `06-runtime-boundary.md`). The dependent stage re-evaluates eligibility on each
-reconciliation event that updates an upstream signal.
-
-**When any dependency reaches irrecoverable `FAILED`:** The dependent stage does not
-start and its own conclusion is set to `FAILED` (dependency failure propagation).
-`FAILED` is terminal — it indicates an infrastructure failure, timeout, or unrecoverable
-error that cannot clear without a new push.
+**While any dependency is anything other than `COMPLETED` + `PASS`** (no result yet,
+`RUNNING`, `BLOCKED`, `COMPLETED` + `FAILED`, or state `FAILED`): The dependent stage
+remains `PENDING`. It does not start, and its own conclusion is not set. A dependency's
+result is mutable — it may turn `PASS` when findings are resolved (`BLOCKED`) or when a
+later attempt or a new push succeeds (`FAILED`), so the dependent stage re-evaluates
+eligibility on each event that updates an upstream signal. An upstream failure is never
+propagated: a dependent that failed for good because its upstream failed once would stay
+failed after the upstream is fixed.
 
 There is no conditional dependency ("run even if upstream failed") in V1. Stages with
 `dependencies: []` are unconditionally independent — they start whenever their declared
@@ -172,8 +192,8 @@ test   (dependencies: [build])
 - `test` starts only after `build` concludes PASS.
 - If `build` is `COMPLETED/BLOCKED` (e.g., a lint finding), `test` stays PENDING and
   re-evaluates when `build` reconciles.
-- If `build` reaches irrecoverable `FAILED` (e.g., infrastructure error), `test` does
-  not start and is itself set to FAILED.
+- If `build` fails (a compile error, or an infrastructure error), `test` does not start
+  and is not marked failed. It starts when `build` later concludes PASS.
 
 ---
 
@@ -221,42 +241,48 @@ Normalized output:
 stages:
   - id: review
     kind: REVIEW
-    provider: openai
-    backend: codex
-    model: null          // backend default
-    skill: code-review   // .agentic/skills/code-review/SKILL.md
     gate: BLOCKING
     triggers: [PR_OPENED, PR_UPDATED]
     dependencies: []
+    executor: AgentExecutor { provider: openai, backend: codex, model: null, skill: code-review }
 ```
 
 ### `standard`
 
-Intended for application code repositories. Adds a security review stage that runs
-independently of the code review.
+Intended for application code repositories. It is the baseline of `09-check-stages.md`:
+build, unit tests, code review, security review. The commands of `build` and `unit-test`
+come from the top-level `build:` block.
 
 Normalized output:
 ```
 stages:
-  - id: review
-    kind: REVIEW
-    provider: openai
-    backend: codex
-    model: null
-    skill: code-review     // .agentic/skills/code-review/SKILL.md
+  - id: build
+    kind: BUILD
     gate: BLOCKING
     triggers: [PR_OPENED, PR_UPDATED]
     dependencies: []
+    executor: CommandsExecutor { commands: <from build:>, timeoutMinutes: 30 }
+
+  - id: unit-test
+    kind: TEST
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: [build]
+    executor: CommandsExecutor { commands: <from build:>, timeoutMinutes: 30 }
+
+  - id: review
+    kind: REVIEW
+    gate: BLOCKING
+    triggers: [PR_OPENED, PR_UPDATED]
+    dependencies: [build]
+    executor: AgentExecutor { provider: openai, backend: codex, model: null, skill: code-review }
 
   - id: security
     kind: SECURITY
-    provider: openai
-    backend: codex
-    model: null
-    skill: security-review // .agentic/skills/security-review/SKILL.md
     gate: BLOCKING
     triggers: [PR_OPENED, PR_UPDATED]
-    dependencies: []
+    dependencies: [review]      // the two reviews run in sequence (09-check-stages.md, section 10)
+    executor: AgentExecutor { provider: openai, backend: codex, model: null, skill: security-review }
 ```
 
 ### `custom`
@@ -271,13 +297,3 @@ with `ISSUE_LABELED` triggers).
 > **Note:** Profile field values (especially `provider`, `backend`, `model`) are
 > documented here as the V1 default resolution. Operators may override any field per
 > stage in their config.
-
-### Why no `extended` profile in V1
-
-`BUILD`, `TEST`, and `DEPLOY` stages require operator-specific CI configuration —
-shell commands, test runners, build scripts, deployment targets — that cannot have
-meaningful defaults at the neutral layer. Supplying a profile with `provider: openai,
-backend: codex` for a build or test stage would be wrong: those stage kinds are
-CI-native operations, not AI review invocations. Operators that need BUILD/TEST/DEPLOY
-stages declare them directly in their config with the appropriate provider and backend
-for their environment. A third profile is deferred until a CI-native backend is modeled.

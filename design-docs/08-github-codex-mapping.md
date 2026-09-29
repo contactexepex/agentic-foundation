@@ -45,7 +45,7 @@ and defines what the correct implementation looks like.
 
 ---
 
-## The sequential dependency bug
+## Review order: security declares its dependency on review
 
 ### What the config declares
 
@@ -53,18 +53,20 @@ and defines what the correct implementation looks like.
 stages:
   - id: review
     type: review
-    dependencies: []    # independent
+    dependencies: []
 
   - id: security
     type: security
-    dependencies: []    # independent of review
+    dependencies: [review]    # starts after the code review has passed
 ```
 
-Both stages declare `dependencies: []`. They are unconditionally independent.
+The `standard` profile declares this dependency (`09-check-stages.md`, section 10). It is
+this repository's contract (`AGENTS.md`, `CLAUDE.md`: code review and security review run in
+sequence) written into the config, where the renderer can enforce it.
 
 ### What the current implementation does
 
-`request-final-security-review.yml` (lines 163–166) contains:
+`request-final-security-review.yml` contains a hand-written wait:
 
 ```bash
 code_row="$(grep -i 'Code Review' <<<"$summary" | head -1 || true)"
@@ -75,31 +77,24 @@ code_sha="$(grep -oE '[0-9a-f]{7,40}' <<<"$code_row" | head -1 | tr -d '\`' || t
   || { echo "code review is bound to a different head; skipping."; return 0; }
 ```
 
-This makes the security stage wait for the code review to complete before running.
+Before the dependency was declared, this violated **Renderer Invariant R1**: a renderer must
+not enforce a dependency between two stages unless it is declared in
+`NormalizedStage.dependencies`. With `security.dependencies = [review]` the same ordering is
+declared, and the generated stage enforces it through the dependency rule (start only when
+`review` is `COMPLETED` + `PASS` for the head) instead of by reading Codex comment rows.
 
-### Why this violates the contract
-
-This is a violation of **Renderer Invariant R1**: a renderer must not enforce a
-dependency between two stages unless that dependency is declared in
-`NormalizedStage.dependencies`. `security.dependencies` does not contain `review`.
-
-The check was added to prevent concurrent code + security reviews because of an
-observed backend issue. However, that behavior has not been empirically isolated — the
-cause may be a race condition in the manual-comment invocation path, duplicate
-requests, or workflow timing rather than a hard Codex backend limitation. OpenAI's
-official documentation describes Code Review and Security Review as independently
-triggerable.
-
-**Until empirical testing demonstrates a true backend concurrency constraint, no
-serialization between these two independent stages should be encoded in the
-architecture or the generated artifacts.**
+Whether the Codex backend truly fails on a concurrent code and security review has not been
+isolated (`07-validation.md`), and OpenAI's documentation describes both reviews as
+independently triggerable. The dependency is therefore a default, not a proof: a repository
+that removes it gets two independent stages, which the next section describes.
 
 ---
 
-## Target design: independent triggers
+## Target design: stage execution artifacts
 
-Under the correct architecture, both stage execution artifacts trigger independently on
-every push to an eligible PR.
+Both stage execution artifacts trigger on every push to an eligible PR. With the declared
+dependency, the security artifact then waits until `review` has passed for the head; a
+repository that removes the dependency has two fully independent artifacts.
 
 ### Declared StageTriggers vs reconciliation events
 
@@ -143,8 +138,9 @@ Declared triggers: pull_request_target [opened, reopened, ready_for_review, sync
 Reconciliation events: issue_comment [created, edited], check_suite [completed]
 ```
 
-Both artifacts trigger independently on the same declared StageTrigger events
-(`PR_OPENED` and `PR_UPDATED`). Neither waits for the other.
+Both artifacts fire on the same declared StageTrigger events (`PR_OPENED` and
+`PR_UPDATED`). With `dependencies: [review]` the security artifact's eligibility check
+(below) waits until `review` has passed; without it neither waits for the other.
 
 ### Codex Evidence path
 
@@ -278,9 +274,8 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   `schemaVersion` 1 and states the same stage id and head SHA. `state` and `conclusion` come from
   that payload, never from the native Check Run fields. The stage starts only when every
   dependency is `completed` + `pass`. A dependency that is missing, unreadable, for another head,
-  running or blocked means "not yet": nothing is invoked and nothing is written. A dependency
-  that is `failed` makes the stage `failed` without invoking the backend (failure propagation):
-  the execute job, which is the only creator of the Check Run, publishes it. Two Stagr runs for
+  running, blocked or `failed` means "not yet": nothing is invoked and nothing is written, and the
+  stage starts when the dependency later passes (`02-canonical-stage-model.md`). Two Stagr runs for
   one dependency are an error and nothing is written.
 - **Dependency wake-ups.** A stage with dependencies also subscribes to `check_run: completed`
   and `check_suite: completed`, so it starts when the upstream signal first passes, without a new
@@ -306,8 +301,8 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   starts a run of each dependent stage's workflow, which is skipped by the `if:` conditions.
 - **Known limitation: the sweep cannot start a dependent stage.** The sweep re-reads the upstream
   signals of every open pull request, so it sees an upstream `blocked` -> `pass` flip (which may
-  raise no `check_run` event). It uses them to complete an existing signal, to fail it when an
-  upstream failed, and to leave it alone while an upstream has not passed. It cannot start a stage
+  raise no `check_run` event). It uses them to complete an existing signal and to leave it alone
+  while an upstream has not passed. It cannot start a stage
   that has not started, because starting needs the backend secret and creating the Check Run,
   and the sweep holds neither. Such a stage starts the next time its execute job runs: a wake-up
   event of an upstream signal, a reopen, `ready_for_review`, or a manual re-run of the workflow. The
@@ -329,21 +324,12 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
 
 ---
 
-## What does NOT need to change in the neutral config
+## Where the review order lives
 
-The `.agentic/config.yml` is already correct:
-
-```yaml
-stages:
-  - id: review
-    type: review
-    dependencies: []   ✓ correct — independent
-  - id: security
-    type: security
-    dependencies: []   ✓ correct — independent
-```
-
-The bug is entirely in the rendered implementation. The neutral config needs no changes.
+The order of the two reviews is declared in the neutral config
+(`security.dependencies: [review]`, from the `standard` profile) and enforced by the rendered
+stage through the dependency rule. Nothing in the rendered artifacts orders the reviews on its
+own.
 
 ---
 
@@ -351,8 +337,8 @@ The bug is entirely in the rendered implementation. The neutral config needs no 
 
 | Item | Change required |
 |---|---|
-| `request-final-security-review.yml` | Remove code-review-completion gate. Add `pull_request_target: [opened, reopened, ready_for_review, synchronize]` triggers (PR_OPENED + PR_UPDATED). Both stages trigger independently. |
-| `request-codex-review-on-push.yml` | Add `pull_request_target: [opened, reopened, ready_for_review]` triggers (PR_OPENED). Remove 3-minute security-review serialization wait (lines 218–237). Emit `StageResultSignal` after evidence check. |
+| `request-final-security-review.yml` | Replace the hand-written code-review-completion wait with the declared dependency (`security` starts once `review` is `PASS` for the head). Add `pull_request_target: [opened, reopened, ready_for_review, synchronize]` triggers (PR_OPENED + PR_UPDATED). |
+| `request-codex-review-on-push.yml` | Add `pull_request_target: [opened, reopened, ready_for_review]` triggers (PR_OPENED). Replace the 3-minute security-review serialization wait (lines 218–237) with the same declared dependency. Emit `StageResultSignal` after evidence check. |
 | Both stage workflows | Add in-flight idempotency marker with lease (`<!-- stagr:stage:<id>:<sha>:expires:<time> -->`). Emit `StageResultSignal` as Check Run (not commit status); verify publisher App identity in governance. |
 | `auto-merge-foundation-prs.yml` | Read `StageResultSignal` Check Runs (verify publisher identity) instead of Codex summary comment rows. Routing signal also migrated to Check Run. |
 | New: provider configuration | Add secret alias → platform secret name mapping (TRUSTED_COMMENTER_TOKEN → REMEDIATION_TOKEN) to provider config. |

@@ -32,9 +32,9 @@ Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifac
 
 All required fields are present; all field values are recognized enum members or valid
 strings. Unrecognized top-level keys are silently ignored — operators may co-locate
-non-Stagr CI configuration (e.g., `build:`, `deploy:`) alongside the Stagr contract in
+non-Stagr configuration (e.g., `deploy:`) alongside the Stagr contract in
 `.agentic/config.yml`. Stagr validates only its own recognized key namespace: `version`,
-`profile`, `platform`, `defaults`, `routing`, `modules`, `stages`, and `providers`.
+`profile`, `platform`, `defaults`, `routing`, `modules`, `stages`, `providers`, and `build`.
 Any other top-level key is not read, not validated, and does not produce an error or
 warning. See `01-neutral-config-contract.md` for the full list of recognized keys.
 
@@ -59,11 +59,13 @@ config.
 
 ### V-S06 — Skill file existence
 
-Each `stage.skill` resolves to an existing `.agentic/skills/<id>/SKILL.md` file.
+Each agent stage's `skill` resolves to an existing `.agentic/skills/<id>/SKILL.md` file.
+Stages with a `commands` or `observed` executor have no skill.
 
 ### V-S07 — BackendRenderer availability
 
-A registered BackendRenderer exists for every `(provider, backend)` pair in the config.
+A registered BackendRenderer exists for every `(provider, backend)` pair of the agent stages
+in the config.
 
 ### V-S08 — Platform renderer compatibility
 
@@ -104,6 +106,21 @@ registered; run-time presence is checked by `stagr doctor`.
 Every string in `platform.trusted_roles` must be a recognised :class:`AuthorRole`
 value (``owner``, ``member``, ``collaborator``, ``contributor``). An unrecognised
 string is a hard static error.
+
+### V-S15 — Check-stage rules
+
+For stages with a `commands` or `observed` executor (`09-check-stages.md`, section 2):
+
+1. A stage declares `commands` or `observe`, never both; `commands` appears only on `custom`
+   stages.
+2. Every `commands` stage has at least one command, after the `build:` block is applied to the
+   `build` and `unit-test` stages. A stage with nothing to run is an error.
+3. `observe.check` and `observe.producer` are both present; an observed stage has no
+   `depends_on`.
+4. `timeout_minutes` is an integer from 1 to 360.
+5. `BUILD` and `TEST` stages are never agent stages; `REVIEW` and `SECURITY` stages are always
+   `agent` stages with a blocking gate.
+6. No key named `secrets` exists on a stage. Unknown keys are rejected as in V-S01.
 
 ---
 

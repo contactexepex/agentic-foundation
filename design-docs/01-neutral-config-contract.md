@@ -40,7 +40,7 @@ The config does **not** contain:
 
 ```yaml
 # .agentic/config.yml
-version: "1"
+version: 2
 
 # Profile selects a named preset that supplies default field values for stages.
 # "custom" means no built-in expansion — all stage fields are declared explicitly.
@@ -87,7 +87,12 @@ routing:
 # Module flags enable optional Stagr-managed or Stagr-observed components.
 modules:
   auto_merge: true          # enable the auto-merge governance component
-  # sonar: true             # observe SonarCloud as an external gate (V1: fail-open when absent)
+
+# What "green" means for this repository: the commands of the build and unit-test
+# stages (see 09-check-stages.md). A preset fills every command it can.
+build:
+  preset: maven             # python | maven | gradle | node | go | rust | dotnet | custom
+  # commands:               # optional per-key overrides: install, build, lint, typecheck, test
 
 # Stage declarations.
 stages:
@@ -112,7 +117,19 @@ stages:
     triggers:
       - pr_opened
       - pr_updated
-    dependencies: []        # independent of 'review' — both start on every push
+    dependencies: [review]  # starts after the code review has passed
+
+  # Check stages have no provider, backend or skill (see 09-check-stages.md):
+  # a managed one runs commands on a CI job Stagr renders, an observed one reads a
+  # named result from a named producer. Neither takes secrets. gate defaults to blocking.
+  - id: integration-test
+    type: custom
+    commands: ["./scripts/integration.sh"]   # custom stages only
+    timeout_minutes: 30                      # 1..360, default 30
+    gate: advisory
+  - id: analysis
+    type: custom
+    observe: { check: "Code Analysis", producer: "sonarqubecloud[bot]" }
 
   # A stage with enabled: false is excluded before normalization — not rendered,
   # not in the dependency graph, not in blockingStageIds. See 02-canonical-stage-model.md.
@@ -126,13 +143,15 @@ stages:
 
 ### Module flags
 
-The `modules:` key enables optional Stagr-managed or Stagr-observed components. All
-flags default to `false`. Recognized V1 module flags:
+The `modules:` key enables optional Stagr-managed components. All flags default to
+`false`. Recognized V1 module flags:
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `auto_merge` | `false` | Enables the auto-merge governance component. The governance artifact merges automatically when all merge gate conditions are satisfied. |
-| `sonar` | `false` | Declares SonarCloud as an observed external security gate. When `true`, the governance artifact includes the `sonarqubecloud` check run in its merge gate evaluation. **V1 semantics:** when the check run is present on the current head SHA, it must be in a passing terminal state; when absent, the gate tolerates the absence (fail-open). Full requiredPresence and provenance verification are V2 scope. See `05-governance-and-trust.md`. |
+
+An external check such as SonarCloud is not a module: it is an observed stage
+(`09-check-stages.md`).
 
 Sub-fields of `modules:` not listed above are unrecognized and produce a validation
 error. The "silently ignored" rule for unrecognized keys applies only to unknown
@@ -146,19 +165,16 @@ include additional top-level keys alongside the Stagr contract to co-locate CI o
 configuration in a single file. For example:
 
 ```yaml
-# Operator CI configuration — not part of the Stagr contract.
+# Operator tooling configuration — not part of the Stagr contract.
 # Stagr ignores this key during validation and rendering.
-build:
-  preset: custom
-  commands:
-    test: "python .github/scripts/validate_config.py"
+deploy:
+  target: staging
 ```
 
 Stagr validates only the keys it defines (`version`, `profile`, `platform`, `defaults`,
-`routing`, `modules`, `stages`, and `providers`). Any unrecognized top-level key is
-silently ignored by `stagr plan` and `stagr apply`. This lets operators co-locate build
-tool, test runner, or other CI configuration in `.agentic/config.yml` without breaking
-Stagr validation.
+`routing`, `modules`, `stages`, `providers`, and `build`). Any unrecognized top-level key is
+silently ignored by `stagr plan` and `stagr apply`. This lets operators co-locate other
+tooling configuration in `.agentic/config.yml` without breaking Stagr validation.
 
 ---
 
@@ -166,32 +182,21 @@ Stagr validation.
 
 An operator need only specify fields that differ from defaults. The renderer and profile
 expansion (see `02-canonical-stage-model.md`) fill in the rest. The minimal valid config
-for a two-stage review pipeline using the `standard` profile:
+for the baseline pipeline (build, unit-test, review, security) using the `standard` profile:
 
 ```yaml
-version: "1"
+version: 2
 profile: standard
 platform:
   type: github
   default_branch: main
+build:
+  preset: maven
 modules:
   auto_merge: true
-stages:
-  - id: review
-    type: review
-    provider: openai
-    skill: code-review
-    gate: blocking
-    triggers: [pr_opened, pr_updated]
-  - id: security
-    type: security
-    provider: openai
-    skill: security-review
-    gate: blocking
-    triggers: [pr_opened, pr_updated]
 ```
 
-When `backend` is omitted, the renderer applies the default backend for the given
+When `backend` is omitted on an agent stage, the renderer applies the default backend for the given
 `provider` (e.g., `openai` → `codex`). See `03-provider-backend-model.md`.
 
 ---

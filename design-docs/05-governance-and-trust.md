@@ -238,37 +238,9 @@ must perform the merge.
 > for well-understood, provably-safe merges; anything that requires human judgment
 > must carry the label.
 
-### External gates (V1)
-
-When `modules.sonar: true`, the governance artifact includes SonarCloud as an **observed
-external gate** alongside the Stagr-rendered blocking stages.
-
-```
-ExternalGate (V1) {
-  checkRunName:      "sonarqubecloud"      // the check run name the governance artifact looks for
-  requiredPresence:  when_present          // V1 fixed policy: check is required ONLY IF present
-  requiredConclusion: success
-}
-```
-
-**V1 semantics:**
-
-- When the `sonarqubecloud` check run is present on the current head SHA and its
-  conclusion is not `success`, the merge gate does not pass.
-- When the `sonarqubecloud` check run is absent from the current head SHA, the gate
-  tolerates the absence — it does not block the merge. This is fail-open behavior,
-  appropriate for V1 where external App analysis may not yet be reporting on all
-  repositories.
-- The governance artifact does not verify the publisher identity (App ID) of the
-  SonarCloud check run in V1. Provenance verification for external check runs is V2 scope.
-
-**V2 scope (deferred):** Full `ExternalGateSpec { id, selector, requiredPresence, acceptedConclusions, provenance }[]` modeling, configurable per-gate presence requirements, and publisher identity verification are out of V1 scope.
-
-The complete V1 merge gate condition list (condition 10) becomes:
-
-> 10. For each external gate in `modules` with value `true`: if the gate's check run is
->     present on the current head SHA, it must be in its required terminal conclusion.
->     Absent check runs are tolerated in V1.
+An external check (for example SonarCloud) is an observed stage (`09-check-stages.md`), so it
+is a stage like any other: it is in `blockingStageIds` when blocking, and an absent result
+blocks the merge.
 
 ### MergePolicy derivation
 
@@ -299,7 +271,4 @@ The governance artifact passes if and only if all of the following hold:
 8. `discussionPolicy`: if `discussionPolicy` is non-null and `requireResolved` is true,
    zero open review discussions remain (checked via platform discussion API — a separate
    governance condition not derived from `StageResultSignal`)
-9. External gates: for each `modules.<gate>: true`, if the gate's check run is present on
-   the current head SHA it must be in the required passing terminal state; absent check
-   runs are tolerated in V1 (fail-open)
-10. `mode = AUTO` (if `MANUAL`, stop here and require human merge)
+9. `mode = AUTO` (if `MANUAL`, stop here and require human merge)
