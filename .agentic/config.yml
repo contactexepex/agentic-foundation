@@ -13,6 +13,10 @@ platform:
     dispatch: codex-engineering       # issue label that dispatches the Codex implementor
   # Publication/remediation uses a real-user PAT; reads use the workflow GITHUB_TOKEN.
   auth: { token_secret: REMEDIATION_TOKEN }
+  # The Stagr GitHub App that publishes Stagr's own Check Runs. The App ID is public, not a secret.
+  # private_key_secret is omitted on purpose: it defaults to the repository secret STAGR_APP_PRIVATE_KEY.
+  publisher:
+    app_id: 5125793
 
 defaults:
   # Provider is the knob; the tool is derived (anthropic -> Claude Code, openai -> Codex).

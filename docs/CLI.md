@@ -1,7 +1,7 @@
 # `stagr` CLI
 
 `stagr` turns a `.agentic/config.yml` contract into a working pipeline on your repo's CI/SCM. It is a
-thin, deterministic layer over the renderer core (`stagr/render/`): no network, and **no secret
+thin, deterministic layer over the renderer cores (`stagr/core/` for `plan` and `apply`): no network, and **no secret
 values are ever read, printed, or logged** — only the secret *names* the contract references.
 
 ## What you need
@@ -86,8 +86,7 @@ Anything else — including a `package.json` with no lockfile or a `pyproject`-o
 `custom` (you fill in the commands) rather than a preset whose commands would fail. Detection reads
 only these top-level filenames (offline, no file contents), and the value stays overridable. A preset determines the install/lint/test
 commands the rendered Validate workflow runs (see [CONFIGURATION.md §4 Presets](CONFIGURATION.md#4-presets));
-preview the exact rendered commands with `python -m stagr.render --print` (or run `stagr apply` and read
-`.github/workflows/`), and override any that don't fit by setting them under `build.commands` in the config.
+preview the exact rendered commands with `python -m stagr.render --print`, and override any that don't fit by setting them under `build.commands` in the config.
 
 ```bash
 stagr init                      # guided wizard
@@ -120,34 +119,63 @@ stagr doctor --json        # for CI health checks
 
 ### `stagr plan`
 
-Dry run: show exactly what `apply` **would** write to `.github/workflows/`, marking each workflow
-`new`, `changed`, or `unchanged`, and listing any hand-written workflows the config does not render
-(left untouched). Writes nothing.
+Dry run: check the contract and show exactly what `apply` **would** write. It runs the same
+pipeline as `apply` (static validation V-S01 to V-S12, normalization, then the stage, routing and
+governance renderers), so a config that passes `plan` will not fail `apply` on validation or
+rendering grounds (`apply` can still fail on filesystem errors). It writes **nothing** to your
+repository: the workflows are rendered in a private temporary directory that is deleted afterwards.
+
+For each artifact it prints the file name, its size, its SHA-256 hash, and whether it is `new`,
+`changed`, or `unchanged` compared with the target directory. The hashes are exactly those of the
+files `apply` writes. Stage workflows that an earlier run wrote but this config no longer renders
+are listed as stale (hand-written workflows are never mentioned). Warnings (for example V-S11,
+routing keys kept while `fast_path` is disabled) go to stderr and do not change the exit code.
+
+Exit code `0` on success, `1` on any error (the message names the failed check).
 
 ```bash
 stagr plan                 # summary against .github/workflows/
 stagr plan --diff          # unified diff for changed workflows
-stagr plan --out some/dir  # compare against a different target
+stagr plan --out some/dir  # compare against a different target directory
 ```
 
 ### `stagr apply`
 
-Render the pipeline and write it to `.github/workflows/` (override with `--out`). Idempotent — only
-files whose content changed are written. By default it never deletes: a workflow present in the
-target that this config does not render is kept and reported. Pass `--prune` to remove such orphans.
+Validate, render, and write the workflows to `.github/workflows/` (override with `--out`). Nothing
+is written unless every check and every stage renders successfully. For each enabled stage it
+writes `stage-<stage id>.yml`; it also writes `routing.yml` and `governance.yml`. Running it twice
+gives the same files: only files whose content changed are written, and each file is replaced
+atomically.
 
-> **What renders today:** the core lane — the `Validate` check, the review router, the Claude
-> implementer, (when a Codex review/security stage is configured) the Codex review + thread-cleanup
-> lane, and (when `modules.auto_merge` is on) the fail-closed `auto-merge.yml` gate. **Not yet
-> rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
-> reviewers) and the `modules.sonar` toggle (superseded by `merge.required_status_checks`) — declared
-> and validated but they do not yet emit workflows; multi-stage rendering is roadmap
-> ([CHARTER.md](CHARTER.md) §7). Run `plan` first: it lists the exact files `apply` will write, so a
-> declared stage or module that does not yet render is visible before you commit.
+`apply` never touches files it did not generate. A `stage-*.yml` file that this config no longer
+renders (for example after you removed a stage) is kept and reported; pass `--prune` to delete
+those stale stage workflows. Hand-written workflows such as `ci.yml` are never deleted, even with
+`--prune`.
+
+`apply` and `plan` need the Stagr GitHub App that publishes Stagr's Check Runs. Set its numeric ID
+in the config (the ID is public, not a secret). The private key lives in a repository secret; only
+its name goes in the config, and it defaults to `STAGR_APP_PRIVATE_KEY`:
+
+```yaml
+platform:
+  publisher:
+    app_id: 123456                          # your Stagr GitHub App ID
+    # private_key_secret: STAGR_APP_PRIVATE_KEY   # optional; this is the default
+```
+
+Without `platform.publisher` both commands stop with an error that says so.
+
+> **What renders today:** one `stage-<id>.yml` per enabled stage (Claude Code implementer and Codex
+> review/security stages), the `routing.yml` path-classification workflow, and the `governance.yml`
+> merge gate. `plan` and `apply` do not render the older Validate, review-router, Codex thread
+> cleanup or `auto-merge.yml` workflows; `stagr doctor` and `python -m stagr.render` still use that
+> older renderer until they move to the same pipeline. Stage types other than the ones above, and
+> `from:` agent presets, are not supported by this pipeline yet. Run `plan` first: it lists the
+> exact files `apply` will write.
 
 ```bash
 stagr apply                # write/update the rendered pipeline
-stagr apply --prune        # also remove workflows this config no longer renders
+stagr apply --prune        # also remove stage workflows this config no longer renders
 ```
 
 ### `stagr help`
@@ -167,7 +195,11 @@ stagr help init     # detail for one command (also: `stagr init help`)
 - **Fail-loud.** An unresolvable model, an invalid schema, an unsupported contract shape (e.g. a
   `uri` skill source or `extends` base offline), or a missing selected template stops the command
   with a precise error rather than emitting a broken pipeline.
-- **Non-destructive by default.** `apply` adds and updates; it deletes only with `--prune`.
+- **All or nothing.** `plan` and `apply` validate and render everything before the first file is
+  written, so an error in any stage leaves your workflows untouched.
+- **Non-destructive by default.** `apply` adds and updates only the files it generates; it deletes
+  only stale `stage-*.yml` files, and only with `--prune`. It refuses to replace a symlink or a
+  directory with a workflow file.
 
 ## Build the package (maintainers)
 

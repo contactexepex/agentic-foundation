@@ -1,12 +1,12 @@
 """stagr — the agentic-foundation control plane CLI.
 
-Subcommands over the renderer core (`render/`), so newcomers can adopt the toolkit with one
+Subcommands over the renderer cores (`core/` for plan/apply, `render/` for the rest), so newcomers can adopt the toolkit with one
 command and experts can inspect exactly what it will do first:
 
     stagr init     # scaffold a commented .agentic/config.yml (guided wizard, or --profile to generate)
     stagr doctor   # validate config + resolve the graph; report health, secrets (by NAME), lanes
-    stagr plan     # dry run: show what apply WOULD write to .github/workflows (no writes)
-    stagr apply    # render the pipeline and write it (idempotent; never deletes unless --prune)
+    stagr plan     # dry run: validate and show what apply WOULD write to .github/workflows (no writes)
+    stagr apply    # validate, render the pipeline, and write it (idempotent; deletes only with --prune)
     stagr help     # list commands, or `stagr help <command>` / `stagr <command> help` for detail
 
 Design invariants (shared with the renderer):
@@ -34,13 +34,7 @@ from .report import (
     collect_report,
 )
 from .doctor import cmd_doctor
-from .plan_apply import (
-    _classify,
-    _orphans,
-    _render_or_fail,
-    cmd_apply,
-    cmd_plan,
-)
+from .plan_apply import cmd_apply, cmd_plan
 from .init import (
     _REPARSE_POINT_ATTR,
     _SECRET_VALUE_RE,

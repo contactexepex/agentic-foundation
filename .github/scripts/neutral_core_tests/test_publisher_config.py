@@ -260,16 +260,22 @@ def test_publisher_front_door_reports_schema_violation() -> None:
 
 
 def test_publisher_shipped_configs_still_validate() -> None:
-    """The dogfood config and the scaffold template validate and carry no publisher block."""
+    """The dogfood config carries the real App ID; the scaffold template invents none."""
     from stagr import render
+    from stagr.core.publisher import DEFAULT_PRIVATE_KEY_SECRET, derive_publisher_config
 
     dogfood_path = Path(REPO_ROOT) / ".agentic" / "config.yml"
     template_path = Path(REPO_ROOT) / "stagr" / "templates" / "config" / "agentic.config.yml.tmpl"
-    for config_path in (dogfood_path, template_path):
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        assert "publisher" not in config["platform"], f"{config_path.name} must not invent an App ID"
-        assert not _schema_errors(config), f"{config_path.name} must validate against the schema"
-    render.validate_config(yaml.safe_load(dogfood_path.read_text(encoding="utf-8")), project_root=Path(REPO_ROOT))
+    template_config = yaml.safe_load(template_path.read_text(encoding="utf-8"))
+    assert "publisher" not in template_config["platform"], "the template must not invent an App ID"
+    dogfood_config = yaml.safe_load(dogfood_path.read_text(encoding="utf-8"))
+    for config_name, config in ((dogfood_path.name, dogfood_config), (template_path.name, template_config)):
+        assert not _schema_errors(config), f"{config_name} must validate against the schema"
+    dogfood_publisher = derive_publisher_config(dogfood_config)
+    assert dogfood_publisher.app_id == "5125793", "dogfood config must carry the Stagr GitHub App ID"
+    assert dogfood_publisher.private_key_secret == DEFAULT_PRIVATE_KEY_SECRET
+    assert "private_key_secret" not in dogfood_config["platform"]["publisher"], "the default secret name is used"
+    render.validate_config(dogfood_config, project_root=Path(REPO_ROOT))
 
 
 PUBLISHER_CONFIG_TESTS = [

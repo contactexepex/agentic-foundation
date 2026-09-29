@@ -49,17 +49,21 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser.add_argument("--json", action="store_true", help="emit the report as JSON")
     doctor_parser.set_defaults(func=cmd_doctor)
 
-    plan_parser = subparsers.add_parser("plan", help="dry run: show what apply would write (no writes)")
+    plan_parser = subparsers.add_parser(
+        "plan", help="validate the config and show what apply would write (writes nothing)")
     add_common_arguments(plan_parser)
-    plan_parser.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
+    plan_parser.add_argument("--out", default=Path(".github/workflows"), type=Path,
+                             help="workflow directory to compare against (default: .github/workflows)")
     plan_parser.add_argument("--diff", action="store_true", help="show a unified diff for changed workflows")
     plan_parser.set_defaults(func=cmd_plan)
 
-    apply_parser = subparsers.add_parser("apply", help="render the pipeline and write it (idempotent)")
+    apply_parser = subparsers.add_parser(
+        "apply", help="validate the config, render the pipeline, and write it (idempotent)")
     add_common_arguments(apply_parser)
-    apply_parser.add_argument("--out", default=Path(".github/workflows"), type=Path, help="target workflow dir")
+    apply_parser.add_argument("--out", default=Path(".github/workflows"), type=Path,
+                              help="workflow directory to write into (default: .github/workflows)")
     apply_parser.add_argument("--prune", action="store_true",
-                              help="also delete workflow files in the target that this config does not render")
+                              help="also delete stage-*.yml files in the target that this config no longer renders")
     apply_parser.set_defaults(func=cmd_apply)
 
     init_parser = subparsers.add_parser(

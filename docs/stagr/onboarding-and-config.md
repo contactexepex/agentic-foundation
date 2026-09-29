@@ -71,10 +71,11 @@ See [`../CLI.md`](../CLI.md) for the authoritative command reference; in summary
     `ANTHROPIC_API_KEY`**. Overriding that secret name today leaves the rendered job **without its
     credential even though `doctor` succeeds** — use the default name until the resolved name is
     wired into the template.
-- **`stagr plan`** — dry run: show exactly what `apply` **would** write to `.github/workflows/`
-  (with `--diff`), marking each workflow.
+- **`stagr plan`** — dry run: validate the config and show exactly what `apply` **would** write to
+  `.github/workflows/` (with `--diff`), with a size and hash per file. It writes nothing.
 - **`stagr apply`** — **writes the rendered workflow files into `.github/workflows/` in the working
-  tree**; orphaned workflows are removed **only with `--prune`** (by default they are kept). The
+  tree** (all or nothing); stale `stage-*.yml` files are removed **only with `--prune`** (by
+  default they are kept). The
   operator then **commits the generated files and opens their own PR**. `apply` performs **no Git or
   GitHub action itself** — there is **no auto-opened bootstrap PR** — and never hand-merges.
 

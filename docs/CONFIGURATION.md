@@ -118,7 +118,7 @@ defaults:
 | `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). |
 | `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. |
 | `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
-| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. Set it whenever you use the publisher; if the `publisher` block is missing, the existing behavior is unchanged. |
+| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. **Required by `stagr plan` and `stagr apply`**, which stop with an error when the `publisher` block is missing. |
 | `publisher.private_key_secret` | Optional, used with `publisher`. The **name** of the repository secret that holds the App's private key, for example `STAGR_APP_PRIVATE_KEY` (the default). Letters, digits and underscores only, not starting with a digit, and not starting with `GITHUB_`. Never the key itself. |
 | `labels.human_merge` | A change-request with this label is **never** auto-merged (human keeps merge authority). |
 | `labels.dispatch` | Optional label that dispatches a task from an issue. |
@@ -519,14 +519,11 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
    `stagr apply` to render the pipeline for your `platform` into `.github/workflows/`.
 4. Commit and merge the rendered workflows.
 
-> **What renders today:** `apply` emits the core lane — the `Validate` check, the review router, the
-> Claude implementer, (when a Codex review/security stage is configured) the Codex review +
-> thread-cleanup lane, and (when `modules.auto_merge` is on) the fail-closed `auto-merge.yml` gate.
-> **Not yet rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and
-> non-Codex reviewers) and the `modules.sonar` toggle (superseded by `merge.required_status_checks`) —
-> they are declared and validated but do not yet emit workflows; that rendering is on the roadmap (see
-> [CHARTER.md](CHARTER.md) §7). Always read `stagr plan` output — it lists the exact files that will be
-> written — so a declared stage or module that does not yet render is visible before you commit.
+> **What renders today:** `stagr apply` writes one `stage-<id>.yml` per enabled stage, plus
+> `routing.yml` and `governance.yml`, into `.github/workflows/`. It needs `platform.publisher.app_id`
+> (see the `platform` table). Other stage types and `from:` agent presets are not supported by this
+> pipeline yet. Always read `stagr plan` output — it lists the exact files that will be written and
+> their hashes — before you commit. See [CLI.md](CLI.md).
 
 ---
 

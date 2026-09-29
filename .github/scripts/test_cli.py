@@ -24,7 +24,7 @@ from cli_tests.paths import (
     test_config_path_confined_to_project_root,
     test_config_path_symlink_loop_is_clean_error,
 )
-from cli_tests.plan_apply import test_plan_apply_idempotent
+from cli_tests.plan_apply_tests import PLAN_APPLY_TESTS
 from cli_tests.help import test_help_command
 from cli_tests.init_generate import (
     test_init_build_presets_match_schema_and_wizard_validates,
@@ -64,7 +64,8 @@ def main() -> int:
     test_v_s06_enforced_by_load_validated()
     test_config_path_confined_to_project_root()
     test_config_path_symlink_loop_is_clean_error()
-    test_plan_apply_idempotent()
+    for plan_apply_test in PLAN_APPLY_TESTS:
+        plan_apply_test()
     test_init_profiles_generate_valid_configs()
     test_init_scaffolds_skill_files()
     test_init_write_and_overwrite_guard()

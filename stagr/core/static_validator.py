@@ -20,13 +20,28 @@ then D must also be in the set. The error names the stage and the missing
 dependency. This check is skipped entirely when
 ``routing_policy.fast_path`` is ``None``.
 
-Design source: design-docs/07-validation.md (V-S07 through V-S09).
+**V-S10** — MergePolicy non-empty blocking stages: when the merge policy runs in
+``AUTO`` mode, ``blocking_stage_ids`` must be non-empty. A merge gate with no
+blocking stages is trivially satisfied and almost certainly a misconfiguration.
+
+**V-S11** — Dormant routing configuration: when ``routing.fast_path.enabled`` is
+false but ``globs`` or ``stages`` keys are still present, a *warning* (never an
+error) is produced, because the routing keys will not be evaluated.
+
+Design source: design-docs/07-validation.md (V-S07 through V-S11).
 """
 from __future__ import annotations
 
+from typing import Any
+
 from .backend_renderer_registry import BackendRendererRegistry
-from .enums import InvocationKind
-from .models import NormalizedStage, RoutingPolicy, StaticValidationError
+from .enums import InvocationKind, MergeMode
+from .models import MergePolicy, NormalizedStage, RoutingPolicy, StaticValidationError
+
+DORMANT_ROUTING_WARNING = (
+    "V-S11: dormant route configuration - fast_path is disabled; routing keys are present "
+    "but will not be evaluated"
+)
 
 
 def validate_backend_renderer_availability(
@@ -79,11 +94,19 @@ def validate_platform_invocation_compatibility(
 
     Raises:
         StaticValidationError: V-S08 when a stage's backend renderer produces
-            an ``InvocationKind`` not in ``supported_invocation_kinds``.
+            an ``InvocationKind`` not in ``supported_invocation_kinds``, or when the
+            backend renderer rejects the stage (raises ``ValueError``).
     """
     for stage in normalized_stages:
         backend_renderer = registry.get(stage.provider, stage.backend)
-        execution_plan = backend_renderer.render(stage)
+        try:
+            execution_plan = backend_renderer.render(stage)
+        except ValueError as renderer_rejection:
+            raise StaticValidationError(
+                f"V-S08: the BackendRenderer for stage '{stage.id}' "
+                f"(provider={stage.provider!r}, backend={stage.backend!r}) rejected the stage: "
+                f"{renderer_rejection}"
+            ) from renderer_rejection
         if execution_plan.invocation.kind not in supported_invocation_kinds:
             raise StaticValidationError(
                 f"V-S08: platform does not support invocation kind "
@@ -144,3 +167,37 @@ def validate_route_dependency_closure(
                         f"stage '{stage_id}' depends on '{dependency_id}' "
                         f"which is not in the route set"
                     )
+
+
+def validate_merge_policy_has_blocking_stages(merge_policy: MergePolicy) -> None:
+    """Raise ``StaticValidationError`` (V-S10) for an auto-merge gate with no blocking stage.
+
+    Only ``MergeMode.AUTO`` is checked; a manual merge policy may legitimately have
+    no blocking stages.
+
+    Raises:
+        StaticValidationError: V-S10 when ``merge_policy.mode`` is ``AUTO`` and
+            ``merge_policy.blocking_stage_ids`` is empty.
+    """
+    if merge_policy.mode is MergeMode.AUTO and not merge_policy.blocking_stage_ids:
+        raise StaticValidationError(
+            "V-S10: modules.auto_merge is true but no enabled stage has gate: blocking; an "
+            "auto-merge gate with no blocking stages is trivially satisfied. Mark at least one "
+            "stage gate: blocking or set modules.auto_merge to false"
+        )
+
+
+def collect_dormant_routing_warnings(config: dict[str, Any]) -> tuple[str, ...]:
+    """Return the V-S11 warning when fast-path is disabled but routing keys remain.
+
+    A disabled ``routing.fast_path`` that still carries ``globs`` or ``stages`` is
+    allowed (the operator may be preparing to enable it), so this never raises; it
+    returns a one-element tuple with the warning text, or an empty tuple.
+    """
+    routing_config: dict[str, Any] = config.get("routing") or {}
+    fast_path_config: dict[str, Any] = routing_config.get("fast_path") or {}
+    if fast_path_config.get("enabled", True):
+        return ()
+    if "globs" in fast_path_config or "stages" in fast_path_config:
+        return (DORMANT_ROUTING_WARNING,)
+    return ()

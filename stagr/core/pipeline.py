@@ -35,7 +35,11 @@ def _resolve_backend(stage: dict[str, Any]) -> str:
     provider is absent from the mapping and no explicit backend is given.
     """
     if "backend" in stage:
-        return str(stage["backend"])
+        explicit_backend = stage["backend"]
+        # The config schema declares an explicit backend as an object ({"name": "codex", ...}).
+        if isinstance(explicit_backend, dict):
+            return str(explicit_backend.get("name", BACKEND_GENERIC))
+        return str(explicit_backend)
     provider: str | None = stage.get("provider")
     return PROVIDER_TOOL.get(provider, BACKEND_GENERIC) if provider else BACKEND_GENERIC
 

@@ -121,7 +121,8 @@ assume a language.
    Profiles: `minimal` / `standard` / `full` / `custom`. `init` autodetects your build toolchain
    (Python, Node, Go, Maven/Gradle, Rust, .NET) and proposes the matching `build.preset` when the repo
    has the marker its commands need, else `custom`. See [docs/CLI.md](docs/CLI.md).
-3. Validate and preview:
+3. Set `platform.publisher.app_id` in the config to the numeric ID of your Stagr GitHub App (`plan` and
+   `apply` need it), then validate and preview:
    ```bash
    stagr doctor                # validate the contract + list the secret NAMES to configure
    stagr plan                  # show exactly which files would be written to .github/workflows/
@@ -133,14 +134,11 @@ assume a language.
    ```
 5. Commit and merge the rendered workflows.
 
-> **What renders today:** the core lane — the `Validate` check, the review router, the Claude
-> implementer, (when a Codex review/security stage is configured) the Codex review + thread-cleanup
-> lane, and (when `modules.auto_merge` is on) the fail-closed `auto-merge.yml` gate. **Not yet
-> rendered:** other stage types (`plan`, `test`, `integration-test`, `docs`, `release`, and non-Codex
-> reviewers) and the `modules.sonar` toggle (superseded by `merge.required_status_checks`) — these are
-> declared and validated but do not yet emit workflows; that rendering is on the roadmap
-> ([docs/CHARTER.md](docs/CHARTER.md) §7). `stagr plan` always shows the exact set of files that will
-> be written, so review it before committing.
+> **What renders today:** `stagr apply` writes one `stage-<id>.yml` per enabled stage, plus
+> `routing.yml` and `governance.yml`, into `.github/workflows/`. It needs `platform.publisher.app_id`
+> (the numeric ID of your Stagr GitHub App; see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)). Other
+> stage types are not supported by this pipeline yet. `stagr plan` runs the same checks and lists the
+> exact files and hashes that will be written, so review it before committing.
 
 Full field reference, provider→secret mapping, and troubleshooting:
 **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.

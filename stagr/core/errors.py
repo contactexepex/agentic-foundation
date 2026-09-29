@@ -3,6 +3,9 @@
 ``ConfigVersionError`` is raised by ``parse_config`` (V-S02) when the version
 field in a config file is not the supported integer 2.
 
+``RenderPipelineError`` is the single user-facing failure of the config-to-artifacts
+pipeline (see the class docstring).
+
 ``SecretAliasResolutionError`` is raised during the Phase 1 rendering loop. It
 is distinct from normalization-time errors (``ConfigError``,
 ``StaticValidationError`` in models.py) because it occurs after the normalized
@@ -41,4 +44,14 @@ class SecretAliasResolutionError(Exception):
 
     The error message names the stage, the provider, and the unresolvable alias
     so the operator can correct their provider configuration.
+    """
+
+
+class RenderPipelineError(Exception):
+    """A user-facing failure of the config-to-artifacts pipeline.
+
+    Raised by :mod:`stagr.core.render_inputs` and :mod:`stagr.core.render_pipeline` for
+    any failure an operator can act on: an unreadable or invalid config, a static
+    validation error (V-S01 through V-S12), a missing publisher block, or a renderer
+    rejecting a stage. The message is safe to print; it never contains a secret value.
     """
