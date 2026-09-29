@@ -60,6 +60,11 @@ from stagr.core.models import (
     StageResultSpec,
 )
 from stagr.platforms.github._governance import generate_governance_workflow_yaml
+from stagr.platforms.github.result_signaling import (
+    generate_reconcile_job,
+    generate_result_signaling_step,
+    generate_sweep_job,
+)
 from stagr.platforms.github.routing_workflow import (
     generate_routing_workflow_yaml,
     ROUTING_WORKFLOW_FILENAME,
@@ -160,7 +165,7 @@ class GitHubPlatformRenderer:
         on_section_yaml = self._build_on_section(stage.triggers)
         self._assert_privileged_stage_on_section_is_safe(stage, on_section_yaml, is_privileged)
 
-        workflow_yaml = self._generate_workflow_yaml(plan, stage, on_section_yaml)
+        workflow_yaml = self._generate_workflow_yaml(plan, stage, on_section_yaml, render_context)
 
         if self._output_dir is not None:
             workflow_file_path = (
@@ -290,12 +295,42 @@ class GitHubPlatformRenderer:
                 )
 
     def _generate_workflow_yaml(
-        self, plan: ExecutionPlan, stage: NormalizedStage, on_section: str
+        self,
+        plan: ExecutionPlan,
+        stage: NormalizedStage,
+        on_section: str,
+        render_context: RenderContext,
     ) -> str:
         """Return the complete GitHub Actions workflow YAML string for the stage."""
         private_key_expr = f"${{{{ secrets.{self._publisher_private_key_secret} }}}}"
         app_token_output_expr = "${{ steps.app-token.outputs.token }}"
         backend_env_section = self._build_backend_env_section(plan)
+        result_step = generate_result_signaling_step(
+            plan=plan,
+            stage_id=stage.id,
+            publisher_app_id=self._publisher_app_id,
+            app_token_output_expr=app_token_output_expr,
+        )
+        reconcile_job = generate_reconcile_job(
+            stage_id=stage.id,
+            publisher_app_id=self._publisher_app_id,
+            private_key_secret_expr=private_key_expr,
+            plan=plan,
+        )
+        sweep_job = generate_sweep_job(
+            stage_id=stage.id,
+            publisher_app_id=self._publisher_app_id,
+            private_key_secret_expr=private_key_expr,
+            plan=plan,
+            render_context=render_context,
+        )
+
+        has_pr_triggers = any(
+            t in (StageTrigger.PR_OPENED, StageTrigger.PR_UPDATED) for t in stage.triggers
+        )
+        execute_if_line = (
+            "    if: github.event_name == 'pull_request_target'\n" if has_pr_triggers else ""
+        )
 
         return (
             f'name: "Stagr stage: {stage.id}"\n'
@@ -311,6 +346,7 @@ class GitHubPlatformRenderer:
             f"jobs:\n"
             f"  execute:\n"
             f"    runs-on: ubuntu-latest\n"
+            f"{execute_if_line}"
             f"    permissions:\n"
             f"      pull-requests: read\n"
             f"      contents: read\n"
@@ -332,10 +368,11 @@ class GitHubPlatformRenderer:
             f"        run: echo 'Backend invocation placeholder (spec:#205)'\n"
             f"{backend_env_section}"
             f"\n"
-            f"      - name: Publish result (stub)\n"
-            f"        run: echo 'Result signaling placeholder (spec:#206)'\n"
-            f"        env:\n"
-            f"          STAGR_APP_TOKEN: \"{app_token_output_expr}\"\n"
+            f"{result_step}"
+            f"\n"
+            f"{reconcile_job}"
+            f"\n"
+            f"{sweep_job}"
         )
 
     def _build_backend_env_section(self, plan: ExecutionPlan) -> str:
@@ -391,5 +428,15 @@ class GitHubPlatformRenderer:
             events_csv = ", ".join(issues_events)
             lines.append(f"  issues:\n")
             lines.append(f"    types: [{events_csv}]\n")
+
+        # Reconciliation wakeups — always included regardless of stage triggers.
+        # issue_comment and check_suite fire when backend completion becomes observable;
+        # schedule drives the sweep for NO_OPEN_THREADS re-evaluation and stale markers.
+        lines.append(f"  issue_comment:\n")
+        lines.append(f"    types: [created, edited]\n")
+        lines.append(f"  check_suite:\n")
+        lines.append(f"    types: [completed]\n")
+        lines.append(f"  schedule:\n")
+        lines.append(f"    - cron: '*/15 * * * *'\n")
 
         return "".join(lines)
