@@ -1,0 +1,106 @@
+"""Platform publisher configuration for the neutral-core pipeline.
+
+The publisher is the Stagr GitHub App that publishes Stagr-owned platform signals
+(Check Runs). Two config keys describe it:
+
+- ``platform.publisher.app_id``: the App's numeric ID. It is not a secret and is
+  rendered as a literal into generated workflows. It has no default.
+- ``platform.publisher.private_key_secret``: the NAME of the repository secret
+  holding the App private key (never the key itself). Defaults to
+  ``STAGR_APP_PRIVATE_KEY``.
+
+The whole block is optional in the config schema: a config without it keeps the
+legacy lane working unchanged. ``derive_publisher_config`` is called only by code
+that needs the publisher, and raises ``ConfigError`` when it is missing or invalid.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+from .models import ConfigError
+
+DEFAULT_PRIVATE_KEY_SECRET = "STAGR_APP_PRIVATE_KEY"
+
+# Same shape as the JSON schema patterns; fullmatch means a trailing newline is rejected.
+_APP_ID_PATTERN = re.compile(r"[1-9][0-9]*", re.ASCII)
+_SECRET_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*", re.ASCII)
+_RESERVED_SECRET_PREFIX = "GITHUB_"
+
+
+@dataclass(frozen=True)
+class PublisherConfig:
+    """The Stagr GitHub App identity used to publish platform signals.
+
+    ``app_id`` is a numeric string (e.g. ``"99001"``) ready to render as a literal.
+    ``private_key_secret`` is the repository secret NAME, never a secret value.
+    """
+
+    app_id: str
+    private_key_secret: str
+
+
+def derive_publisher_config(config: dict[str, Any]) -> PublisherConfig:
+    """Derive a :class:`PublisherConfig` from the raw config dict.
+
+    Reads ``platform.publisher.app_id`` (required) and
+    ``platform.publisher.private_key_secret`` (default ``STAGR_APP_PRIVATE_KEY``).
+    An integer ``app_id`` is normalized to its decimal string.
+
+    Raises:
+        ConfigError: When the publisher block or ``app_id`` is absent, when
+            ``app_id`` is not a positive integer (or digit string), or when
+            ``private_key_secret`` is not a valid GitHub secret name.
+    """
+    platform_config = config.get("platform") or {}
+    publisher_config = platform_config.get("publisher")
+    if publisher_config is None:
+        raise ConfigError(
+            "platform.publisher is not configured; set platform.publisher.app_id to the "
+            "numeric ID of the Stagr GitHub App"
+        )
+    if not isinstance(publisher_config, dict):
+        raise ConfigError("platform.publisher must be a mapping with app_id and private_key_secret")
+    unknown_keys = sorted(str(key) for key in set(publisher_config) - {"app_id", "private_key_secret"})
+    if unknown_keys:
+        raise ConfigError(f"platform.publisher has unknown key(s): {', '.join(unknown_keys)}")
+    if "app_id" not in publisher_config:
+        raise ConfigError(
+            "platform.publisher.app_id is missing; set it to the numeric ID of the Stagr GitHub App"
+        )
+    return PublisherConfig(
+        app_id=_normalize_app_id(publisher_config["app_id"]),
+        private_key_secret=_validate_private_key_secret(
+            publisher_config.get("private_key_secret", DEFAULT_PRIVATE_KEY_SECRET)
+        ),
+    )
+
+
+def _normalize_app_id(raw_app_id: object) -> str:
+    is_positive_integer = (
+        isinstance(raw_app_id, int) and not isinstance(raw_app_id, bool) and raw_app_id >= 1
+    )
+    if is_positive_integer:
+        return str(raw_app_id)
+    if isinstance(raw_app_id, str) and _APP_ID_PATTERN.fullmatch(raw_app_id):
+        return raw_app_id
+    raise ConfigError(
+        f"platform.publisher.app_id {raw_app_id!r} is invalid; it must be a positive integer "
+        "(or a string of digits without a leading zero), the numeric ID of the Stagr GitHub App"
+    )
+
+
+def _validate_private_key_secret(raw_secret_name: object) -> str:
+    if not (isinstance(raw_secret_name, str) and _SECRET_NAME_PATTERN.fullmatch(raw_secret_name)):
+        raise ConfigError(
+            "platform.publisher.private_key_secret is not a valid GitHub secret name "
+            "(letters, digits, underscore; not starting with a digit). It must be the NAME of the "
+            "repository secret holding the App private key, never the key itself"
+        )
+    if raw_secret_name.upper().startswith(_RESERVED_SECRET_PREFIX):
+        raise ConfigError(
+            f"platform.publisher.private_key_secret '{raw_secret_name}' uses the reserved "
+            f"{_RESERVED_SECRET_PREFIX} prefix, which GitHub forbids for repository secrets"
+        )
+    return raw_secret_name

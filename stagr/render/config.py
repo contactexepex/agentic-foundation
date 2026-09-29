@@ -60,6 +60,18 @@ def load_config(path: Path) -> dict[str, Any]:
     return resolve_extends(cfg, path.parent)
 
 
+def describe_schema_error(error: Any) -> str:
+    """Return a schema error's text, WITHOUT the rejected value when it sits under a ``*_secret`` key.
+
+    jsonschema messages quote the offending instance ("'<value>' does not match ..."). A field that
+    holds a secret NAME is exactly where an operator may paste the secret VALUE by mistake (for
+    example a private key), and that value must never reach CLI or CI logs.
+    """
+    if error.path and str(error.path[-1]).endswith("_secret"):
+        return "is not a valid secret NAME (value withheld; store the value as a CI secret and put only its name here)"
+    return error.message
+
+
 def validate_config(cfg: dict[str, Any], project_root: Path | None = None) -> None:
     """Validate *cfg* against the JSON Schema and run semantic coherence checks.
 
@@ -75,7 +87,7 @@ def validate_config(cfg: dict[str, Any], project_root: Path | None = None) -> No
     errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda err: list(err.path))
     if errors:
         details = "; ".join(
-            f"{'/'.join(str(part) for part in error.path) or '(root)'}: {error.message}"
+            f"{'/'.join(str(part) for part in error.path) or '(root)'}: {describe_schema_error(error)}"
             for error in errors
         )
         raise RenderError(f"config does not conform to schema: {details}")
@@ -136,6 +148,11 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
     except StaticValidationError as exc:
         raise RenderError(str(exc)) from exc
 
+    # platform.publisher (optional): when present it must be a valid App ID + secret NAME. The schema
+    # cannot express every rule (its `$` lets a trailing newline through), so the derivation function
+    # is the single enforcement point, shared with the neutral pipeline.
+    _validate_publisher_block(cfg)
+
     # V-S11: dormant routing configuration warning — fast_path disabled but routing keys present.
     _warn_dormant_routing_config(cfg)
 
@@ -157,6 +174,20 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
     from .context import build_context
 
     build_context(cfg)
+
+
+def _validate_publisher_block(cfg: dict[str, Any]) -> None:
+    """Reject an invalid ``platform.publisher`` block; an absent block is valid (legacy lane)."""
+    platform_config: dict[str, Any] = cfg.get("platform") or {}
+    if "publisher" not in platform_config:
+        return
+    from stagr.core.models import ConfigError  # noqa: PLC0415
+    from stagr.core.publisher import derive_publisher_config  # noqa: PLC0415
+
+    try:
+        derive_publisher_config(cfg)
+    except ConfigError as exc:
+        raise RenderError(str(exc)) from exc
 
 
 def _warn_dormant_routing_config(cfg: dict[str, Any]) -> None:

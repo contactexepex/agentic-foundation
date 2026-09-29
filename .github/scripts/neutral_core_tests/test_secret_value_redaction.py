@@ -1,0 +1,75 @@
+"""Schema errors must never echo a value pasted into a ``*_secret`` field (review finding on #237).
+
+jsonschema quotes the rejected instance in its messages. An operator who pastes a private key where a
+secret NAME belongs must not see the key in CLI or CI logs.
+"""
+from __future__ import annotations
+
+import copy
+from typing import Any
+
+from neutral_core_tests.harness import REPO_ROOT  # noqa: F401  (sets up sys.path)
+from neutral_core_tests.test_publisher_config import _config_with_publisher
+from stagr import render
+
+PEM_KEY = (
+    "-----BEGIN RSA PRIVATE KEY-----\n"
+    "MIIEowIBAAKCAQEAsupersecretkeymaterial0123456789\n"
+    "-----END RSA PRIVATE KEY-----\n"
+)
+KEY_FRAGMENTS = ("BEGIN RSA", "supersecretkeymaterial", "END RSA")
+
+
+def _validation_error_text(config: dict[str, Any]) -> str:
+    try:
+        render.validate_config(config)
+    except render.RenderError as error:
+        return str(error)
+    raise AssertionError("expected the config to be rejected")
+
+
+def _assert_no_key_material(error_text: str, field_path: str) -> None:
+    for fragment in KEY_FRAGMENTS:
+        assert fragment not in error_text, f"error leaked key material {fragment!r}: {error_text}"
+    assert field_path in error_text and "value withheld" in error_text, error_text
+
+
+def test_pasted_private_key_in_publisher_secret_is_not_echoed() -> None:
+    config = _config_with_publisher({"app_id": 1, "private_key_secret": PEM_KEY})
+    _assert_no_key_material(_validation_error_text(config), "private_key_secret")
+
+
+def test_pasted_key_in_the_existing_token_secret_field_is_not_echoed() -> None:
+    config = copy.deepcopy(_config_with_publisher({"app_id": 1}))
+    config["platform"]["auth"] = {"token_secret": PEM_KEY}
+    _assert_no_key_material(_validation_error_text(config), "token_secret")
+
+
+def test_non_string_secret_value_is_reported_without_its_content() -> None:
+    config = _config_with_publisher({"app_id": 1, "private_key_secret": ["a-secret-in-a-list"]})
+    text = _validation_error_text(config)
+    assert "a-secret-in-a-list" not in text and "private_key_secret" in text
+
+
+def test_errors_for_non_secret_fields_keep_their_full_message() -> None:
+    text = _validation_error_text(_config_with_publisher({"app_id": "not-a-number"}))
+    assert "app_id" in text and "not-a-number" in text
+
+
+def test_describe_schema_error_only_redacts_secret_named_fields() -> None:
+    class FakeError:
+        def __init__(self, path: list[Any], message: str) -> None:
+            self.path, self.message = path, message
+
+    assert "withheld" in render.config.describe_schema_error(FakeError(["x", "api_key_secret"], "'v' bad"))
+    assert render.config.describe_schema_error(FakeError(["x", "branch"], "'v' bad")) == "'v' bad"
+    assert render.config.describe_schema_error(FakeError([], "root bad")) == "root bad"
+
+
+SECRET_VALUE_REDACTION_TESTS = [
+    test_pasted_private_key_in_publisher_secret_is_not_echoed,
+    test_pasted_key_in_the_existing_token_secret_field_is_not_echoed,
+    test_non_string_secret_value_is_reported_without_its_content,
+    test_errors_for_non_secret_fields_keep_their_full_message,
+    test_describe_schema_error_only_redacts_secret_named_fields,
+]

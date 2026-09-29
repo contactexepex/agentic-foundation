@@ -45,6 +45,26 @@
             "token_secret": { "type": "string", "minLength": 1, "description": "NAME of the secret holding the platform API token. Never the value." }
           }
         },
+        "publisher": {
+          "description": "OPTIONAL. The Stagr GitHub App that publishes Stagr-owned platform signals (Check Runs). Absent = the legacy lane, unchanged. The operator creates the App and stores its private key as a repository secret; only the secret NAME lives here, never the key.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "app_id": {
+              "description": "Numeric ID of the Stagr GitHub App (a positive integer, or a string of digits with no leading zero). Not a secret: it is rendered as a literal into generated workflows. No default; required whenever the neutral pipeline needs the publisher.",
+              "oneOf": [
+                { "type": "integer", "minimum": 1 },
+                { "type": "string", "pattern": "^[1-9][0-9]*$" }
+              ]
+            },
+            "private_key_secret": {
+              "description": "NAME of the repository secret that holds the App private key (letters, digits, underscore; not starting with a digit; no GITHUB_ prefix). Never the key itself. Default: STAGR_APP_PRIVATE_KEY.",
+              "type": "string",
+              "pattern": "^(?![Gg][Ii][Tt][Hh][Uu][Bb]_)[A-Za-z_][A-Za-z0-9_]*$",
+              "default": "STAGR_APP_PRIVATE_KEY"
+            }
+          }
+        },
         "labels": {
           "type": "object",
           "additionalProperties": false,

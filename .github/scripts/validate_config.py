@@ -172,7 +172,7 @@ def main() -> int:
         if schema_errors:
             for error in schema_errors:
                 location = "/".join(str(part) for part in error.path) or "(root)"
-                fail(f"{label}: {location}: {error.message}")
+                fail(f"{label}: {location}: {render.config.describe_schema_error(error)}")
         else:
             print(f"OK  {label} validates against schema")
 
@@ -211,6 +211,24 @@ def main() -> int:
         },
         "minimal config",
     )
+
+    # 4b. platform.publisher example: valid block validates; a credential-looking secret is rejected.
+    publisher_example = {
+        "version": 2,
+        "profile": "standard",
+        "platform": {
+            "type": "github",
+            "publisher": {"app_id": 123456, "private_key_secret": "STAGR_APP_PRIVATE_KEY"},
+        },
+        "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c"}}},
+    }
+    validate(publisher_example, "publisher example config")
+    literal_key_example = json.loads(json.dumps(publisher_example))
+    literal_key_example["platform"]["publisher"]["private_key_secret"] = "-----BEGIN RSA PRIVATE KEY-----"
+    if validator.is_valid(literal_key_example):
+        fail("platform.publisher.private_key_secret accepted a literal key value; it must be a secret NAME")
+    else:
+        print("OK  platform.publisher.private_key_secret rejects a literal key value")
 
     # 5. CLI backend example config — verifies the claude-code-cli enum value is accepted.
     validate(

@@ -41,6 +41,9 @@ platform:
   # auth: { token_secret: REMEDIATION_TOKEN }  # NAME of the real-user PAT that pushes the
   #                                            # implementer's fixes / re-requests reviews.
   #                                            # Default: REMEDIATION_TOKEN.
+  # publisher:                 # optional: the Stagr GitHub App that publishes Check Runs
+  #   app_id: 123456           # numeric App ID (not a secret); no default
+  #   private_key_secret: STAGR_APP_PRIVATE_KEY  # NAME of the secret holding the App key
 
 build:
   # What "green" means for THIS repo. Language-agnostic; omit for docs-only.
