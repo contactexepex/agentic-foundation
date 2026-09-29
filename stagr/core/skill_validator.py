@@ -46,6 +46,12 @@ def validate_skill_file_existence(
         skill_id = stage.get("skill")
         if skill_id is None:
             continue
+        skill_path_obj = Path(skill_id)
+        if skill_path_obj.is_absolute() or ".." in skill_path_obj.parts:
+            raise StaticValidationError(
+                f"V-S06: skill id '{skill_id}' contains path-escaping components; "
+                f"skill ids must be simple identifiers"
+            )
         expected_skill_file = project_root / ".agentic" / "skills" / skill_id / "SKILL.md"
         if not expected_skill_file.is_file():
             stage_id = stage.get("id", "<unknown>")
