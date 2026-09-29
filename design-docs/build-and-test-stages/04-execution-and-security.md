@@ -79,6 +79,7 @@ is the renderer's business (05).
 | T12 | Persistent self-hosted runner carries state between jobs | Blocking managed stages require ephemeral runners (S14) | Capability refusal test (05) |
 | T13 | A same-repository branch workflow reads repository secrets, including the publisher key | Credential scoped to the trusted default-branch definition (S11); `doctor` checks the scope when the platform exposes it | `doctor` test with a fake platform |
 | T14 | Dependency-update bots or other non-trusted authors deadlock the gate | Not solved by loosening trust. Decision D10: bot pull requests get no managed stages and need a human to re-author or a documented allowlist | See 08 |
+| T15 | A trusted actor repeatedly re-runs or pushes to replace a `RUNNING` or `FAILED` result (churn, runner cost) | Replacing a result needs write access (explicit re-run) or trusted-pull-request authorship (pull request event), both checked by eligibility (S1); it cannot change the head (S9); it is no larger a denial-of-service surface than those actors already have by pushing or re-running; attempt tokens (06) stop an older attempt from overwriting a newer result | Tests: an untrusted trigger replaces nothing; an older attempt publishes late and is a no-op |
 
 ## Definition integrity and protected paths
 

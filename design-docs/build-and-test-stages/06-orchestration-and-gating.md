@@ -66,11 +66,12 @@ dependent's waiting reason is shown in its pending result text. (Delivery Phase 
 Stages that wait need a nudge when their upstream changes. The mechanism exists and is unchanged:
 
 - **Event wake-up:** an upstream result change wakes dependents (platform event).
-- **Sweep:** a periodic, credential-free, update-only pass re-evaluates waiting stages, so a missed
+- **Sweep:** a periodic, update-only pass that cannot start work or invoke a backend, re-evaluates waiting stages, so a missed
   event never strands a pull request (it cannot start a stage, as documented for design doc 08).
-- **Reconcile:** a result that disagrees with the platform outcome is corrected (update only). This
-  includes turning a published `PASS` red when the latest terminal attempt of the same lineage ended
-  red (02, D9).
+- **Reconcile:** a result that is not yet final and disagrees with the platform outcome is
+  corrected (update only). Reconcile and the sweep never replace or revoke a completed result:
+  they keep the early return on `COMPLETED` + `PASS` and on `FAILED`. Only the publish unit of a
+  newer attempt can do that (see "The attempt token").
 
 **A wake-up never runs work twice.** For a check stage:
 
@@ -80,16 +81,40 @@ Stages that wait need a nudge when their upstream changes. The mechanism exists 
   Only a pull request event (opened, reopened, updated, ready for review) or an explicit re-run
   starts work again. Without this rule, unrelated check chatter would re-run tests and, worse,
   re-trigger paid stages in a loop.
+- **The attempt token and the lineage.** A stage's *lineage* is its single result (on GitHub, the
+  one Check Run) for one stage, one head and one verified producer. Every attempt that writes it
+  carries an **attempt token**: the pair `(run id, run attempt)` of the pipeline run that
+  contains the attempt. Tokens are compared as a pair, run id first and then attempt, so a later
+  run, a re-run of the same run and a re-run of only its failed jobs are all ordered. Assumption to
+  verify before I5: GitHub run ids increase over time. The token is stored in a separate,
+  informational `lease` field of the result payload. It is not part of the consumer-facing
+  signal (stage, head, state and conclusion are unchanged), and I5 verifies that the merge gate
+  and other consumers ignore unknown payload fields (otherwise a compatible schema bump is needed).
+  Rules:
+  - Eligibility and publish may write the result only when their own token is **greater than or
+    equal to** the stored one. A smaller token is a logged no-op: an older attempt that publishes
+    late can never clobber a newer result (an older green after a newer red stays red).
+  - Publish never creates. If no Check Run exists it fails loudly and writes nothing.
+  - Reconcile and the sweep have no attempt of their own. They only complete a non-final result for
+    the attempt named in its `lease`, keep that token, and never replace or revoke a completed
+    result.
+  - A second result of the same name that is not this Check Run, or a result from another producer,
+    is ambiguous and fails closed (02).
 - **The lease.** After all its checks pass (04), the trusted eligibility unit writes `RUNNING`
-  before the work starts. The work unit never writes it: it has no credential (04, S1, S3). Rules:
+  with its token before the work starts. The work unit never writes it: it has no credential
+  (04, S1, S3). "Work started" comes only from the eligibility output. If eligibility was cancelled
+  or evicted, no work started, and publish (which runs `always()`) writes nothing and reports
+  why. Rules:
   - No result for the head yet: create `RUNNING`.
-  - A `RUNNING` younger than the stage timeout plus a margin is work in progress: skip, whatever
-    the trigger.
-  - The trigger is a **wake-up** and a `RUNNING` or `COMPLETED` result exists: skip.
+  - A `RUNNING` younger than the stage timeout plus the margin below is work in progress: skip,
+    whatever the trigger. The log states the visible reason ("skipped: existing result").
+  - The trigger is a **wake-up** and a `RUNNING` or `COMPLETED` result exists: skip, with the same
+    logged reason.
   - The trigger is a **pull request event** and the existing result is `COMPLETED` + `FAILED`,
-    state `FAILED`, or a `RUNNING` older than the stage timeout plus a margin (its runner died):
-    replace it with a fresh `RUNNING`. An existing `COMPLETED` + `PASS` is left alone: the head is
-    already green and the event asks for nothing new.
+    state `FAILED`, or a `RUNNING` older than the stage timeout plus the margin (its runner
+    died): replace it with a fresh `RUNNING`. An existing `COMPLETED` + `PASS` is left alone: the
+    head is already green and the event asks for nothing new. A `PASS` is re-run only by an explicit
+    action.
   - The trigger is an **explicit re-run** (a new attempt of the same pipeline run, or a manual
     trigger): replace **any** existing `COMPLETED` result, including `PASS`, and any stale `RUNNING`,
     with a fresh `RUNNING` **before** the work starts. Publish is the sole writer of the final
@@ -97,27 +122,38 @@ Stages that wait need a nudge when their upstream changes. The mechanism exists 
     merge gate stays closed (fail closed, P5). The re-run then ends as the latest terminal attempt
     of its lineage and decides the result (02, D9): red publishes `COMPLETED` + `FAILED`, green
     publishes `PASS`.
-  - A different lineage or producer never takes part in this replacement; two of them stay
-    ambiguous and fail closed (02).
+  - **Stale margin.** The default margin is 15 minutes. A `RUNNING` is stale when its age exceeds
+    the stage timeout plus 15 minutes. The age runs from the Check Run's server-side `started_at`
+    to the platform's server time (taken from the API response), never from the runner's clock.
+    To verify before I5: the API exposes both, and `started_at` is reset when the lease is
+    replaced.
 - **Who creates and who only updates, and the concurrency groups.** Exactly one unit creates the
   stage's Check Run: **eligibility**. Every other writer (publish, reconcile, sweep) only *updates*
-  the existing one, so a duplicate Check Run cannot appear. The groups are chosen so that no queued job can evict a job that must run:
+  the existing one, so a duplicate Check Run cannot appear. The groups are chosen so that no queued
+  job can evict a job that must run and produce a result (GitHub semantics, to verify: job-level
+  groups, one running and one pending job per group, a newer pending job replaces an older one,
+  `cancel-in-progress` false):
   - The eligibility job has its own job-level group per stage and pull request, with
-    `cancel-in-progress` false. This serializes lease creation. A pending eligibility job replaced
-    by a newer one is harmless, because each one reads the current state instead of trusting its
-    event.
+    `cancel-in-progress` false. This serializes lease creation.
   - The publish job of a run that carried work has a group keyed by that workflow run id. Nothing
-    else can share it, so a later-queued job can never replace a pending publisher (GitHub keeps
-    one running and one pending job per group and replaces the pending one). A run whose
-    eligibility started no work has no publish step that writes anything.
+    else can share it, so a later-queued job can never replace a pending publisher. A run whose
+    eligibility started no work writes nothing in publish.
   - Eligibility and publish never share a group. Otherwise a later wake-up's eligibility job would
     evict a queued publish job, the completed work would never be published and the stage would
     stay `RUNNING`.
+  - **Known limitation (Decision D15).** A pending eligibility job can be replaced by a later one.
+    That is harmless for wake-ups and pull request events, which read current state, but **not** for
+    an explicit re-run: a pending re-run can be replaced by a later wake-up's eligibility job, which
+    then skips because a result exists, and no work starts. This affects availability only. Safety
+    is unchanged: nothing passes, the result keeps its previous value and the gate stays closed. The
+    platform shows the replaced run as cancelled, eligibility logs "skipped: existing result", and
+    a human simply re-runs. A second eligibility group is deliberately not added, because it would
+    break the single creator.
 - **A publisher that dies.** If the publish job never writes (runner lost, credential outage), the
-  stage stays `RUNNING` and the gate stays blocked. A `RUNNING` older than the stage timeout plus a
-  margin is treated as dead and is replaced by the next pull request event or explicit re-run.
-  This recovery is **not automatic**: the sweep holds no credential and cannot start work, so
-  someone has to push or re-run.
+  stage stays `RUNNING` and the gate stays blocked. A `RUNNING` older than the stage timeout plus
+  the 15-minute margin is treated as dead and is replaced by the next pull request event or
+  explicit re-run. This recovery is **not automatic**: the sweep cannot start work or invoke a
+  backend, so someone has to push or re-run.
 - **Revoked prerequisites.** A dependent that already started keeps its own head-bound result; a
   re-run of its upstream does not cancel or reset it. The merge gate needs every blocking stage
   to be `PASS` *at the moment of merge*, so an upstream turned red or `RUNNING` by a re-run blocks
@@ -192,11 +228,15 @@ restore the alias line; nothing else changed.
 
 ## Re-runs, cancellation and timeouts
 
-- **Re-run:** re-running the work unit creates a new attempt. Attempts of one lineage are ordered
-  and the latest terminal attempt decides the result: a red re-run after `PASS` turns it into
-  `COMPLETED` + `FAILED`, a green one after red into `PASS` (02, D9). The eligibility unit first
-  replaces the old result with a fresh `RUNNING` (the lease), so the gate is closed for the whole
-  re-run.
+- **Re-run:** re-running the work unit creates a new attempt with a larger token. The latest
+  terminal attempt decides the result: a red re-run after `PASS` turns it into `COMPLETED` +
+  `FAILED`, a green one after red into `PASS` (02, D9). A full re-run runs eligibility again, which
+  first replaces the old result with a fresh `RUNNING`, so the gate is closed for the whole re-run.
+  Re-running **only the failed jobs** does not run eligibility again (it already succeeded), so no
+  new `RUNNING` is written. It needs no special case: the work and publish jobs run as a newer
+  attempt, and that publish updates the result because its token is larger. The stored result
+  cannot be `PASS` in that case (a run with a failed job never published `PASS`), so the gate stays
+  closed meanwhile.
 - **Timeout:** a work unit that exceeds `run.timeout_minutes` ends as `COMPLETED` + `FAILED`
   (the reason may only say "failed or cancelled" on platforms that do not report timeouts
   distinctly). For observed stages the default is to wait; an optional `observe.timeout_minutes`
@@ -221,14 +261,24 @@ Runtime changes this needs (delivery Phases 2 and 3):
 1. The dependency rule above (Phase 2).
 2. The inverted, fail-closed outcome mapping (Phase 3, see 02).
 3. The eligibility-written lease with the replace rules above (Phase 3).
-4. **`PASS` is no longer untouchable.** Today `reconcile_pull_request` returns early with "signal
-   is already completed and passed", and the runtime's write policy says a re-run of the execute job
-   "never rewrites `pass`" (matching the alternative in D9). This is relaxed only for an explicit
-   re-run or a new attempt of the same lineage: eligibility replaces the result with `RUNNING`, and
-   publish and reconcile may write `COMPLETED` + `FAILED` over a `PASS` when the latest terminal
-   attempt of the same lineage ended red. Wake-ups and the sweep keep the early return: they never
-   start work and never touch a final result on their own initiative. The ambiguity rules for
-   different lineages or producers are unchanged.
-5. **Publish becomes update-only for managed check stages** (today, in publish mode, the runtime
-   may still create the Check Run). Creating moves to the eligibility job alone, together with
-   the job-level groups above. Review stages keep their current behaviour.
+4. **`PASS` is no longer untouchable, but only by publish.** Today `reconcile_pull_request` returns
+   early with "signal is already completed and passed", and the runtime's write policy says a re-run
+   of the execute job "never rewrites `pass`" (matching the alternative in D9). This is relaxed only
+   for an explicit re-run or a newer attempt of the same lineage: eligibility replaces the result
+   with `RUNNING`, and the **publish** job of a newer attempt may write `COMPLETED` + `FAILED` over a
+   `PASS` (or `PASS` over `FAILED`). Reconcile and the sweep keep the early return on completed
+   results and never turn a `PASS` red. Wake-ups start no work on a head that has a result. The
+   ambiguity rules for other Check Runs or producers are unchanged.
+5. **The attempt token** in a separate `lease` payload field, written by eligibility and publish
+   and compared as in "The attempt token and the lineage" above. Publish, reconcile and sweep update
+   only with a token greater than or equal to the stored one. I5 verifies that consumers ignore
+   the extra field.
+6. **Publish becomes update-only for managed check stages** (today, in publish mode, the runtime
+   may still create the Check Run). Creating moves to the eligibility job alone, together with the
+   job-level groups above. Review stages keep their current behaviour.
+7. **Reconcile and sweep jobs for managed check stages.** They are rendered today only for a stage
+   with asynchronous evidence (`has_asynchronous_evidence`), and a managed check stage has none.
+   This plan does not require them. If they are wanted for check stages (for example to complete a `RUNNING` whose publish job died),
+   the renderer must add them, with the App token they already use, and the runtime must read the
+   platform outcome of the attempt named in the lease. Without them, recovery is only by a new pull
+   request event or explicit re-run (see "A publisher that dies").

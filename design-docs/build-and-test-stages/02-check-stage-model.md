@@ -71,25 +71,38 @@ reports as "stage did not complete successfully".
 
 ## Re-runs, attempts and duplicates
 
-CI platforms create a new attempt when a job is re-run. Rules:
+CI platforms create a new attempt when a job is re-run. Terms:
 
-1. Attempts of the **same job** (same verified producer, same pipeline / job attempt lineage) are
-   ordered, and the **latest terminal attempt is authoritative**. A red re-run after a `PASS`
-   turns the published result into `COMPLETED` + `FAILED`; a green re-run after a red one turns it
-   into `PASS`. A re-run of the same trusted job is fresh evidence about the same head, and keeping
-   an older `PASS` would leave the result stale by design (P5: every blocking stage must be green
-   *now*). Only attempts that reached an outcome count; an attempt still running is not one.
-   (Decision D9 in 08.)
+- **Lineage:** the single result (on GitHub, one Check Run) for one stage, one head and one
+  verified producer.
+- **Attempt token:** the platform's monotonic attempt identity of the attempt that wrote the
+  result (on GitHub the pair of run id and run attempt, 06). Tokens are totally ordered in time.
+  The token is stored in an informational `lease` field; the signal fields (stage, head, state,
+  conclusion) are unchanged.
+
+Rules:
+
+1. The attempts that write one lineage are ordered by token, and the **latest terminal attempt is
+   authoritative**. A result may be updated only by an attempt whose token is greater than or equal
+   to the stored one; a smaller token is a logged no-op, so an older attempt that publishes late
+   never overwrites a newer result (older green after newer red stays red). A red re-run after a
+   `PASS` turns the published result into `COMPLETED` + `FAILED`; a green re-run after a red one
+   turns it into `PASS`. A re-run of the same trusted job is fresh evidence about the same head,
+   and keeping an older `PASS` would leave the result stale by design (P5: every blocking stage
+   must be green *now*). Only attempts that reached an outcome count; an attempt still running is
+   not one. (Decision D9 in 08.)
 2. Only a pull request event or an explicit re-run starts new work (06); a wake-up never re-runs
-   work. The cost is that a flaky test can turn a green stage red on a re-run and block the merge
-   until a later attempt is green. That is the correct fail-closed outcome; flaky-test policy
-   belongs to the team's tests.
-3. Two results with the same name that do **not** share an attempt lineage (for example a second
-   job added by the pull request) are ambiguous and fail closed. "Latest wins" never applies
+   work. Only the publish unit of a newer attempt can replace a completed result; reconcile and
+   the sweep never do. The cost is that a flaky test can turn a green stage red on a re-run and
+   block the merge until a later attempt is green. That is the correct fail-closed outcome;
+   flaky-test policy belongs to the team's tests.
+3. Two results with the same name that are not the single result of the lineage (for example a
+   second job added by the pull request) are ambiguous and fail closed. "Latest wins" never applies
    across lineages, otherwise a later forged result could override a real red one.
 4. Two different *producers* claiming the same stage is ambiguous and fails closed.
 
-The adapter of each platform supplies the lineage (see 05, `attempt lineage`).
+The adapter of each platform supplies the attempt token (see 05, `attempt_lineage`). A platform
+that cannot expose one cannot order attempts, so every duplicate is ambiguous there.
 
 ## State machine (per stage and head)
 

@@ -36,7 +36,7 @@ not versioned in V1; it changes together with the code in one pull request.
 | `read_foreign_results` | yes / no | Can a trusted unit read results produced by another system (observed mode)? |
 | `fork_isolation` | `no_secrets_for_forks` \| `none` | Do fork pipelines run without secrets by default? |
 | `ephemeral_runners` | yes / no | Is a clean runner per job the default or available (S14)? |
-| `attempt_lineage` | yes / no | Can two results of the same name be told apart as re-run attempts versus separate jobs, and can the attempts of one lineage be ordered so the latest terminal one is found (02)? |
+| `attempt_lineage` | yes / no | Does the platform expose a monotonic attempt identity (an attempt token, totally ordered in time), so re-run attempts of one result can be ordered and told apart from separate jobs (02)? If not, `no` |
 
 ### What the core does with the answers
 
@@ -47,7 +47,7 @@ not versioned in V1; it changes together with the code in one pull request.
 | `definition_source=pr_branch` | Render, but `doctor` warns that the pull request can alter the definition that judges it, and an empty `merge.protected_paths` becomes an error (04) |
 | `fork_isolation=none` | Managed stages refuse forks anyway (S13); the fork policy for review stages must be `DENY` |
 | Observed stage and `read_foreign_results=no` | Refuse to render |
-| Observed or managed stage and `attempt_lineage=no` | Any duplicate result of the same name is ambiguous and not passed |
+| Observed or managed stage and `attempt_lineage=no` | Attempts cannot be ordered, so any duplicate result of the same name is ambiguous and not passed |
 | Advisory stage | Weaker capabilities allowed; the stage cannot block, so it cannot be a false pass |
 
 ## Provenance levels
@@ -85,7 +85,7 @@ row.
 | Required for merge (native) | Branch protection / ruleset requires the check | "Pipelines must succeed" + external status checks (**verify**) | Branch policy: status or build validation | Merge check: successful builds | SCM plugin / provider rule |
 | Fork isolation | **None natively:** `pull_request_target` gives fork PRs secrets and a write token, so the eligibility unit must deny forks (fork policy, design doc `05-governance-and-trust.md`) | A fork MR pipeline runs in the fork project with the fork's config and variables | Fork builds withhold secrets by default for GitHub-hosted repos; not for GitHub Enterprise Server (**verify** for Azure Repos) | Secured variables withheld for forks (**verify**) | Fork trust policy (**verify**) |
 | Timeout | `timeout-minutes` | `timeout` | `timeoutInMinutes` (must be non-zero; `0` means the maximum) | `max-time` | `timeout(time:, unit:)` wrapper |
-| Cancel superseded | `concurrency` (a newer pending job or run also replaces an older pending one in the same group, so a job that must always run, such as publish, gets a group nobody else shares) | `interruptible` / `workflow:auto_cancel` | GitHub repos: `pr.autoCancel` (default true); Azure Repos: **verify** | Not verified | `disableConcurrentBuilds(abortPrevious: true)` / `milestone()` |
+| Cancel superseded | `concurrency`, also at job level (**verify**: one running and one pending job per group, a newer pending job replaces an older pending one when `cancel-in-progress` is false, so a job that must always run, such as publish, gets a group nobody else shares) | `interruptible` / `workflow:auto_cancel` | GitHub repos: `pr.autoCancel` (default true); Azure Repos: **verify** | Not verified | `disableConcurrentBuilds(abortPrevious: true)` / `milestone()` |
 | Secrets by name | Repository / environment secrets | CI/CD variables (masked/protected) | Variable groups / Key Vault | Repository / workspace variables (secured) | Credentials store |
 
 Two things to notice:
