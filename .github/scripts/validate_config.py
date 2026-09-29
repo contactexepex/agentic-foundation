@@ -199,6 +199,17 @@ def main() -> int:
                 print(f"OK  {rel} passes canonical validation (schema + semantics + templating)")
             except render.RenderError as exc:
                 fail(f"{rel}: canonical validation failed: {exc}")
+            # V-S06: skill file existence — each stage with skill != None must resolve to
+            # .agentic/skills/<id>/SKILL.md. Disabled stages are skipped (they are removed
+            # before normalization and never participate in the active pipeline).
+            from stagr.core.skill_validator import validate_skill_file_existence  # noqa: PLC0415
+            from stagr.core.models import StaticValidationError  # noqa: PLC0415
+            raw_stages = cfg.get("stages") or []
+            try:
+                validate_skill_file_existence(raw_stages, ROOT)
+                print(f"OK  {rel} passes V-S06 skill file existence check")
+            except StaticValidationError as exc:
+                fail(f"{rel}: V-S06 skill file check failed: {exc}")
 
     # 4. Minimal config.
     validate(

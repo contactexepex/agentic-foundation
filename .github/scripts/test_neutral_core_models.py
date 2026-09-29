@@ -67,6 +67,16 @@ from neutral_core_tests.test_dag import (
     test_dag_direct_two_stage_cycle_raises_v_s04,
     test_dag_cycle_error_excludes_downstream_dependents,
 )
+from neutral_core_tests.test_skill_validator import (
+    test_v_s06_stage_with_no_skill_raises_no_error,
+    test_v_s06_missing_skill_file_raises_error_with_code,
+    test_v_s06_missing_skill_file_error_names_expected_path,
+    test_v_s06_existing_skill_file_passes,
+    test_v_s06_disabled_stage_with_skill_is_skipped,
+    test_v_s06_stage_id_named_in_error,
+    test_v_s06_mixed_stages_only_missing_files_fail,
+    test_v_s06_empty_stages_passes,
+)
 from neutral_core_tests.test_defaults import (
     test_defaults_provider_propagates,
     test_defaults_explicit_provider_not_overridden,
@@ -226,6 +236,14 @@ _TESTS = [
     test_dag_empty_active_stages_passes,
     test_dag_direct_two_stage_cycle_raises_v_s04,
     test_dag_cycle_error_excludes_downstream_dependents,
+    test_v_s06_stage_with_no_skill_raises_no_error,
+    test_v_s06_missing_skill_file_raises_error_with_code,
+    test_v_s06_missing_skill_file_error_names_expected_path,
+    test_v_s06_existing_skill_file_passes,
+    test_v_s06_disabled_stage_with_skill_is_skipped,
+    test_v_s06_stage_id_named_in_error,
+    test_v_s06_mixed_stages_only_missing_files_fail,
+    test_v_s06_empty_stages_passes,
     test_defaults_provider_propagates,
     test_defaults_explicit_provider_not_overridden,
     test_defaults_model_resolved_from_defaults,
