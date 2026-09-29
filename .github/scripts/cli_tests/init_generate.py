@@ -177,6 +177,19 @@ def test_init_wizard_governance_unrecognized_keeps_profile_default() -> None:
           "wizard: an unrecognized governance answer keeps the full profile's blocking default")
 
 
+def test_init_scaffolds_skill_files() -> None:
+    with _project_dir() as d:
+        dest = Path(d) / ".agentic" / "config.yml"
+        rc = cli.main(["init", "--profile", "standard", "--config", str(dest)])
+        check(rc == 0, "init --profile standard: exits 0")
+        code_review_skill = d / ".agentic" / "skills" / "code-review" / "SKILL.md"
+        security_review_skill = d / ".agentic" / "skills" / "security-review" / "SKILL.md"
+        check(code_review_skill.is_file(),
+              "init: scaffolds .agentic/skills/code-review/SKILL.md from packaged template")
+        check(security_review_skill.is_file(),
+              "init: scaffolds .agentic/skills/security-review/SKILL.md from packaged template")
+
+
 def test_init_build_presets_match_schema_and_wizard_validates() -> None:
     import json as _json
     from stagr import scaffold

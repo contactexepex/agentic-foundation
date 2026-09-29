@@ -35,6 +35,7 @@ from cli_tests.init_generate import (
     test_init_profiles_generate_valid_configs,
     test_init_quotes_yaml_keyword_scalars,
     test_init_review_gate_derived_from_profile,
+    test_init_scaffolds_skill_files,
     test_init_wizard_defaults_and_nontty,
     test_init_wizard_governance_unrecognized_keeps_profile_default,
     test_init_writes_utf8,
@@ -64,6 +65,7 @@ def main() -> int:
     test_config_path_symlink_loop_is_clean_error()
     test_plan_apply_idempotent()
     test_init_profiles_generate_valid_configs()
+    test_init_scaffolds_skill_files()
     test_init_write_and_overwrite_guard()
     test_init_wizard_defaults_and_nontty()
     test_help_command()

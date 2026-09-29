@@ -156,6 +156,32 @@ def _write_generated_config(dest: Path, text: str, force: bool) -> int:
     return 0
 
 
+def _scaffold_skill_files(generated_cfg: dict[str, Any], project_root: Path, force: bool) -> list[str]:
+    """Copy packaged skill templates to .agentic/skills/<id>/SKILL.md for every skill in the config.
+
+    Returns a sorted list of skill ids scaffolded; skips ids with no packaged template.
+    """
+    skills_template_dir = render.PKG_ROOT / "templates" / "skills"
+    stages = render.expand_stages(generated_cfg)
+    seen_skills: set[str] = set()
+    scaffolded: list[str] = []
+    for stage in stages:
+        skill_id = stage.get("skill")
+        if not skill_id or skill_id in seen_skills:
+            continue
+        seen_skills.add(skill_id)
+        template_file = skills_template_dir / skill_id / "SKILL.md"
+        if not template_file.is_file():
+            continue
+        dest_file = project_root / ".agentic" / "skills" / skill_id / "SKILL.md"
+        if dest_file.exists() and not force:
+            continue
+        dest_file.parent.mkdir(parents=True, exist_ok=True)
+        dest_file.write_text(template_file.read_text(encoding="utf-8"), encoding="utf-8")
+        scaffolded.append(skill_id)
+    return sorted(scaffolded)
+
+
 def _print_init_next_steps(dest: Path) -> None:
     """Point the user at the follow-up commands after `init` writes the config."""
     # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, point the user at
@@ -206,6 +232,11 @@ def cmd_init(args: argparse.Namespace) -> int:
     rc = _write_generated_config(dest, text, args.force)
     if rc != 0:
         return rc
+    # dest is .agentic/config.yml; its parent is .agentic/, and that parent is the project root.
+    project_root = dest.resolve().parent.parent
+    scaffolded_skills = _scaffold_skill_files(yaml.safe_load(text), project_root, args.force)
     print(f"init: wrote {dest} (profile: {choices['profile']}).")
+    if scaffolded_skills:
+        print(f"init: scaffolded skill files: {', '.join(scaffolded_skills)}")
     _print_init_next_steps(dest)
     return 0
