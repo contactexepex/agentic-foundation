@@ -160,26 +160,32 @@ def test_generated_file_explains_gates_and_keeps_unavailable_stages_commented() 
               f"init {profile}: no invented App ID and no key material in the file")
 
 
-def test_uncommenting_the_build_and_test_examples_only_renders_placeholders() -> None:
-    """The 'not available yet' comment says these would render only a placeholder; pin that claim."""
+def test_uncommenting_the_build_and_test_examples_is_refused_until_a_backend_exists() -> None:
+    """A blocking placeholder would publish a pass for work that never ran (V-S18); advisory only warns."""
     example_blocks = {
         "build": ("  # - id: build\n  #   type: custom\n  #   gate: blocking\n",
-                  "  - id: build\n    type: custom\n    gate: blocking\n"),
+                  "  - id: build\n    type: custom\n    gate: {gate}\n"),
         "test": ("  # - id: test\n  #   type: test\n  #   gate: blocking\n",
-                 "  - id: test\n    type: test\n    gate: blocking\n"),
+                 "  - id: test\n    type: test\n    gate: {gate}\n"),
         "integration-test": ("  # - id: integration-test\n  #   type: custom\n  #   gate: blocking\n",
-                             "  - id: integration-test\n    type: custom\n    gate: blocking\n"),
+                             "  - id: integration-test\n    type: custom\n    gate: {gate}\n"),
     }
-    for stage_id, (commented_block, active_block) in example_blocks.items():
+    for stage_id, (commented_block, active_template) in example_blocks.items():
+        profile = "full" if stage_id == "integration-test" else "standard"
         with _project_dir():
-            generated_text = init_profile_in_current_project("full" if stage_id == "integration-test" else "standard")
+            generated_text = init_profile_in_current_project(profile)
             check(commented_block in generated_text, f"init: the commented '{stage_id}' example has the expected shape")
+            publisher_ready_text = uncomment_publisher_block(generated_text)
             DEFAULT_CONFIG_FILE.write_text(
-                uncomment_publisher_block(generated_text).replace(commented_block, active_block), encoding="utf-8")
+                publisher_ready_text.replace(commented_block, active_template.format(gate="blocking")), encoding="utf-8")
+            exit_code, _, error_output = run_cli("plan")
+            check(exit_code == 1 and "V-S18" in error_output and f"stage '{stage_id}'" in error_output,
+                  f"plan: an uncommented blocking '{stage_id}' example is refused (stderr: {error_output.strip()})")
+            DEFAULT_CONFIG_FILE.write_text(
+                publisher_ready_text.replace(commented_block, active_template.format(gate="advisory")), encoding="utf-8")
             exit_code, _, error_output = run_cli("plan")
             check(exit_code == 0 and f"stage '{stage_id}'" in error_output and "placeholder" in error_output,
-                  f"plan: an uncommented '{stage_id}' example renders only a warned placeholder "
-                  f"(stderr: {error_output.strip()})")
+                  f"plan: the same stage as advisory renders only a warned placeholder (stderr: {error_output.strip()})")
 
 
 def test_wizard_asks_no_governance_question_and_never_offers_advisory() -> None:
@@ -239,7 +245,7 @@ INIT_BLOCKING_DEFAULT_TESTS = [
     test_init_gates_match_the_neutral_profile_definitions,
     test_security_review_waits_for_the_code_review_in_every_profile_that_has_both,
     test_generated_file_explains_gates_and_keeps_unavailable_stages_commented,
-    test_uncommenting_the_build_and_test_examples_only_renders_placeholders,
+    test_uncommenting_the_build_and_test_examples_is_refused_until_a_backend_exists,
     test_wizard_asks_no_governance_question_and_never_offers_advisory,
     test_init_prints_the_next_steps_in_order,
     test_rerunning_init_never_overwrites_an_edited_config_without_force,

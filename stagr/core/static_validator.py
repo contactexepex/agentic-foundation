@@ -34,6 +34,11 @@ requirement the operator wrote must never be silently dropped), and ``modules.so
 and ``modules.sonar: true`` / ``modules.auto_merge: true`` are *warnings* (the generated
 governance workflow neither evaluates the V1 Sonar gate nor merges).
 
+**V-S18** — Blocking stage with a placeholder invocation: a stage whose invocation kind the
+platform only renders as a placeholder step gets an always-pass gate and no evidence, so when it
+is *blocking* it would publish a green result for work that never ran. That is a hard error;
+an advisory stage may keep the placeholder (it cannot gate a merge) and only warns.
+
 **V-S16** — Profile shortcut semantics: ``profile: minimal`` / ``standard`` expand to the
 neutral definitions (design-docs/02-canonical-stage-model.md), which differ from the legacy
 lane's profiles, so using one produces a *warning* naming the difference.
@@ -43,14 +48,14 @@ as FAST from ``routing.fast_path.globs`` alone. ``max_files``, ``max_lines`` and
 be silently dropped, letting an oversized or excluded (security-sensitive) change take the FAST
 route, so an enabled fast path that sets any of them is a hard error.
 
-Design source: design-docs/07-validation.md (V-S07 through V-S17).
+Design source: design-docs/07-validation.md (V-S07 through V-S18).
 """
 from __future__ import annotations
 
 from typing import Any
 
 from .backend_renderer_registry import BackendRendererRegistry
-from .enums import InvocationKind, MergeMode
+from .enums import InvocationKind, MergeMode, StageGate
 from .models import MergePolicy, NormalizedStage, RoutingPolicy, StaticValidationError
 
 DORMANT_ROUTING_WARNING = (
@@ -290,7 +295,12 @@ def validate_fast_path_restrictions_are_enforceable(config: dict[str, Any]) -> N
 PROFILE_SHORTCUT_WARNING_TEMPLATE = (
     "V-S16: profile '{profile_name}' expands to the neutral definition, which is a blocking code "
     "review{security_clause} and no implement stage (the legacy '{profile_name}' profile differs); "
-    "add an implement stage explicitly if you need one"
+    "add an implement stage explicitly if you need one{ordering_clause}"
+)
+STANDARD_PROFILE_ORDERING_CLAUSE = (
+    ". In this profile the security review does not depend on the code review, so both Codex "
+    "reviews can start at the same time; add `depends_on: [review]` to the security stage to run "
+    "them in sequence"
 )
 
 
@@ -300,9 +310,39 @@ def collect_profile_shortcut_warnings(config: dict[str, Any]) -> tuple[str, ...]
     if profile_name not in ("minimal", "standard"):
         return ()
     security_clause = " and a blocking security review" if profile_name == "standard" else ""
+    ordering_clause = STANDARD_PROFILE_ORDERING_CLAUSE if profile_name == "standard" else ""
     return (
-        PROFILE_SHORTCUT_WARNING_TEMPLATE.format(profile_name=profile_name, security_clause=security_clause),
+        PROFILE_SHORTCUT_WARNING_TEMPLATE.format(
+            profile_name=profile_name, security_clause=security_clause, ordering_clause=ordering_clause
+        ),
     )
+
+
+def validate_blocking_stages_run_their_backend(
+    normalized_stages: tuple[NormalizedStage, ...],
+    registry: BackendRendererRegistry,
+    functional_invocation_kinds: frozenset[InvocationKind],
+) -> None:
+    """Raise ``StaticValidationError`` (V-S18) for a blocking stage the platform cannot really run.
+
+    Requires V-S07/V-S08 to have passed. Non-blocking stages are not checked here; they get the
+    placeholder warning instead.
+
+    Raises:
+        StaticValidationError: V-S18 naming the first blocking stage whose invocation kind is only
+            rendered as a placeholder.
+    """
+    for stage in normalized_stages:
+        if stage.gate is not StageGate.BLOCKING:
+            continue
+        invocation_kind = registry.get(stage.provider, stage.backend).render(stage).invocation.kind
+        if invocation_kind not in functional_invocation_kinds:
+            raise StaticValidationError(
+                f"V-S18: stage '{stage.id}' is blocking but its {invocation_kind.name} invocation is only "
+                "rendered as a placeholder step on this platform: it would run nothing yet publish a "
+                "passing result and open the merge gate. Set gate: advisory, disable the stage "
+                "(enabled: false), or use an invocation this platform renders"
+            )
 
 
 def collect_placeholder_invocation_warnings(

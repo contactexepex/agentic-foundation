@@ -58,6 +58,7 @@ from .static_validator import (
     collect_unenforced_merge_warnings,
     collect_placeholder_invocation_warnings,
     validate_backend_renderer_availability,
+    validate_blocking_stages_run_their_backend,
     validate_fast_path_restrictions_are_enforceable,
     validate_merge_policy_has_blocking_stages,
     validate_merge_settings_are_enforceable,
@@ -144,6 +145,9 @@ def _load_render_inputs(
     validate_backend_renderer_availability(normalized_stages, backend_registry)
     validate_platform_invocation_compatibility(
         normalized_stages, backend_registry, platform_target.supported_invocation_kinds
+    )
+    validate_blocking_stages_run_their_backend(
+        normalized_stages, backend_registry, platform_target.functional_invocation_kinds
     )
     validate_route_dependency_closure(routing_policy, normalized_stages)
     validate_merge_policy_has_blocking_stages(merge_policy)

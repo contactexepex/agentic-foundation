@@ -38,6 +38,8 @@ from neutral_core_tests.static_validator_tests.test_v_s15_v_s16 import (
     test_v_s15_rejects_non_empty_required_status_checks,
     test_v_s15_warns_only_when_modules_sonar_is_enabled,
     test_v_s16_warns_for_minimal_and_standard_only,
+    test_v_s18_rejects_a_blocking_stage_with_a_placeholder_invocation,
+    test_v_s16_standard_warning_names_the_review_ordering_caveat,
     test_v_s15_warns_that_auto_merge_is_not_carried_out_by_the_generated_governance,
     test_v_s17_rejects_enabled_fast_path_restrictions_that_are_not_enforced,
     test_normal_route_defaults_to_every_stage_only_when_the_operator_listed_none,
@@ -47,6 +49,8 @@ from neutral_core_tests.static_validator_tests.test_v_s08_renderer_rejection imp
 )
 
 STATIC_VALIDATOR_TESTS = [
+    test_v_s18_rejects_a_blocking_stage_with_a_placeholder_invocation,
+    test_v_s16_standard_warning_names_the_review_ordering_caveat,
     test_v_s15_warns_that_auto_merge_is_not_carried_out_by_the_generated_governance,
     test_v_s17_rejects_enabled_fast_path_restrictions_that_are_not_enforced,
     test_normal_route_defaults_to_every_stage_only_when_the_operator_listed_none,

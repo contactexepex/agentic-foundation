@@ -253,8 +253,9 @@ stage. Anything more is optional: integration tests, performance tests, SQL vali
 and similar are stages each team adds and marks `blocking` or `advisory`.
 
 Today only the Codex `review` and `security` stages (`PR_COMMENT` results) render fully. The build and
-unit-test stages need a build/test backend that does not exist yet; until then a `build` or `test`
-stage renders only a placeholder workflow (`stagr plan` warns). Both Codex stages share one review
+unit-test stages need a build/test backend that does not exist yet; until then `stagr plan` refuses a
+**blocking** `build` or `test` stage (V-S18: its placeholder would publish a pass for work that never ran),
+and an **advisory** one renders only a placeholder workflow with a warning. Both Codex stages share one review
 scope, so they must both be `blocking`: with an advisory one, its open comments would block the
 blocking stage as well. `stagr init` therefore always writes both as `gate: blocking`.
 

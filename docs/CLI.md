@@ -154,7 +154,11 @@ because the generated `governance.yml` never merges. An enabled `routing.fast_pa
 enforce them). A config that omits `profile` is treated as `standard`. `--out` is refused when it, or any
 directory between the project root and it, is a symlink.
 
-One warning is worth acting on: a stage whose backend uses a `CI_COMPONENT`, `API_CALL` or
+A **blocking** stage whose invocation is only a placeholder is not a warning but an error (V-S18): the
+placeholder would run nothing yet publish a passing result and open the merge gate. Set `gate: advisory`,
+disable the stage, or wait for a backend that renders it.
+
+For advisory stages one warning is worth acting on: a stage whose backend uses a `CI_COMPONENT`, `API_CALL` or
 `WORKFLOW_DISPATCH` invocation (for example the Claude implement stage) is accepted, but its
 generated workflow contains only a placeholder step and does **not** run the backend yet. Only
 `PR_COMMENT` invocations (the Codex review and security stages) are fully rendered. The

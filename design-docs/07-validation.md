@@ -130,6 +130,14 @@ when `routing.fast_path.stages.normal` is omitted or empty, the NORMAL route run
 stage** (an empty set would make every stage inapplicable and the merge gate would evaluate
 nothing).
 
+### V-S18 — Blocking stage with a placeholder invocation
+
+A stage whose invocation kind the platform only renders as a placeholder step (today: everything
+except `PR_COMMENT` on GitHub) gets an always-pass gate and no evidence, so it would publish a
+passing result for work that never ran. When such a stage is **blocking** that is a hard static
+error, because it opens the merge gate falsely. An advisory stage cannot gate a merge, so it only
+produces the placeholder warning.
+
 ### V-S14 — Trusted-role value validation
 
 Every string in `platform.trusted_roles` must be a recognised :class:`AuthorRole`

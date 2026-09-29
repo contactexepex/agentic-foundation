@@ -29,13 +29,13 @@ _GATE_EXPLANATION_LINES = (
 )
 
 # Stages that cannot be rendered yet, shown commented so the intended baseline is visible. Each entry
-# is the YAML of one stage. They stay commented: until a build/test backend exists, an active copy
-# renders only a placeholder workflow that builds and tests nothing (`stagr plan` warns).
+# is the YAML of one stage. They stay commented: until a build/test backend exists, an active
+# blocking copy is refused by `stagr plan` (V-S18: it would publish a pass for work that never ran).
 _UNAVAILABLE_BASELINE_STAGE_LINES = (
     "NOT AVAILABLE YET - these need a build/test backend that does not exist yet. They will become",
     "the default blocking stages, so the standard baseline is: build compiles + unit tests green +",
-    "code review complete + security review complete. Until then they would render only a placeholder",
-    "workflow that builds and tests nothing (`stagr plan` warns), so keep them commented.",
+    "code review complete + security review complete. Until then `stagr plan` refuses them as",
+    "blocking stages (they would run nothing yet report a pass), so keep them commented.",
     "- id: build",
     "  type: custom",
     "  gate: blocking",

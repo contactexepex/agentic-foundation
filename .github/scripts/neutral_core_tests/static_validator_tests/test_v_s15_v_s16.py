@@ -84,3 +84,53 @@ def test_normal_route_defaults_to_every_stage_only_when_the_operator_listed_none
     assert default_normal_route_to_all_stages(explicit, stages) is explicit
     disabled = RoutingPolicy(fast_path=None)
     assert default_normal_route_to_all_stages(disabled, stages) is disabled
+
+
+def test_v_s18_rejects_a_blocking_stage_with_a_placeholder_invocation() -> None:
+    from stagr.core.backend_renderer_registry import BackendRendererRegistry
+    from stagr.core.enums import InvocationKind, StageGate
+    from stagr.core.models import StaticValidationError
+    from stagr.core.static_validator import validate_blocking_stages_run_their_backend
+
+    class FakePlan:
+        def __init__(self, kind):
+            self.invocation = type("Invocation", (), {"kind": kind})()
+
+    class FakeRenderer:
+        def __init__(self, kind):
+            self._kind = kind
+
+        def render(self, stage):
+            return FakePlan(self._kind)
+
+    class FakeRegistry:
+        def __init__(self, kind):
+            self._kind = kind
+
+        def get(self, provider, backend):
+            return FakeRenderer(self._kind)
+
+    class FakeStage:
+        def __init__(self, stage_id, gate):
+            self.id, self.gate, self.provider, self.backend = stage_id, gate, "p", "b"
+
+    functional = frozenset({InvocationKind.PR_COMMENT})
+    blocking = (FakeStage("build", StageGate.BLOCKING),)
+    advisory = (FakeStage("build", StageGate.NON_BLOCKING),)
+    validate_blocking_stages_run_their_backend(blocking, FakeRegistry(InvocationKind.PR_COMMENT), functional)
+    validate_blocking_stages_run_their_backend(advisory, FakeRegistry(InvocationKind.CI_COMPONENT), functional)
+    try:
+        validate_blocking_stages_run_their_backend(blocking, FakeRegistry(InvocationKind.CI_COMPONENT), functional)
+    except StaticValidationError as validation_error:
+        assert "V-S18" in str(validation_error) and "'build'" in str(validation_error)
+        return
+    raise AssertionError("V-S18 must reject a blocking stage with a placeholder invocation")
+
+
+def test_v_s16_standard_warning_names_the_review_ordering_caveat() -> None:
+    from stagr.core.static_validator import collect_profile_shortcut_warnings
+
+    standard_warning = collect_profile_shortcut_warnings({"profile": "standard"})[0]
+    minimal_warning = collect_profile_shortcut_warnings({"profile": "minimal"})[0]
+    assert "depends_on: [review]" in standard_warning and "same time" in standard_warning
+    assert "depends_on" not in minimal_warning
