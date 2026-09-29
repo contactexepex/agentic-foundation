@@ -156,7 +156,7 @@ def _write_generated_config(dest: Path, text: str, force: bool) -> int:
     return 0
 
 
-def _scaffold_skill_files(generated_cfg: dict[str, Any], project_root: Path, force: bool) -> list[str]:
+def _scaffold_skill_files(generated_cfg: dict[str, Any], project_root: Path) -> list[str]:
     """Copy packaged skill templates to .agentic/skills/<id>/SKILL.md for every skill in the config.
 
     Returns a sorted list of skill ids scaffolded; skips ids with no packaged template.
@@ -174,7 +174,16 @@ def _scaffold_skill_files(generated_cfg: dict[str, Any], project_root: Path, for
         if not template_file.is_file():
             continue
         dest_file = project_root / ".agentic" / "skills" / skill_id / "SKILL.md"
-        if dest_file.exists() and not force:
+        if dest_file.exists():
+            continue
+        linked = _symlink_in_chain(dest_file)
+        if linked is not None:
+            which = "" if linked == dest_file else f" (via ancestor {linked})"
+            print(
+                f"init: skill '{skill_id}' destination {dest_file} is reached through a "
+                f"symlink{which}; skipping.",
+                file=sys.stderr,
+            )
             continue
         dest_file.parent.mkdir(parents=True, exist_ok=True)
         dest_file.write_text(template_file.read_text(encoding="utf-8"), encoding="utf-8")
@@ -232,9 +241,8 @@ def cmd_init(args: argparse.Namespace) -> int:
     rc = _write_generated_config(dest, text, args.force)
     if rc != 0:
         return rc
-    # dest is .agentic/config.yml; its parent is .agentic/, and that parent is the project root.
-    project_root = dest.resolve().parent.parent
-    scaffolded_skills = _scaffold_skill_files(yaml.safe_load(text), project_root, args.force)
+    project_root = Path.cwd()
+    scaffolded_skills = _scaffold_skill_files(yaml.safe_load(text), project_root)
     print(f"init: wrote {dest} (profile: {choices['profile']}).")
     if scaffolded_skills:
         print(f"init: scaffolded skill files: {', '.join(scaffolded_skills)}")
