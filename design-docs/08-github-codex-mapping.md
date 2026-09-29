@@ -189,6 +189,46 @@ To conform to the architecture:
 
 ---
 
+## Reconciliation and result signaling (GitHub renderer)
+
+This is how the generated `stage-<id>.yml` implements the reconciliation model in
+`06-runtime-boundary.md`.
+
+- **Jobs.** One file per stage. `execute` runs on the stage's declared triggers only.
+  `reconcile` runs on `issue_comment` events for a pull request, and only when the comment
+  author is a declared evidence producer. `sweep` runs on a schedule (every 5 minutes) and runs
+  the same routine for every open pull request. `reconcile` and `sweep` exist only for plans that
+  declare evidence. Each job has an explicit `github.event_name` condition, so a wakeup never
+  re-runs the backend, and `synchronize` is never a wakeup. `check_suite` wakeups are not
+  emitted in V1: they serve check-based evidence, which V1 rejects (see below).
+- **State is observed, not remembered.** Every run re-reads the pull request, its comments, its
+  review threads and the stage's Check Run for the current head. Missed, repeated or reordered
+  events therefore cannot produce a wrong signal; the sweep is only a backstop.
+- **One Check Run per stage and head.** Only the `execute` job creates it. `reconcile` and
+  `sweep` update it in place. Governance rejects duplicates and cannot repair them, so creation
+  has a single owner that is already serialized by the stage's concurrency group.
+- **Terminal states.** `completed` + `pass` and `failed` are final for wakeups and the sweep. A
+  `failed` signal is retried only by re-running the stage's `execute` job. `blocked` is
+  re-evaluated on every wakeup, so resolving threads turns it into `pass` without a new push. A
+  write happens only when the signal changed.
+- **Evidence is authenticated.** Only comments written by `EvidenceSpec.produced_by` count. A
+  login ending in `[bot]` matches only a Bot account, never a person with a similar name.
+  Evidence must also be bound to the current head commit.
+- **Findings.** For `NO_OPEN_THREADS`, an unresolved thread counts when its first comment is by
+  `FindingScopeSpec.created_by` and, if the scope is head-bound, when its review commit is the
+  current head. A thread whose review commit is unknown counts as open (fail closed).
+- **Rejected at render time** (`stagr apply` fails; nothing weaker is generated): evidence kinds
+  other than `REVIEW_RESULT` and `COMMENT_MATCH`; evidence that is not head-bound or has no
+  `produced_by`; `invocation_correlation`; and plans with no evidence whose invocation finishes
+  asynchronously (`PR_COMMENT`, `WORKFLOW_DISPATCH`).
+- **Events without a pull request** (`workflow_dispatch`, `issues`) publish no signal.
+- **Not part of this runtime.** Recovering from an expired in-flight marker (re-posting the
+  invocation) belongs to the invocation guard (#205).
+- **Stagr App permissions** used at run time: Checks (write), Pull requests (read) and Issues
+  (read).
+
+---
+
 ## What does NOT need to change in the neutral config
 
 The `.agentic/config.yml` is already correct:

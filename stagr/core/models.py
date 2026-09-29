@@ -172,12 +172,20 @@ class EvidenceSpec:
     execution artifact. Uses semantic vocabulary — not platform-object names.
     `selector` is backend-defined and opaque to the neutral contract.
     `success_condition` is an EvidenceSuccessCondition enum value.
+    `produced_by` is the identity that authors the evidence item (mirrors
+    FindingScopeSpec.created_by). Evidence authored by any other identity must be
+    ignored: PR content is untrusted, so an unauthenticated evidence item could be
+    forged by anyone able to comment. Required for comment-based evidence kinds
+    (REVIEW_RESULT, COMMENT_MATCH); the PlatformRenderer rejects the plan at render
+    time when it is missing. The identity string format is platform-defined
+    (e.g. a GitHub login).
     """
 
     kind: EvidenceKind
     selector: str                              # backend-defined, opaque
     correlation: CorrelationSpec
     success_condition: EvidenceSuccessCondition  # enum: COMPLETED, SUCCESS, MATCH_FOUND
+    produced_by: str | None = None
 
 
 @dataclass(frozen=True)

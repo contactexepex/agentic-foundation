@@ -201,6 +201,7 @@ class OpenAICodexBackendRenderer:
                     sha_field=_REVIEW_SUMMARY_SHA_FIELD,
                 ),
                 success_condition=EvidenceSuccessCondition.COMPLETED,
+                produced_by=_CODEX_BOT_IDENTITY,
             )
         if stage_kind is StageKind.SECURITY:
             return EvidenceSpec(
@@ -211,6 +212,7 @@ class OpenAICodexBackendRenderer:
                     sha_field=_SECURITY_REVIEW_MARKER_SHA_FIELD,
                 ),
                 success_condition=EvidenceSuccessCondition.MATCH_FOUND,
+                produced_by=_CODEX_BOT_IDENTITY,
             )
         raise ValueError(
             f"OpenAICodexBackendRenderer does not support stage kind {stage_kind!r}; "

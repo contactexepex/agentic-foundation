@@ -190,3 +190,14 @@ def test_codex_renderer_non_blocking_stage_raises_value_error() -> None:
         "OpenAICodexBackendRenderer (V1 shared-scope NO_OPEN_THREADS requires "
         "BLOCKING gate semantics)"
     )
+
+
+def test_codex_renderer_evidence_specs_declare_the_codex_bot_as_producer() -> None:
+    """Both REVIEW and SECURITY evidence name the Codex bot as the only authentic producer."""
+    renderer = build_renderer()
+    for stage in (build_review_normalized_stage(), build_security_normalized_stage()):
+        evidence_spec = renderer.render(stage).evidence[0]
+        assert evidence_spec.produced_by == "chatgpt-codex-connector[bot]", (
+            f"Expected {stage.kind!r} evidence produced_by the Codex bot; "
+            f"got {evidence_spec.produced_by!r}"
+        )

@@ -40,6 +40,16 @@ def test_evidence_spec_construction() -> None:
     assert ev.kind is EvidenceKind.REVIEW_RESULT
     assert ev.selector == "codex_review:stagr"
     assert ev.success_condition is EvidenceSuccessCondition.COMPLETED
+    # produced_by is optional and defaults to None (no authenticated producer declared)
+    assert ev.produced_by is None
+    authenticated = EvidenceSpec(
+        kind=EvidenceKind.COMMENT_MATCH,
+        selector="marker:v1",
+        correlation=corr,
+        success_condition=EvidenceSuccessCondition.MATCH_FOUND,
+        produced_by="review-bot[bot]",
+    )
+    assert authenticated.produced_by == "review-bot[bot]"
 
     # GateDispositionSpec with ALWAYS_PASS needs no scope
     gate = GateDispositionSpec(kind=GateDispositionKind.ALWAYS_PASS, selector="")

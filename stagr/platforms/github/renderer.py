@@ -30,12 +30,16 @@ ExecutionPlan.required_secrets (resolved alias → env_name pairs). Mixing the A
 with backend invocation calls would grant the backend write access to platform
 primitives (Check Runs) it must not control.
 
-Stage workflow structure (Phase 1 scaffold; steps 2–5 are stubs awaiting later issues):
-  1. App token acquisition   — always emitted
-  2. Eligibility check       — stub (spec: #207)
-  3. Idempotency guard       — stub (spec: #205)
-  4. Backend invocation      — stub (spec: #205); uses TRUSTED_COMMENTER_TOKEN
-  5. Result signaling        — stub (spec: #206); uses App token for Check Run
+Stage workflow structure (see stage_workflow.py; steps 2-4 are stubs awaiting later issues):
+  execute job    1. App token acquisition   — always emitted
+                 2. Eligibility check       — stub (spec: #207)
+                 3. Idempotency guard       — stub (spec: #205)
+                 4. Backend invocation      — stub (spec: #205); uses TRUSTED_COMMENTER_TOKEN
+                 5. Result signaling        — Check Run carrying the StageResultSignal (spec: #206);
+                                              the only step that creates the Check Run
+  reconcile job  issue_comment wakeup; updates the Check Run in place (spec: #206)
+  sweep job      scheduled backstop over open pull requests (spec: #206)
+The reconcile and sweep jobs exist only for plans that declare asynchronous evidence.
 
 Trigger mapping (design-doc 08):
   StageTrigger.PR_OPENED    → pull_request_target: [opened, reopened, ready_for_review]
@@ -51,7 +55,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stagr.core.enums import InvocationKind, StageResultSignalKind, StageTrigger
+from stagr.core.enums import InvocationKind, StageResultSignalKind
 from stagr.core.models import (
     ExecutionPlan,
     NormalizedStage,
@@ -64,21 +68,11 @@ from stagr.platforms.github.routing_workflow import (
     generate_routing_workflow_yaml,
     ROUTING_WORKFLOW_FILENAME,
 )
+from stagr.platforms.github.stage_signal_config import build_stage_signal_config
+from stagr.platforms.github.stage_workflow import build_on_section, build_stage_workflow_yaml
 
 # Check Run name template — design-doc 08: stagr/stage/<stageId>
 _CHECK_RUN_NAME_PREFIX = "stagr/stage"
-
-# GitHub Actions event names for each StageTrigger value.
-_PULL_REQUEST_TARGET_EVENTS_FOR_PR_OPENED = ("opened", "reopened", "ready_for_review")
-_PULL_REQUEST_TARGET_EVENTS_FOR_PR_UPDATED = ("synchronize",)
-
-# Pinned commit SHA for actions/create-github-app-token v1.11.1. Update this SHA after
-# auditing the release when upgrading. Mutable tags are not used per AGENTS.md supply-chain
-# integrity requirement (immutable action pinning).
-_APP_TOKEN_ACTION_REF = (
-    "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e"
-    "  # v1.11.1"
-)
 
 
 class GitHubPlatformRenderer:
@@ -157,10 +151,21 @@ class GitHubPlatformRenderer:
         ``pull_request_target`` — a security invariant violation.
         """
         is_privileged = bool(plan.required_secrets)
-        on_section_yaml = self._build_on_section(stage.triggers)
+        check_run_name = f"{_CHECK_RUN_NAME_PREFIX}/{stage.id}"
+        signal_config = build_stage_signal_config(
+            plan, stage, render_context, self._publisher_app_id, check_run_name
+        )
+        on_section_yaml = build_on_section(stage.triggers, signal_config.has_asynchronous_evidence)
         self._assert_privileged_stage_on_section_is_safe(stage, on_section_yaml, is_privileged)
 
-        workflow_yaml = self._generate_workflow_yaml(plan, stage, on_section_yaml)
+        workflow_yaml = build_stage_workflow_yaml(
+            plan,
+            stage,
+            signal_config,
+            on_section_yaml,
+            self._publisher_app_id,
+            self._publisher_private_key_secret,
+        )
 
         if self._output_dir is not None:
             workflow_file_path = (
@@ -169,7 +174,6 @@ class GitHubPlatformRenderer:
             workflow_file_path.parent.mkdir(parents=True, exist_ok=True)
             workflow_file_path.write_text(workflow_yaml, encoding="utf-8")
 
-        check_run_name = f"{_CHECK_RUN_NAME_PREFIX}/{stage.id}"
         return StageResultSpec(
             stage_id=stage.id,
             signal_kind=StageResultSignalKind.CHECK_RUN,
@@ -288,108 +292,3 @@ class GitHubPlatformRenderer:
                     f"fail. Fix the trigger mapping for StageTrigger values on this "
                     f"stage, or remove the required_secrets from the ExecutionPlan."
                 )
-
-    def _generate_workflow_yaml(
-        self, plan: ExecutionPlan, stage: NormalizedStage, on_section: str
-    ) -> str:
-        """Return the complete GitHub Actions workflow YAML string for the stage."""
-        private_key_expr = f"${{{{ secrets.{self._publisher_private_key_secret} }}}}"
-        app_token_output_expr = "${{ steps.app-token.outputs.token }}"
-        backend_env_section = self._build_backend_env_section(plan)
-
-        return (
-            f'name: "Stagr stage: {stage.id}"\n'
-            f"\n"
-            f"on:\n"
-            f"{on_section}"
-            f"\n"
-            f"concurrency:\n"
-            f'  group: "stagr-{stage.id}-'
-            f'${{{{ github.event.pull_request.number || github.event.issue.number }}}}"\n'
-            f"  cancel-in-progress: false\n"
-            f"\n"
-            f"jobs:\n"
-            f"  execute:\n"
-            f"    runs-on: ubuntu-latest\n"
-            f"    permissions:\n"
-            f"      pull-requests: read\n"
-            f"      contents: read\n"
-            f"    steps:\n"
-            f"      - name: Acquire Stagr App installation token\n"
-            f"        id: app-token\n"
-            f"        uses: {_APP_TOKEN_ACTION_REF}\n"
-            f"        with:\n"
-            f"          app-id: \"{self._publisher_app_id}\"\n"
-            f"          private-key: \"{private_key_expr}\"\n"
-            f"\n"
-            f"      - name: Check eligibility (stub)\n"
-            f"        run: echo 'Eligibility check placeholder (spec:#207)'\n"
-            f"\n"
-            f"      - name: Check idempotency (stub)\n"
-            f"        run: echo 'Idempotency guard placeholder (spec:#205)'\n"
-            f"\n"
-            f"      - name: Invoke backend (stub)\n"
-            f"        run: echo 'Backend invocation placeholder (spec:#205)'\n"
-            f"{backend_env_section}"
-            f"\n"
-            f"      - name: Publish result (stub)\n"
-            f"        run: echo 'Result signaling placeholder (spec:#206)'\n"
-            f"        env:\n"
-            f"          STAGR_APP_TOKEN: \"{app_token_output_expr}\"\n"
-        )
-
-    def _build_backend_env_section(self, plan: ExecutionPlan) -> str:
-        """Return the YAML env block for the backend invocation step.
-
-        Emits one line per resolved SecretRef, mapping alias → secrets.<env_name>.
-        Returns an empty string when the plan has no required secrets.
-        """
-        if not plan.required_secrets:
-            return ""
-        lines = ["        env:\n"]
-        for secret_ref in plan.required_secrets:
-            secret_expr = f"${{{{ secrets.{secret_ref.env_name} }}}}"
-            lines.append(f'          {secret_ref.alias}: "{secret_expr}"\n')
-        return "".join(lines)
-
-    def _build_on_section(self, stage_triggers: tuple[StageTrigger, ...]) -> str:
-        """Return the indented YAML lines for the ``on:`` trigger section.
-
-        Merges PR_OPENED and PR_UPDATED into a single pull_request_target block when
-        both are present. MANUAL becomes workflow_dispatch. ISSUE_LABELED becomes
-        an issues block.
-        """
-        pull_request_target_events: list[str] = []
-        include_workflow_dispatch = False
-        issues_events: list[str] = []
-
-        for trigger in stage_triggers:
-            if trigger is StageTrigger.PR_OPENED:
-                pull_request_target_events.extend(
-                    _PULL_REQUEST_TARGET_EVENTS_FOR_PR_OPENED
-                )
-            elif trigger is StageTrigger.PR_UPDATED:
-                pull_request_target_events.extend(
-                    _PULL_REQUEST_TARGET_EVENTS_FOR_PR_UPDATED
-                )
-            elif trigger is StageTrigger.MANUAL:
-                include_workflow_dispatch = True
-            elif trigger is StageTrigger.ISSUE_LABELED:
-                issues_events.append("labeled")
-
-        lines: list[str] = []
-
-        if pull_request_target_events:
-            events_csv = ", ".join(pull_request_target_events)
-            lines.append(f"  pull_request_target:\n")
-            lines.append(f"    types: [{events_csv}]\n")
-
-        if include_workflow_dispatch:
-            lines.append(f"  workflow_dispatch:\n")
-
-        if issues_events:
-            events_csv = ", ".join(issues_events)
-            lines.append(f"  issues:\n")
-            lines.append(f"    types: [{events_csv}]\n")
-
-        return "".join(lines)
