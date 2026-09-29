@@ -188,8 +188,9 @@ def _resolve_codex_review_secret(platform: dict[str, Any]) -> str:
     secret = ((platform.get("auth", {}) or {}).get("token_secret")) or DEFAULT_TOKEN_SECRET
     if not _SECRET_NAME.match(str(secret)):
         raise RenderError(
-            f"platform.auth.token_secret '{secret}' is not a valid GitHub secret name "
-            "(letters, digits, underscore; not starting with a digit)"
+            "platform.auth.token_secret is not a valid GitHub secret name "
+            "(letters, digits, underscore; not starting with a digit); value withheld in case a "
+            "secret VALUE was pasted here instead of its name"
         )
     if str(secret).upper().startswith("GITHUB_"):
         raise RenderError(

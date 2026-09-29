@@ -186,6 +186,7 @@ from neutral_core_tests.stage_signal_tests import STAGE_SIGNAL_TESTS
 from neutral_core_tests.test_config_parser import CONFIG_PARSER_TESTS
 from neutral_core_tests.test_static_validator import STATIC_VALIDATOR_TESTS
 from neutral_core_tests.test_publisher_config import PUBLISHER_CONFIG_TESTS
+from neutral_core_tests.test_secret_value_redaction import SECRET_VALUE_REDACTION_TESTS
 
 
 _TESTS = [
@@ -327,6 +328,7 @@ _TESTS = [
     *CONFIG_PARSER_TESTS,
     *STATIC_VALIDATOR_TESTS,
     *PUBLISHER_CONFIG_TESTS,
+    *SECRET_VALUE_REDACTION_TESTS,
 ]
 
 if __name__ == "__main__":

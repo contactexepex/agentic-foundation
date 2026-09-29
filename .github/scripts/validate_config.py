@@ -172,7 +172,7 @@ def main() -> int:
         if schema_errors:
             for error in schema_errors:
                 location = "/".join(str(part) for part in error.path) or "(root)"
-                fail(f"{label}: {location}: {error.message}")
+                fail(f"{label}: {location}: {render.config.describe_schema_error(error)}")
         else:
             print(f"OK  {label} validates against schema")
 

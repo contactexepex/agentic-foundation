@@ -60,6 +60,18 @@ def load_config(path: Path) -> dict[str, Any]:
     return resolve_extends(cfg, path.parent)
 
 
+def describe_schema_error(error: Any) -> str:
+    """Return a schema error's text, WITHOUT the rejected value when it sits under a ``*_secret`` key.
+
+    jsonschema messages quote the offending instance ("'<value>' does not match ..."). A field that
+    holds a secret NAME is exactly where an operator may paste the secret VALUE by mistake (for
+    example a private key), and that value must never reach CLI or CI logs.
+    """
+    if error.path and str(error.path[-1]).endswith("_secret"):
+        return "is not a valid secret NAME (value withheld; store the value as a CI secret and put only its name here)"
+    return error.message
+
+
 def validate_config(cfg: dict[str, Any], project_root: Path | None = None) -> None:
     """Validate *cfg* against the JSON Schema and run semantic coherence checks.
 
@@ -75,7 +87,7 @@ def validate_config(cfg: dict[str, Any], project_root: Path | None = None) -> No
     errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda err: list(err.path))
     if errors:
         details = "; ".join(
-            f"{'/'.join(str(part) for part in error.path) or '(root)'}: {error.message}"
+            f"{'/'.join(str(part) for part in error.path) or '(root)'}: {describe_schema_error(error)}"
             for error in errors
         )
         raise RenderError(f"config does not conform to schema: {details}")
