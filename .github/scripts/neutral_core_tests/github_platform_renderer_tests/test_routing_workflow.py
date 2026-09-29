@@ -273,3 +273,67 @@ def test_truncation_check_uses_raw_api_record_count() -> None:
     assert "API_RECORD_COUNT" in yaml_content, (
         "Classify step must receive API_RECORD_COUNT from the changed-files step output"
     )
+
+
+# ------------------------------------------------------------------
+# Check Run upsert — prevents duplicate RouteClassification runs
+# ------------------------------------------------------------------
+
+def test_publication_step_uses_upsert_not_blind_post() -> None:
+    """Publication step PATCHes an existing run when found, POSTs only when none exists."""
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=None,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "--method PATCH" in yaml_content, (
+        "Publication step must include a PATCH path to update an existing "
+        "RouteClassification Check Run for the head SHA; blind POST creates "
+        "duplicates when routing re-fires after a base-branch edit"
+    )
+    assert "--method POST" in yaml_content, (
+        "Publication step must also include a POST fallback to create a new "
+        "Check Run when none exists for the head SHA"
+    )
+    assert "jq --arg app_id" in yaml_content, (
+        "Publication step must filter existing Check Runs by app_id using "
+        "'jq --arg app_id' so only the Stagr App's own run is reconciled"
+    )
+
+
+def test_publication_step_embeds_stagr_app_id_for_reconciliation() -> None:
+    """Publication step env includes STAGR_APP_ID to filter existing runs by publisher."""
+    configured_app_id = "77812"
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=None,
+        publisher_app_id=configured_app_id,
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "STAGR_APP_ID" in yaml_content, (
+        "Publication step env must include STAGR_APP_ID so the reconciliation "
+        "query can filter candidate Check Runs by the Stagr App's identity"
+    )
+    assert configured_app_id in yaml_content, (
+        f"STAGR_APP_ID must be set to the configured publisher_app_id literal "
+        f"'{configured_app_id}'"
+    )
+
+
+def test_fast_path_publication_step_also_uses_upsert() -> None:
+    """Fast-path-configured publication step also uses upsert, not blind POST."""
+    fast_path_policy = FastPathPolicy(
+        match=PathMatchSpec(paths=("docs/*",)),
+        stages=RouteStageMap(fast=(), normal=("review",)),
+    )
+    yaml_content = generate_routing_workflow_yaml(
+        fast_path_policy=fast_path_policy,
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    assert "--method PATCH" in yaml_content, (
+        "Fast-path publication step must include PATCH to reconcile an existing "
+        "RouteClassification Check Run for the head SHA"
+    )
+    assert "STAGR_APP_ID" in yaml_content, (
+        "Fast-path publication step env must include STAGR_APP_ID for reconciliation filtering"
+    )

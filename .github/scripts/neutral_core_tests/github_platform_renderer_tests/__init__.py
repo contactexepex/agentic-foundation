@@ -89,6 +89,9 @@ from neutral_core_tests.github_platform_renderer_tests.test_routing_workflow imp
     test_truncated_file_list_forces_normal_route,
     test_metadata_edit_uses_distinct_concurrency_key,
     test_truncation_check_uses_raw_api_record_count,
+    test_publication_step_uses_upsert_not_blind_post,
+    test_publication_step_embeds_stagr_app_id_for_reconciliation,
+    test_fast_path_publication_step_also_uses_upsert,
 )
 
 GITHUB_PLATFORM_RENDERER_TESTS = [
@@ -168,6 +171,9 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_truncated_file_list_forces_normal_route,
     test_metadata_edit_uses_distinct_concurrency_key,
     test_truncation_check_uses_raw_api_record_count,
+    test_publication_step_uses_upsert_not_blind_post,
+    test_publication_step_embeds_stagr_app_id_for_reconciliation,
+    test_fast_path_publication_step_also_uses_upsert,
 ]
 
 __all__ = [
@@ -248,4 +254,7 @@ __all__ = [
     "test_truncated_file_list_forces_normal_route",
     "test_metadata_edit_uses_distinct_concurrency_key",
     "test_truncation_check_uses_raw_api_record_count",
+    "test_publication_step_uses_upsert_not_blind_post",
+    "test_publication_step_embeds_stagr_app_id_for_reconciliation",
+    "test_fast_path_publication_step_also_uses_upsert",
 ]
