@@ -11,7 +11,6 @@ from .defaults import (
     DEFAULT_MODEL,
     DEFAULT_PLATFORM,
     PROFILES,
-    _profile_security_blocking,
 )
 
 
@@ -70,22 +69,6 @@ def run_wizard(read_input: Callable[[str], str] = input,
                    else "Test command (blank to set later)")
     build_test = _ask(read_input, write_line, test_prompt, "")
 
-    security_blocking = _profile_security_blocking(profile)
-    if profile in ("standard", "full"):
-        write_line("\n── Governance ──")
-        profile_default = "y" if security_blocking else "n"
-        answer = _ask(read_input, write_line, "Make the security review blocking?",
-                      profile_default, "y | n").strip().lower()
-        if answer in ("y", "yes", "true"):
-            security_blocking = True
-        elif answer in ("n", "no", "false"):
-            security_blocking = False
-        else:
-            # Don't let an unrecognized entry silently decide a security gate — keep the profile's
-            # canonical default rather than defaulting an ambiguous answer to advisory.
-            write_line(f"  (unrecognized '{answer}', keeping the profile default: "
-                       f"{'blocking' if security_blocking else 'advisory'})")
-
     return {
         "profile": profile,
         "platform": platform,
@@ -94,5 +77,4 @@ def run_wizard(read_input: Callable[[str], str] = input,
         "token_secret": token_secret,
         "build_preset": build_preset,
         "build_test": build_test,
-        "security_blocking": security_blocking,
     }

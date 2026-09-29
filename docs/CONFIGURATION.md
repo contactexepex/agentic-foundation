@@ -234,11 +234,29 @@ review/security stage renders no lane yet.
 | `skill` | Skill id (from `skills` registry or a built-in) supplying this stage's methodology. Takes precedence over inline `instructions`. |
 | `backend` | **Optional override** (see below). Normally omit it — the executor is derived from `provider`. Set it only to pin a specific tool or point at a custom adapter. |
 | `triggers` | Any of `issue_labeled`, `pr_opened`, `pr_updated`, `comment_command`, `push`, `schedule`, `manual`. |
-| `gate` | `advisory` (comment only) or `blocking` (emits a required status check). Omit to use the type's default. |
+| `gate` | The stage's category: `blocking` or `advisory` (see below). Omit to use the type's default. **Codex `review` and `security` stages must be `blocking`** — `stagr plan` and `stagr apply` reject an advisory one. |
 | `tiering` | Per-stage override of global `tiering.enabled`. |
 | `depends_on` | Ids of stages that must run first (defines the graph edges). |
 | `budgets` | Per-stage cost/token ceilings (same shape as global `budgets`). |
 | `instructions` | Inline prompt/policy for the stage, or a path to a prompt file. |
+
+#### Gates: advisory and blocking
+Every stage has exactly one `gate`:
+
+- **`advisory`** — the stage posts comments and never stops the pull request from merging.
+- **`blocking`** — the stage must complete, and all of its review comments and threads must be
+  resolved, before the pull request can merge.
+
+A production-quality baseline is: **the build compiles, the unit tests pass, the code review is
+complete and the security review is complete** (all review comments resolved), each as a blocking
+stage. Anything more is optional: integration tests, performance tests, SQL validation, SAST/DAST
+and similar are stages each team adds and marks `blocking` or `advisory`.
+
+Today only the Codex `review` and `security` stages (`PR_COMMENT` results) render fully. The build and
+unit-test stages need a build/test backend that does not exist yet; until then a `build` or `test`
+stage renders only a placeholder workflow (`stagr plan` warns). Both Codex stages share one review
+scope, so they must both be `blocking`: with an advisory one, its open comments would block the
+blocking stage as well. `stagr init` therefore always writes both as `gate: blocking`.
 
 #### `stages[].backend` (optional override)
 Normally you do **not** set `backend` — the executor is **derived from `provider`** (`anthropic` → Claude Code, `openai` → Codex). Set it only to pin a specific tool or point at a custom adapter.
@@ -510,8 +528,9 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 > the exact secret NAMES your config needs).
 
 1. Add `.agentic/config.yml`. The quickest way is `stagr init` (guided wizard) or
-   `stagr init --profile <minimal|standard|full|custom>` (non-interactive), which writes a commented,
-   valid starter for you; or write it by hand starting from a `profile`, a `platform`, and a model
+   `stagr init --profile <minimal|standard|full|custom>` (non-interactive), which writes a commented
+   starter with blocking Codex review stages. Then uncomment its `platform.publisher` block and set
+   `app_id` to your Stagr GitHub App's ID, so `stagr plan` and `stagr apply` can run; or write it by hand starting from a `profile`, a `platform`, and a model
    binding for any model-consuming stage, adding `stages` only for finer control. (An AI drafting
    *skill* that proposes a tailored config is a separate, roadmap item — M4.)
 2. Run `stagr doctor` — it validates the config and lists the exact secret NAMES to create.

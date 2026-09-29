@@ -120,9 +120,11 @@ assume a language.
    ```
    Profiles: `minimal` / `standard` / `full` / `custom`. `init` autodetects your build toolchain
    (Python, Node, Go, Maven/Gradle, Rust, .NET) and proposes the matching `build.preset` when the repo
-   has the marker its commands need, else `custom`. See [docs/CLI.md](docs/CLI.md).
-3. Set `platform.publisher.app_id` in the config to the numeric ID of your Stagr GitHub App (`plan` and
-   `apply` need it), then validate and preview:
+   has the marker its commands need, else `custom`. The generated Codex review and security stages are
+   **blocking** (they must complete, and their comments must be resolved, before a PR can merge); the
+   file explains the blocking and advisory gates in comments. See [docs/CLI.md](docs/CLI.md).
+3. Create the Stagr GitHub App, then uncomment `platform.publisher` in the config and set `app_id` to
+   its numeric ID (`plan` and `apply` need it). Validate and preview:
    ```bash
    stagr doctor                # validate the contract + list the secret NAMES to configure
    stagr plan                  # show exactly which files would be written to .github/workflows/

@@ -70,7 +70,7 @@ The usual order is **init → doctor → plan → apply**.
 Create a starter `.agentic/config.yml` so you never hand-write YAML from scratch. Two ways:
 
 - **Guided (default):** `stagr init` runs a short wizard — grouped questions (platform, model, build
-  checks, governance), each showing the **available options and the default**; press **Enter** to
+  checks), each showing the **available options and the default**; press **Enter** to
   accept a default and complete onboarding without looking anything up.
 - **Generate from a profile:** `stagr init --profile <minimal|standard|full|custom>` writes a
   **commented** config directly (no prompts) — every section explains its purpose, default, and use.
@@ -95,8 +95,22 @@ stagr init --profile minimal --print   # preview to stdout, write nothing
 ```
 
 Profiles size the file: **minimal** (implement + review), **standard** (+ security review),
-**full** (+ the roadmap stages, commented), **custom** (a skeleton you fill in). It is
-non-destructive — it won't overwrite an existing config without `--force`.
+**full** (same stages, plus a commented `integration-test` example), **custom** (a skeleton you fill
+in). It is non-destructive — it won't overwrite an existing config without `--force`.
+
+Every generated Codex `review` and `security` stage is `gate: blocking`, so the file works with
+`plan` and `apply` as written; there is no option to make them advisory (see
+[CONFIGURATION.md, Gates](CONFIGURATION.md#gates-advisory-and-blocking)). The file explains the two
+gate categories in comments, shows a commented-out `platform.publisher` block, and lists the `build`
+and `test` stages as commented examples: they are not available yet because they need a build/test
+backend.
+
+After `init`, take these steps:
+
+1. Create the Stagr GitHub App, then uncomment `platform.publisher` in the config and set `app_id`
+   to the App's numeric ID (it is not a secret).
+2. `stagr plan` to preview the workflows.
+3. `stagr apply` to write them.
 
 ### `stagr doctor`
 

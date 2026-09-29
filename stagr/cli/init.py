@@ -214,16 +214,21 @@ def _scaffold_skill_files(
 
 
 def _print_init_next_steps(dest: Path) -> None:
-    """Point the user at the follow-up commands after `init` writes the config."""
+    """Point the user at the follow-up steps after `init` writes the config."""
     # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, point the user at
     # the file. Show the path plainly rather than a copy-paste command: shells quote differently
     # (POSIX/PowerShell single quotes vs cmd.exe double quotes), so one quoted command can't be
     # correct everywhere — leave shell-specific quoting to the user.
+    print("next:")
+    print(f"  1. In {dest}, uncomment the `platform.publisher` block and set `app_id` to the numeric ID "
+          "of your Stagr GitHub App (create the App first; the comments in the file explain how).")
     if dest == DEFAULT_CONFIG_PATH:
-        print("next: `stagr doctor` to validate, `stagr plan` to preview, `stagr apply` to write workflows.")
+        print("  2. `stagr plan` to preview the workflows.")
+        print("  3. `stagr apply` to write them.")
     else:
-        print(f"next: run `stagr doctor`, then `stagr plan`, then `stagr apply`, passing `--config` "
-              f"with this file's path to each: {dest}  (quote it for your shell if it has spaces).")
+        print("  2. `stagr plan` to preview the workflows, passing `--config` with this file's path.")
+        print("  3. `stagr apply` to write them, passing `--config` the same way.")
+        print(f"  (config path: {dest}  — quote it for your shell if it has spaces.)")
 
 
 def cmd_init(args: argparse.Namespace) -> int:

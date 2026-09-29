@@ -17,7 +17,7 @@ from __future__ import annotations
 
 # Shared render constants the single-file scaffold.py re-exported at module level (some callers do
 # `from stagr.scaffold import GATE_BLOCKING`), so keep them on the package's public surface.
-from ..render import DEFAULT_TOKEN_SECRET, GATE_ADVISORY, GATE_BLOCKING, PROFILE_STAGES
+from ..render import DEFAULT_TOKEN_SECRET, GATE_ADVISORY, GATE_BLOCKING
 
 from .detect import (
     BUILD_PRESETS,
@@ -37,10 +37,8 @@ from .defaults import (
     _DOCS_CHARTER,
     _DOCS_CONFIG,
     _PROFILE_STAGES,
-    _ROADMAP_STAGE_PROVIDER,
     _ROADMAP_STAGES,
-    _canonical_gate,
-    _profile_security_blocking,
+    CODEX_STAGE_GATE,
     default_choices,
 )
 from .snippets import (

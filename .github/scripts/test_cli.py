@@ -29,17 +29,15 @@ from cli_tests.help import test_help_command
 from cli_tests.init_generate import (
     test_init_build_presets_match_schema_and_wizard_validates,
     test_init_escapes_test_command,
-    test_init_full_profile_keeps_security_blocking,
     test_init_next_steps_carry_custom_config_path,
     test_init_print_keeps_stdout_yaml_only,
     test_init_profiles_generate_valid_configs,
     test_init_quotes_yaml_keyword_scalars,
-    test_init_review_gate_derived_from_profile,
     test_init_scaffolds_skill_files,
     test_init_wizard_defaults_and_nontty,
-    test_init_wizard_governance_unrecognized_keeps_profile_default,
     test_init_writes_utf8,
 )
+from cli_tests.init_blocking_defaults import INIT_BLOCKING_DEFAULT_TESTS
 from cli_tests.init_guards import (
     test_init_refuses_symlink_destination,
     test_init_rejects_pasted_credential_value,
@@ -80,16 +78,15 @@ def main() -> int:
     test_init_writes_utf8()
     test_init_reports_write_failure_without_traceback()
     test_init_print_keeps_stdout_yaml_only()
-    test_init_full_profile_keeps_security_blocking()
-    test_init_review_gate_derived_from_profile()
     test_init_quotes_yaml_keyword_scalars()
-    test_init_wizard_governance_unrecognized_keeps_profile_default()
     test_init_build_presets_match_schema_and_wizard_validates()
     test_default_token_secret_is_neutral()
     test_detect_build_preset()
     test_detect_presets_are_schema_valid()
     test_init_uses_detected_preset()
     test_init_wizard_uses_detected_preset_default()
+    for init_blocking_default_test in INIT_BLOCKING_DEFAULT_TESTS:
+        init_blocking_default_test()
     if failures:
         print(f"\n{len(failures)} test failure(s).", file=sys.stderr)
         return 1

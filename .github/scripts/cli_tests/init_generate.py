@@ -116,44 +116,6 @@ def test_init_print_keeps_stdout_yaml_only() -> None:
           "init --print: stdout is valid YAML only")
 
 
-def test_init_full_profile_keeps_security_blocking() -> None:
-    from stagr import scaffold
-    text = scaffold.generate(scaffold.default_choices("full"))
-    with tempfile.TemporaryDirectory() as d:
-        p = Path(d) / "c.yml"
-        p.write_text(text)
-        cfg = render.load_config(p)
-        render.validate_config(cfg)
-    sec = next(s for s in cfg["stages"] if s.get("type") == "security")
-    check(sec.get("gate") == render.GATE_BLOCKING,
-          "init --profile full: security stage stays blocking (matches canonical profile)")
-    # `standard` derives advisory security from the same source of truth.
-    std = scaffold.generate(scaffold.default_choices("standard"))
-    with tempfile.TemporaryDirectory() as d:
-        p = Path(d) / "c.yml"
-        p.write_text(std)
-        cfg2 = render.load_config(p)
-    sec2 = next(s for s in cfg2["stages"] if s.get("type") == "security")
-    check(sec2.get("gate") == render.GATE_ADVISORY,
-          "init --profile standard: security stage is advisory (matches canonical profile)")
-
-
-def test_init_review_gate_derived_from_profile() -> None:
-    from stagr import scaffold
-    expected = {"minimal": render.GATE_ADVISORY, "standard": render.GATE_BLOCKING,
-                "full": render.GATE_BLOCKING}
-    for prof, want in expected.items():
-        text = scaffold.generate(scaffold.default_choices(prof))
-        with tempfile.TemporaryDirectory() as d:
-            p = Path(d) / "c.yml"
-            p.write_text(text)
-            cfg = render.load_config(p)
-            render.validate_config(cfg)
-        review = next(s for s in cfg["stages"] if s.get("type") == "review")
-        check(review.get("gate") == want,
-              f"init --profile {prof}: review gate is {want} (matches canonical profile)")
-
-
 def test_init_quotes_yaml_keyword_scalars() -> None:
     from stagr import scaffold
     ch = scaffold.default_choices("minimal")
@@ -166,15 +128,6 @@ def test_init_quotes_yaml_keyword_scalars() -> None:
         render.validate_config(cfg)
     check(cfg["platform"]["default_branch"] == "on",
           "init: a YAML-keyword default branch ('on') is emitted as a quoted string, not a bool")
-
-
-def test_init_wizard_governance_unrecognized_keeps_profile_default() -> None:
-    from stagr import scaffold
-    # profile=full (blocking security), then an unrecognized governance answer must NOT downgrade it.
-    answers = iter(["full", "", "", "", "", "", "ye"])  # profile,branch,model,token,preset,test,gov
-    ch = scaffold.run_wizard(read_input=lambda _p: next(answers), write_line=lambda _m: None)
-    check(ch["security_blocking"] is True,
-          "wizard: an unrecognized governance answer keeps the full profile's blocking default")
 
 
 def test_init_scaffolds_skill_files() -> None:
@@ -200,7 +153,7 @@ def test_init_build_presets_match_schema_and_wizard_validates() -> None:
 
     # A mistyped preset in the wizard falls back to a schema-valid value, so the generated
     # config still passes doctor rather than emitting `preset: pyhton`.
-    answers = iter(["", "", "", "", "pyhton", "", "n"])  # profile,branch,model,token,preset,test,gov
+    answers = iter(["", "", "", "", "pyhton", ""])  # profile,branch,model,token,preset,test
     ch = scaffold.run_wizard(read_input=lambda _p: next(answers), write_line=lambda _m: None)
     check(ch["build_preset"] == "custom",
           "wizard: an unknown build preset falls back to 'custom'")

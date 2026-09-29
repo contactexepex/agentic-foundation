@@ -6,7 +6,6 @@ from typing import Any
 from ..render import (  # shared contract vocabulary
     DEFAULT_TOKEN_SECRET,
     GATE_BLOCKING,
-    PROFILE_STAGES,
 )
 
 from .detect import CUSTOM_PRESET
@@ -28,46 +27,30 @@ DEFAULT_PLATFORM = "github"
 DEFAULT_BRANCH = "main"
 
 # Which stages each profile includes. `minimal` = implement + review; `standard` adds a security
-# review; `full` additionally declares the not-yet-rendered stages (test/integration-test); `custom`
-# emits a skeleton the operator fills in. `plan` and `docs` are NOT dev-lane stages — they belong to
-# the Planning and CD sibling toolkits (see docs/stagr/dev-lane.md), so no profile emits them.
+# review; `full` additionally shows a commented `integration-test` example (a stage that cannot render
+# yet); `custom` emits a skeleton the operator fills in. `plan` and `docs` are NOT dev-lane stages —
+# they belong to the Planning and CD sibling toolkits (see docs/stagr/dev-lane.md), so no profile
+# emits them.
 _PROFILE_STAGES: dict[str, list[str]] = {
     "minimal": ["implement", "review"],
     "standard": ["implement", "review", "security"],
-    "full": ["implement", "review", "security", "test", "integration-test"],
+    "full": ["implement", "review", "security", "integration-test"],
     "custom": [],
 }
 
-# Stages declared/validated but NOT yet rendered to workflows (roadmap — CHARTER §7). `full` lists
-# them, commented, so the intended graph is visible without emitting anything unexpected.
-_ROADMAP_STAGES = ("test", "integration-test")
+# Stages declared/validated but NOT yet rendered to workflows: they need a build/test backend that
+# does not exist yet. `full` lists them, commented, so the intended graph is visible without
+# emitting anything `stagr plan` cannot render.
+_ROADMAP_STAGES = ("integration-test",)
 
-# Canonical provider per roadmap stage (mirrors render.PROFILE_STAGES): test/integration-test run
-# Codex. Serialized into the commented stages so uncommenting one keeps the provider the profile
-# intended instead of silently inheriting defaults.provider.
-_ROADMAP_STAGE_PROVIDER = {"test": "openai", "integration-test": "openai"}
-
-
-def _canonical_gate(profile: str, stage_type: str) -> str | None:
-    """The gate the canonical profile (render.PROFILE_STAGES) assigns a stage type, or None.
-
-    The generated file lists its stages explicitly under `profile: custom`, so each stage's gate
-    takes effect verbatim. Deriving gates from the shared profile definition — the single source of
-    truth — keeps a generated `--profile <p>` config faithful to that profile's merge semantics
-    rather than hardcoding a value that could silently strengthen or weaken it.
-    """
-    for stage in PROFILE_STAGES.get(profile, []):
-        if stage.get("type") == stage_type:
-            return stage.get("gate")
-    return None
-
-
-def _profile_security_blocking(profile: str) -> bool:
-    """Whether the canonical profile makes the security stage blocking (drives the wizard default).
-
-    `full` is blocking, `standard` advisory, `minimal`/`custom` have no security stage (False).
-    """
-    return _canonical_gate(profile, "security") == GATE_BLOCKING
+# The gate `init` writes for every Codex review/security stage, in every profile. Always blocking:
+# the neutral pipeline (`stagr plan` / `stagr apply`) rejects an advisory Codex stage, because both
+# Codex stages share one review scope (design-docs/06-runtime-boundary.md, shared-scope rule), so a
+# generated config must never contain one. This mirrors the review/security gates in
+# core.normalize._PROFILE_STAGE_DEFAULTS (the neutral profile definitions); a test asserts they agree.
+# The legacy `python -m stagr.render` lane keeps its own render.PROFILE_STAGES, where `minimal` and
+# `standard` make review/security advisory — `init` deliberately does not read it.
+CODEX_STAGE_GATE = GATE_BLOCKING
 
 
 def default_choices(profile: str) -> dict[str, Any]:
@@ -87,5 +70,4 @@ def default_choices(profile: str) -> dict[str, Any]:
         "token_secret": DEFAULT_TOKEN_SECRET,
         "build_preset": CUSTOM_PRESET,
         "build_test": "",
-        "security_blocking": _profile_security_blocking(profile),
     }
