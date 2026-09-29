@@ -449,3 +449,40 @@ def test_v_s06_via_shared_validation_path() -> None:
     except render.RenderError:
         passed_no_root = False
     check(passed_no_root, "V-S06 via shared path: project_root=None skips filesystem check")
+
+
+def test_v_s06_from_preset_expands_skill() -> None:
+    """V-S06 fires for a stage that inherits its skill via a `from:` preset (not explicit `skill:`).
+
+    Before the fix, validate_config passed the raw cfg["stages"] to the skill-existence check.
+    A stage like ``{id: review, from: code-review}`` has no ``skill`` key in the raw form;
+    expand_stages() supplies ``skill: code-review`` from the preset.  The check must see the
+    expanded result so that a missing ``.agentic/skills/code-review/SKILL.md`` is caught.
+    """
+    # The code-review preset sets skill: code-review; no explicit skill: in the stage config.
+    preset_cfg = {
+        "version": 2,
+        "profile": "custom",
+        "platform": {"type": "github", "default_branch": "main"},
+        "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "m"}}},
+        "stages": [{"id": "review", "from": "code-review"}],
+    }
+
+    with _project_dir() as project_root:
+        # No skill file exists — V-S06 must fire because the preset injects skill: code-review.
+        expect_raises(
+            lambda: render.validate_config(preset_cfg, project_root=project_root),
+            "V-S06 from: preset: missing skill file raises RenderError when stage uses from:",
+        )
+
+        # Create the expected skill file; the same config must now pass.
+        skill_file = project_root / ".agentic" / "skills" / "code-review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text("---\nid: code-review\n---\n# Code Review\n")
+
+        passed = True
+        try:
+            render.validate_config(preset_cfg, project_root=project_root)
+        except render.RenderError:
+            passed = False
+        check(passed, "V-S06 from: preset: existing skill file passes validation")

@@ -74,3 +74,39 @@ def test_doctor_fail_loud() -> None:
         # the model-resolution failure (not the containment guard).
         rc = cli.main(["doctor", "--config", "config.yml", "--json"])
         check(rc == 1, "doctor: unresolvable generic implementer model exits 1")
+
+
+def test_v_s06_enforced_by_load_validated() -> None:
+    """_load_validated passes project_root=Path.cwd() so V-S06 fires for stages with a missing
+    skill file — including stages that inherit their skill from a `from:` preset.
+
+    `_project_dir` changes CWD to the temp dir, so `Path.cwd()` inside `_load_validated` resolves
+    to the same directory where the config lives.  No ``.agentic/skills/code-review/SKILL.md``
+    is created, so V-S06 must fire and raise RenderError.
+    """
+    with _project_dir() as project_root:
+        config_path = project_root / "config.yml"
+        config_path.write_text(
+            "version: 2\nprofile: custom\n"
+            "platform: {type: github, default_branch: main}\n"
+            "defaults: {provider: anthropic, models: {anthropic: {default: m}}}\n"
+            "stages:\n  - {id: review, from: code-review}\n"
+        )
+        raised = False
+        try:
+            cli._load_validated(config_path)
+        except render.RenderError:
+            raised = True
+        check(raised, "V-S06 CLI: _load_validated raises RenderError for from: preset with missing skill file")
+
+        # Create the skill file; _load_validated must now succeed.
+        skill_file = project_root / ".agentic" / "skills" / "code-review" / "SKILL.md"
+        skill_file.parent.mkdir(parents=True)
+        skill_file.write_text("---\nid: code-review\n---\n# Code Review\n")
+
+        passed = True
+        try:
+            cli._load_validated(config_path)
+        except render.RenderError:
+            passed = False
+        check(passed, "V-S06 CLI: _load_validated passes when skill file exists")

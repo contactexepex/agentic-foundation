@@ -18,6 +18,7 @@ from cli_tests.report import (
     test_doctor_fail_loud,
     test_doctor_no_secret_values_and_exit,
     test_report,
+    test_v_s06_enforced_by_load_validated,
 )
 from cli_tests.paths import (
     test_config_path_confined_to_project_root,
@@ -58,6 +59,7 @@ def main() -> int:
     test_report()
     test_doctor_no_secret_values_and_exit()
     test_doctor_fail_loud()
+    test_v_s06_enforced_by_load_validated()
     test_config_path_confined_to_project_root()
     test_config_path_symlink_loop_is_clean_error()
     test_plan_apply_idempotent()

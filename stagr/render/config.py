@@ -83,9 +83,9 @@ def validate_config(cfg: dict[str, Any], project_root: Path | None = None) -> No
         from stagr.core.skill_validator import validate_skill_file_existence  # noqa: PLC0415
         from stagr.core.models import StaticValidationError  # noqa: PLC0415
 
-        raw_stages = cfg.get("stages") or []
+        expanded_stages = expand_stages(cfg)
         try:
-            validate_skill_file_existence(raw_stages, project_root)
+            validate_skill_file_existence(expanded_stages, project_root)
         except StaticValidationError as exc:
             raise RenderError(str(exc)) from exc
 
