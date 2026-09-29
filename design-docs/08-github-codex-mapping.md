@@ -222,8 +222,40 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   `produced_by`; `invocation_correlation`; and plans with no evidence whose invocation finishes
   asynchronously (`PR_COMMENT`, `WORKFLOW_DISPATCH`).
 - **Events without a pull request** (`workflow_dispatch`, `issues`) publish no signal.
-- **Not part of this runtime.** Recovering from an expired in-flight marker (re-posting the
-  invocation) belongs to the invocation guard (#205).
+- **Invocation and idempotency (`PR_COMMENT` backends).** The `execute` job has one step,
+  "Invoke backend (idempotent)", that runs the same runtime in `invoke` mode. In this order it
+  (1) skips if the pull request is not eligible or the event's head is stale; (2) skips if the
+  `EvidenceSpec` already holds for the current head (completion guard); (3) skips if a still-valid
+  in-flight marker exists for this stage and this exact head; (4) otherwise posts the backend
+  comment (`Invocation.params["body"]`) with the marker
+  `<!-- stagr:stage:<stageId>:<headSha>:expires:<UTC ISO8601> -->` appended. A skipped step exits
+  successfully, so the "Publish result signal" step still runs and reports `running` or the
+  completed result. This step runs inside the stage's concurrency group.
+- **The in-flight marker is authenticated.** Comments on a public repository are written by
+  anyone, so a forged far-future marker could otherwise stop an invocation for ever. A marker
+  counts only if the comment's author is the account that owns the invoke token (its id, login
+  and type come from `GET /user` at run time and must all match, so a look-alike name or a Bot
+  twin never matches) and the comment's `author_association` is one of the `TrustPolicy` roles.
+  The marker must also name this exact stage id and the full 40-character head SHA. Markers
+  without an expiry, with an unparseable expiry, or for another stage or head are ignored, and an
+  expiry that is not in the future counts as expired. Consequently the account behind
+  `TRUSTED_COMMENTER_TOKEN` must have a role listed in `TrustPolicy.trusted_roles`; otherwise its
+  markers are never believed and each run posts again.
+- **Lease length** is `Invocation.params["lease_minutes"]` (backend-defined; 30 when absent),
+  checked at render time: an integer from 1 to 1440, anything else fails `stagr apply`. `body`
+  must be non-empty text and the plan must declare a resolved `TRUSTED_COMMENTER_TOKEN` secret.
+- **Credentials.** Only the invoke step holds the backend secret. It reaches the runtime as
+  `TRUSTED_COMMENTER_TOKEN`, and the runtime hands it to `gh` as `GH_TOKEN` for that step only.
+  The App installation token is never present in the invoke step; `reconcile` and `sweep` hold
+  only the App token and `permissions: {}`.
+- **Known limitation: the sweep cannot re-invoke.** The sweep job must not hold the backend
+  secret, so it never posts an invocation. If a backend drops an invocation and the lease expires,
+  the pull request stays `running` until the `execute` job next runs for that same head (a
+  reopen, `ready_for_review`, or a manual re-run of the workflow). A new push starts a new head
+  and is invoked normally. This narrows the recovery rule in `06-runtime-boundary.md`, which
+  allows the sweep to re-post.
+- **Other invocation kinds.** Only `PR_COMMENT` is posted by the runtime. `CI_COMPONENT`,
+  `API_CALL` and `WORKFLOW_DISPATCH` keep placeholder steps that invoke nothing, as before.
 - **Stagr App permissions** used at run time: Checks (write), Pull requests (read) and Issues
   (read).
 
@@ -253,7 +285,7 @@ The bug is entirely in the rendered implementation. The neutral config needs no 
 |---|---|
 | `request-final-security-review.yml` | Remove code-review-completion gate. Add `pull_request_target: [opened, reopened, ready_for_review, synchronize]` triggers (PR_OPENED + PR_UPDATED). Both stages trigger independently. |
 | `request-codex-review-on-push.yml` | Add `pull_request_target: [opened, reopened, ready_for_review]` triggers (PR_OPENED). Remove 3-minute security-review serialization wait (lines 218–237). Emit `StageResultSignal` after evidence check. |
-| Both stage workflows | Add in-flight idempotency marker (`<!-- stagr:stage:<id>:<sha> -->`). Emit `StageResultSignal` as Check Run (not commit status); verify publisher App identity in governance. |
+| Both stage workflows | Add in-flight idempotency marker with lease (`<!-- stagr:stage:<id>:<sha>:expires:<time> -->`). Emit `StageResultSignal` as Check Run (not commit status); verify publisher App identity in governance. |
 | `auto-merge-foundation-prs.yml` | Read `StageResultSignal` Check Runs (verify publisher identity) instead of Codex summary comment rows. Routing signal also migrated to Check Run. |
 | New: provider configuration | Add secret alias → platform secret name mapping (TRUSTED_COMMENTER_TOKEN → REMEDIATION_TOKEN) to provider config. |
 | Verify empirically | Test whether `@codex security review` PR comment reliably updates the Codex summary Security Review row before implementing the EvidenceSpec. |

@@ -60,6 +60,7 @@ def build_config_document(**overrides: Any) -> dict[str, Any]:
         "privilegedStage": True,
         "evidence": [review_evidence_rule()],
         "gate": no_open_threads_gate(),
+        "invocation": {"kind": "pr_comment", "body": "@codex review", "leaseMinutes": 30},
     }
     document.update(overrides)
     return document

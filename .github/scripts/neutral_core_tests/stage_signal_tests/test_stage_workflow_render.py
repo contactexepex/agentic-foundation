@@ -96,7 +96,7 @@ def test_publish_step_runs_after_the_backend_step_and_reports_job_status() -> No
     _, document = render_codex_workflow()
     steps = document["jobs"]["execute"]["steps"]
     names = [step["name"] for step in steps]
-    assert names.index("Publish result signal") > names.index("Invoke backend (stub)")
+    assert names.index("Publish result signal") > names.index("Invoke backend (idempotent)")
     publish = steps[names.index("Publish result signal")]
     assert publish["if"] == "${{ !cancelled() }}"
     assert publish["env"]["STAGR_MODE"] == "publish"
@@ -114,7 +114,8 @@ def test_app_token_reaches_only_the_signal_steps_never_the_backend_step() -> Non
                 "Publish result signal", "Reconcile result signal", "Sweep open pull requests")
             assert has_app_token == is_signal_step, (job_name, step["name"])
     backend = next(step for step in document["jobs"]["execute"]["steps"] if step["name"].startswith("Invoke backend"))
-    assert backend["env"] == {"TRUSTED_COMMENTER_TOKEN": "${{ secrets.REMEDIATION_TOKEN }}"}
+    assert backend["env"]["TRUSTED_COMMENTER_TOKEN"] == "${{ secrets.REMEDIATION_TOKEN }}"
+    assert "steps.app-token.outputs.token" not in str(backend)
 
 
 def test_no_run_script_interpolates_any_expression() -> None:

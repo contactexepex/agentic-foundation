@@ -8,6 +8,11 @@ typo in the runtime cannot silently "work" against the fake.
 ``StrictGhCliShim`` exposes the same fake behind a real ``gh`` executable that REJECTS any flag or
 argument shape the runtime is not documented to use, which is what catches command-line mistakes
 (such as passing ``--arg`` to ``gh api``) that a Python-level fake cannot see.
+
+Invocation support (issue #205): ``GET /user`` answers for the token in ``GH_TOKEN``; when
+``token_accounts`` is non-empty the shim rejects every call made with any other token (a leaked or
+wrong credential fails like a 401) and records each token it saw in ``used_tokens``. Posting an
+issue comment records the authenticated account as its author.
 """
 from __future__ import annotations
 
@@ -24,6 +29,9 @@ from stagr.platforms.github.runtime import stage_signal_runtime as runtime
 
 REPOSITORY = "octo/repo"
 PUBLISHER_APP_ID = "99001"
+COMMENTER_USER = {"id": 7001, "login": "stagr-commenter", "type": "User"}
+COMMENTER_ASSOCIATION = "OWNER"
+COMMENTER_TOKEN = "commenter-token-value"
 ALLOWED_CHECK_RUN_STATUSES = {"queued", "in_progress", "completed"}
 ALLOWED_CHECK_RUN_CONCLUSIONS = {
     "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required",
@@ -41,8 +49,14 @@ class FakeGitHubApi:
         self.check_runs: list[dict[str, Any]] = []
         self.write_calls: list[tuple[str, str, dict[str, Any]]] = []
         self.failing_path_fragments: set[str] = set()
+        self.failing_write_fragments: list[str] = []
         self.graphql_page_size = 100
         self.next_identifier = 1000
+        self.authenticated_user: dict[str, Any] = dict(COMMENTER_USER)
+        self.authenticated_association = COMMENTER_ASSOCIATION
+        self.token_accounts: dict[str, dict[str, Any]] = {}
+        self.active_token: str | None = None
+        self.used_tokens: list[str] = []
 
     # ---- state serialization (used by the gh shim, which runs in another process) ----
 
@@ -71,6 +85,8 @@ class FakeGitHubApi:
 
     def get_object(self, path: str) -> dict[str, Any]:
         self._raise_if_failing(path)
+        if path == "user":
+            return dict(self._authenticated_account())
         segments = urlsplit(path).path.split("/")
         assert segments[:3] == ["repos", *REPOSITORY.split("/")] and segments[3] == "pulls", path
         return self.pull_requests[int(segments[4])]
@@ -112,6 +128,11 @@ class FakeGitHubApi:
     def send_json(self, method: str, path: str, body: Mapping[str, Any]) -> dict[str, Any]:
         self._raise_if_failing(path)
         self.write_calls.append((method, path, json.loads(json.dumps(body))))
+        for fragment in self.failing_write_fragments:
+            if fragment in path:
+                raise runtime.GitHubApiError(f"injected write failure for {fragment}")
+        if method == "POST" and path.endswith("/comments"):
+            return self._post_issue_comment(path, body)
         self._assert_valid_check_run_body(method, body)
         if method == "POST":
             assert path == f"repos/{REPOSITORY}/check-runs", path
@@ -135,6 +156,35 @@ class FakeGitHubApi:
 
     def stage_check_runs(self, head_sha: str) -> list[dict[str, Any]]:
         return [run for run in self.check_runs if run["head_sha"] == head_sha]
+
+    def comments_posted_by_writes(self) -> list[dict[str, Any]]:
+        """The bodies of issue comments created through ``send_json``."""
+        return [body for method, path, body in self.write_calls
+                if method == "POST" and path.endswith("/comments")]
+
+    def _authenticated_account(self) -> dict[str, Any]:
+        if not self.token_accounts:
+            return self.authenticated_user
+        if self.active_token not in self.token_accounts:
+            raise runtime.GitHubApiError("HTTP 401: Bad credentials")
+        return self.token_accounts[self.active_token]
+
+    def _post_issue_comment(self, path: str, body: Mapping[str, Any]) -> dict[str, Any]:
+        segments = path.split("/")
+        assert segments[:3] == ["repos", *REPOSITORY.split("/")] and segments[3] == "issues", path
+        assert len(segments) == 6 and segments[5] == "comments", path
+        assert set(body) == {"body"} and isinstance(body["body"], str) and body["body"].strip(), body
+        issue_number = int(segments[4])
+        assert issue_number in self.pull_requests, f"no issue {issue_number}"
+        self.next_identifier += 1
+        comment = {
+            "id": self.next_identifier,
+            "body": body["body"],
+            "user": dict(self._authenticated_account()),
+            "author_association": self.authenticated_association,
+        }
+        self.issue_comments.setdefault(issue_number, []).append(comment)
+        return comment
 
     def _raise_if_failing(self, path: str) -> None:
         for fragment in self.failing_path_fragments:
@@ -194,7 +244,12 @@ class StrictGhCliShim:
 def run_gh_shim(arguments: list[str], state_path: str) -> int:
     """Strictly parse a ``gh`` invocation, execute it on the fake, and persist the new state."""
     fake = FakeGitHubApi.from_state(json.loads(Path(state_path).read_text()))
+    fake.active_token = os.environ.get("GH_TOKEN")
+    if fake.active_token:
+        fake.used_tokens.append(fake.active_token)
     try:
+        if fake.token_accounts and fake.active_token not in fake.token_accounts:
+            raise runtime.GitHubApiError("HTTP 401: Bad credentials")
         output = _dispatch_gh_arguments(fake, arguments)
     except runtime.GitHubApiError as error:
         print(str(error), file=sys.stderr)
