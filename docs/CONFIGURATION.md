@@ -118,6 +118,8 @@ defaults:
 | `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). |
 | `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. |
 | `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
+| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. Set it whenever you use the publisher; if the `publisher` block is missing, the existing behavior is unchanged. |
+| `publisher.private_key_secret` | Optional, used with `publisher`. The **name** of the repository secret that holds the App's private key, for example `STAGR_APP_PRIVATE_KEY` (the default). Letters, digits and underscores only, not starting with a digit, and not starting with `GITHUB_`. Never the key itself. |
 | `labels.human_merge` | A change-request with this label is **never** auto-merged (human keeps merge authority). |
 | `labels.dispatch` | Optional label that dispatches a task from an issue. |
 
@@ -167,6 +169,22 @@ platform:
   auth:
     token_secret: MY_GITHUB_PAT            # overrides the REMEDIATION_TOKEN default
 ```
+
+#### Publisher (Stagr GitHub App)
+Stagr publishes its own Check Runs as a GitHub App, not with a personal token. You create the App
+yourself and store its private key as a repository secret; the config only names them:
+
+```yaml
+platform:
+  publisher:
+    app_id: 123456                          # the App's numeric ID (not a secret)
+    private_key_secret: STAGR_APP_PRIVATE_KEY   # NAME of the secret holding the App private key
+```
+
+Steps for the operator: create the GitHub App, install it on the repository, save its private key as a
+repository secret with the name you put in `private_key_secret`, and set `app_id`. A value that is not a
+valid secret name (for example a pasted key) is rejected when the config is validated. The private key
+gives access wherever the App is installed, so guard it and rotate it if it leaks.
 
 ### `skills` (optional — methodology registry)
 A **skill** is the reusable methodology/content for a stage (checklist, rubric, output format),

@@ -136,6 +136,11 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
     except StaticValidationError as exc:
         raise RenderError(str(exc)) from exc
 
+    # platform.publisher (optional): when present it must be a valid App ID + secret NAME. The schema
+    # cannot express every rule (its `$` lets a trailing newline through), so the derivation function
+    # is the single enforcement point, shared with the neutral pipeline.
+    _validate_publisher_block(cfg)
+
     # V-S11: dormant routing configuration warning — fast_path disabled but routing keys present.
     _warn_dormant_routing_config(cfg)
 
@@ -157,6 +162,20 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
     from .context import build_context
 
     build_context(cfg)
+
+
+def _validate_publisher_block(cfg: dict[str, Any]) -> None:
+    """Reject an invalid ``platform.publisher`` block; an absent block is valid (legacy lane)."""
+    platform_config: dict[str, Any] = cfg.get("platform") or {}
+    if "publisher" not in platform_config:
+        return
+    from stagr.core.models import ConfigError  # noqa: PLC0415
+    from stagr.core.publisher import derive_publisher_config  # noqa: PLC0415
+
+    try:
+        derive_publisher_config(cfg)
+    except ConfigError as exc:
+        raise RenderError(str(exc)) from exc
 
 
 def _warn_dormant_routing_config(cfg: dict[str, Any]) -> None:
