@@ -252,11 +252,12 @@ def test_an_event_for_a_head_that_has_since_moved_is_not_invoked() -> None:
     _assert_not_invoked(fake, invoke(fake, event_head_sha=OLD_HEAD_SHA), "stale")
 
 
-def test_untrusted_authors_forks_and_closed_pull_requests_are_not_invoked() -> None:
+def test_untrusted_authors_forks_drafts_and_closed_pull_requests_are_not_invoked() -> None:
     for pull_request, fragment in (
         (build_pull_request(author_association="NONE"), "not a trusted role"),
         (build_pull_request(is_fork=True), "fork"),
         (build_pull_request(state="closed"), "not open"),
+        (build_pull_request(is_draft=True), "draft"),
     ):
         fake = build_world(pull_request=pull_request)
         _assert_not_invoked(fake, invoke(fake), fragment)

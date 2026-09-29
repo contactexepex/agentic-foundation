@@ -121,3 +121,11 @@ def test_sweep_uses_the_pull_request_list_ordered_least_recently_updated_first()
     fake.get_items = lambda path, items_key=None: (requested_paths.append(path), original_get_items(path, items_key))[1]
     _sweep(fake)
     assert "sort=updated&direction=asc" in requested_paths[0]
+
+
+def test_sweep_ignores_draft_pull_requests() -> None:
+    fake = build_world(comments=completed_review_comments())
+    fake.pull_requests[7]["draft"] = True
+    fake.check_runs.append(build_existing_check_run("running", "unknown"))
+    _sweep(fake, gate=always_pass_gate())
+    assert not fake.write_calls

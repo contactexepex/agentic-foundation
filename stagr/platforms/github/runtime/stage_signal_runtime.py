@@ -749,6 +749,7 @@ class ReconcileResult:
 class PullRequestView:
     number: int
     state: str
+    is_draft: bool
     author_association: str
     head_sha: str
     head_repository_id: int | None
@@ -760,6 +761,7 @@ class PullRequestView:
         return cls(
             number=payload["number"],
             state=payload["state"],
+            is_draft=bool(payload.get("draft", False)),
             author_association=str(payload.get("author_association") or ""),
             head_sha=payload["head"]["sha"],
             head_repository_id=head_repository.get("id"),
@@ -781,6 +783,8 @@ class PullRequestEligibility:
         """Return why ``pull`` may not drive the stage, or an empty string when it may."""
         if pull.state != "open":
             return "pull request is not open"
+        if pull.is_draft:
+            return "pull request is a draft"
         if pull.author_association.upper() not in self._config.trusted_roles:
             return "pull request author is not a trusted role"
         if pull.is_fork and (self._config.deny_forks or self._config.privileged_stage):

@@ -76,10 +76,12 @@ def build_pull_request(
     author_association: str = "OWNER",
     state: str = "open",
     is_fork: bool = False,
+    is_draft: bool = False,
 ) -> dict[str, Any]:
     return {
         "number": number,
         "state": state,
+        "draft": is_draft,
         "author_association": author_association,
         "head": {"sha": head_sha, "repo": {"id": 900 + number if is_fork else BASE_REPOSITORY_ID}},
         "base": {"repo": {"id": BASE_REPOSITORY_ID}},
