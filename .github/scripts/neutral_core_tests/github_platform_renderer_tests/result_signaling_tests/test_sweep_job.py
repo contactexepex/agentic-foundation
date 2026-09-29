@@ -76,6 +76,20 @@ def test_sweep_job_skips_fork_prs_when_fork_policy_deny() -> None:
     )
 
 
+def test_sweep_job_checks_evidence_before_gate_eval() -> None:
+    """Sweep job verifies backend evidence (App-authenticated comment) before evaluating gate disposition."""
+    yaml_content = render_stage_yaml(build_always_pass_plan())
+    sweep_index = yaml_content.find("sweep:")
+    assert sweep_index != -1, "Must have sweep: job"
+    sweep_block = yaml_content[sweep_index:]
+    assert "performed_via_github_app" in sweep_block, (
+        "Sweep job must verify evidence comment identity via performed_via_github_app.id"
+    )
+    assert "stagr-stage-" in sweep_block, (
+        "Sweep job must check evidence comment body for the stage anchor identifier"
+    )
+
+
 def test_sweep_job_bakes_trusted_roles_as_literal() -> None:
     """Sweep job bakes trusted_roles from TrustPolicy as a literal string constant."""
     stage = build_stage()

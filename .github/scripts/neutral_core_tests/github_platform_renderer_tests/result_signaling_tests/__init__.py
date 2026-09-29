@@ -28,6 +28,7 @@ from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.te
     test_reconcile_job_runs_on_issue_comment_and_check_suite,
     test_reconcile_job_exits_when_evidence_absent,
     test_reconcile_job_fetches_head_sha_from_pr_api,
+    test_reconcile_job_verifies_evidence_app_identity,
 )
 from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.test_sweep_job import (
     test_sweep_job_exists_in_generated_workflow,
@@ -35,6 +36,7 @@ from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.te
     test_sweep_job_enumerates_open_prs,
     test_sweep_job_filters_untrusted_author_association,
     test_sweep_job_skips_fork_prs_when_fork_policy_deny,
+    test_sweep_job_checks_evidence_before_gate_eval,
     test_sweep_job_bakes_trusted_roles_as_literal,
 )
 
@@ -61,11 +63,13 @@ RESULT_SIGNALING_TESTS = [
     test_reconcile_job_runs_on_issue_comment_and_check_suite,
     test_reconcile_job_exits_when_evidence_absent,
     test_reconcile_job_fetches_head_sha_from_pr_api,
+    test_reconcile_job_verifies_evidence_app_identity,
     test_sweep_job_exists_in_generated_workflow,
     test_sweep_job_runs_on_schedule_only,
     test_sweep_job_enumerates_open_prs,
     test_sweep_job_filters_untrusted_author_association,
     test_sweep_job_skips_fork_prs_when_fork_policy_deny,
+    test_sweep_job_checks_evidence_before_gate_eval,
     test_sweep_job_bakes_trusted_roles_as_literal,
 ]
 
@@ -93,10 +97,12 @@ __all__ = [
     "test_reconcile_job_runs_on_issue_comment_and_check_suite",
     "test_reconcile_job_exits_when_evidence_absent",
     "test_reconcile_job_fetches_head_sha_from_pr_api",
+    "test_reconcile_job_verifies_evidence_app_identity",
     "test_sweep_job_exists_in_generated_workflow",
     "test_sweep_job_runs_on_schedule_only",
     "test_sweep_job_enumerates_open_prs",
     "test_sweep_job_filters_untrusted_author_association",
     "test_sweep_job_skips_fork_prs_when_fork_policy_deny",
+    "test_sweep_job_checks_evidence_before_gate_eval",
     "test_sweep_job_bakes_trusted_roles_as_literal",
 ]

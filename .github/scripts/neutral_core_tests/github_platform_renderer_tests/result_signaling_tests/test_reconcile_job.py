@@ -52,3 +52,17 @@ def test_reconcile_job_fetches_head_sha_from_pr_api() -> None:
     assert "head.sha" in reconcile_block, (
         "Reconcile job must extract head.sha from the PR API response"
     )
+
+
+def test_reconcile_job_verifies_evidence_app_identity() -> None:
+    """Reconcile job authenticates evidence by checking performed_via_github_app.id."""
+    yaml_content = render_stage_yaml(build_always_pass_plan())
+    reconcile_index = yaml_content.find("reconcile:")
+    assert reconcile_index != -1, "Must have reconcile: job"
+    reconcile_block = yaml_content[reconcile_index:]
+    assert "performed_via_github_app" in reconcile_block, (
+        "Reconcile job must verify evidence comment identity via performed_via_github_app.id"
+    )
+    assert "STAGR_APP_ID" in reconcile_block, (
+        "Reconcile job must compare App id against STAGR_APP_ID to authenticate evidence"
+    )
