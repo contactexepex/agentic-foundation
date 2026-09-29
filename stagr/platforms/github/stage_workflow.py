@@ -1,15 +1,19 @@
-"""Stage workflow assembly for GitHubPlatformRenderer (issues #194 scaffold and #206 runtime).
+"""Stage workflow assembly for GitHubPlatformRenderer (issues #194, #206, #205 and #207).
 
 Builds the text of ``.github/workflows/stage-<id>.yml``. One workflow file per stage holds up to
 three jobs, each guarded by an explicit ``github.event_name`` condition so that a wakeup can never
 re-run a backend and an invocation trigger can never run the sweep:
 
-- ``execute``   declared triggers (PR events, manual, issue label). The eligibility step is a stub
-                owned by #207. For a ``PR_COMMENT`` backend one step (#205) checks the completion
-                guard and the in-flight lease and posts the invocation, holding only the backend
-                secret; other invocation kinds keep placeholder steps. The last step publishes the
-                result signal through the shared runtime (#206) and is the ONLY place a Check Run
-                is created.
+- ``execute``   declared triggers (PR events, manual, issue label), plus, for a stage with
+                dependencies, the ``check_run`` / ``check_suite`` wake-ups of its upstream stages.
+                Step 1 acquires the App token. Step 2 ("Check eligibility", #207) decides through
+                the shared runtime whether the backend may be invoked (trust, fork policy, current
+                head, route, dependencies) and sets the output ``proceed``. For a ``PR_COMMENT``
+                backend one step (#205) checks the completion guard and the in-flight lease and
+                posts the invocation, holding only the backend secret; other invocation kinds keep
+                placeholder steps; all of them run only when ``proceed`` is ``true``. The last step
+                publishes the result signal through the shared runtime (#206) and is the ONLY place
+                a Check Run is created.
 - ``reconcile`` ``issue_comment`` wakeup for a pull request, only when the comment author is a
                 declared evidence producer. Updates an existing Check Run in place.
 - ``sweep``     scheduled backstop over every open pull request. Updates in place.
@@ -28,6 +32,12 @@ from pathlib import Path
 
 from stagr.core.enums import StageTrigger
 from stagr.core.models import ExecutionPlan, NormalizedStage
+from stagr.platforms.github.stage_expressions import (
+    build_concurrency_key_expression,
+    build_event_head_sha_expression,
+    build_pull_number_expression,
+    build_wakeup_relevance_expression,
+)
 from stagr.platforms.github.stage_signal_config import StageSignalConfig
 
 # Pinned commit SHA for actions/create-github-app-token v1.11.1. Update this SHA after
@@ -48,17 +58,25 @@ _PULL_REQUEST_TARGET_EVENTS_FOR_PR_UPDATED = ("synchronize",)
 
 _APP_TOKEN_OUTPUT_EXPRESSION = "${{ steps.app-token.outputs.token }}"
 _RUN_RUNTIME_COMMAND = 'python3 -c "$STAGR_RUNTIME_SCRIPT"'
+_EVENT_NAME_EXPRESSION = "${{ github.event_name }}"
+# Steps that act on the pull request run only when the eligibility step said so; the implicit
+# success() also keeps them from running after a failed eligibility step.
+_PROCEED_CONDITION = "${{ steps.eligibility.outputs.proceed == 'true' }}"
 
 
 def build_on_section(
-    stage_triggers: tuple[StageTrigger, ...], has_asynchronous_evidence: bool
+    stage_triggers: tuple[StageTrigger, ...],
+    has_asynchronous_evidence: bool,
+    has_dependency_wakeups: bool = False,
 ) -> str:
     """Return the indented YAML lines for the ``on:`` trigger section.
 
     Merges PR_OPENED and PR_UPDATED into a single pull_request_target block when both are present.
     MANUAL becomes workflow_dispatch and ISSUE_LABELED becomes an issues block. Reconciliation
     wakeups (``issue_comment`` and the scheduled sweep) are renderer-internal, not StageTriggers,
-    and are added only when the plan declares asynchronous evidence.
+    and are added only when the plan declares asynchronous evidence. The ``check_run`` and
+    ``check_suite`` wake-ups (an upstream signal may have changed) are added only for a stage that
+    declares dependencies; the job conditions decide which of those events matter.
     """
     pull_request_target_events: list[str] = []
     include_workflow_dispatch = False
@@ -83,6 +101,11 @@ def build_on_section(
     if issues_events:
         lines.append("  issues:\n")
         lines.append(f"    types: [{', '.join(issues_events)}]\n")
+    if has_dependency_wakeups:
+        lines.append("  check_run:\n")
+        lines.append("    types: [completed]\n")
+        lines.append("  check_suite:\n")
+        lines.append("    types: [completed]\n")
     if has_asynchronous_evidence:
         lines.append("  issue_comment:\n")
         lines.append("    types: [created, edited]\n")
@@ -101,7 +124,8 @@ def build_stage_workflow_yaml(
 ) -> str:
     """Return the complete GitHub Actions workflow YAML string for the stage."""
     token_step = _build_token_acquisition_step(publisher_app_id, private_key_secret_name)
-    jobs = [_build_execute_job(plan, stage, signal_config, token_step)]
+    wakeup_relevance = _build_wakeup_relevance(signal_config, publisher_app_id)
+    jobs = [_build_execute_job(plan, stage, signal_config, token_step, wakeup_relevance)]
     if signal_config.has_asynchronous_evidence:
         jobs.append(_build_reconcile_job(signal_config, token_step))
         jobs.append(_build_sweep_job(token_step))
@@ -112,7 +136,7 @@ def build_stage_workflow_yaml(
         f"{on_section}"
         "\n"
         "concurrency:\n"
-        f'  group: "stagr-{stage.id}-{_build_concurrency_key_expression()}"\n'
+        f'  group: "stagr-{stage.id}-{build_concurrency_key_expression(wakeup_relevance)}"\n'
         "  cancel-in-progress: false\n"
         "\n"
         f"{_build_workflow_env(signal_config)}"
@@ -122,11 +146,12 @@ def build_stage_workflow_yaml(
     )
 
 
-def _build_concurrency_key_expression() -> str:
-    """Per-pull-request key for events; a repository-wide key for the scheduled sweep (#194)."""
-    return (
-        "${{ github.event_name == 'schedule' && 'sweep'"
-        " || github.event.pull_request.number || github.event.issue.number }}"
+def _build_wakeup_relevance(signal_config: StageSignalConfig, publisher_app_id: str) -> str | None:
+    """The expression that selects the Check Run / Check Suite events to wake for, if any."""
+    if not signal_config.has_dependencies:
+        return None
+    return build_wakeup_relevance_expression(
+        publisher_app_id, signal_config.upstream_check_run_names
     )
 
 
@@ -176,9 +201,13 @@ def _build_execute_job(
     stage: NormalizedStage,
     signal_config: StageSignalConfig,
     token_step: str,
+    wakeup_relevance: str | None,
 ) -> str:
     event_conditions = [f"github.event_name == '{name}'" for name in _declared_event_names(stage)]
     execute_condition = " || ".join(event_conditions) or "false"
+    if wakeup_relevance is not None:
+        execute_condition += f" || {wakeup_relevance}"
+    event_lines = _build_event_environment_lines(signal_config)
     return (
         "  execute:\n"
         f'    if: "${{{{ {execute_condition} }}}}"\n'
@@ -189,8 +218,13 @@ def _build_execute_job(
         "    steps:\n"
         f"{token_step}"
         "\n"
-        "      - name: Check eligibility (stub)\n"
-        "        run: echo 'Eligibility check placeholder (spec:#207)'\n"
+        "      - name: Check eligibility\n"
+        "        id: eligibility\n"
+        "        env:\n"
+        f'          GH_TOKEN: "{_APP_TOKEN_OUTPUT_EXPRESSION}"\n'
+        "          STAGR_MODE: eligibility\n"
+        f"{''.join(event_lines)}"
+        f"        run: {_RUN_RUNTIME_COMMAND}\n"
         "\n"
         f"{_build_invocation_steps(plan, signal_config)}"
         "\n"
@@ -199,15 +233,33 @@ def _build_execute_job(
         "        env:\n"
         f'          GH_TOKEN: "{_APP_TOKEN_OUTPUT_EXPRESSION}"\n'
         "          STAGR_MODE: publish\n"
-        '          STAGR_PULL_NUMBER: "${{ github.event.pull_request.number }}"\n'
-        '          STAGR_EVENT_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"\n'
+        f"{''.join(event_lines)}"
         '          STAGR_JOB_STATUS: "${{ job.status }}"\n'
         f"        run: {_RUN_RUNTIME_COMMAND}\n"
     )
 
 
+def _build_event_environment_lines(
+    signal_config: StageSignalConfig, include_event_name: bool = True
+) -> tuple[str, ...]:
+    """The env lines that hand the runtime what the triggering event says (data only, no logic).
+
+    A stage with dependencies also reads the pull request and head of a ``check_run`` /
+    ``check_suite`` wake-up. The event name lets the runtime tell such a wake-up apart; the invoke
+    step does not need it.
+    """
+    has_wakeups = signal_config.has_dependencies
+    lines = (
+        f'          STAGR_PULL_NUMBER: "{build_pull_number_expression(has_wakeups)}"\n',
+        f'          STAGR_EVENT_HEAD_SHA: "{build_event_head_sha_expression(has_wakeups)}"\n',
+    )
+    if include_event_name:
+        lines += (f'          STAGR_EVENT_NAME: "{_EVENT_NAME_EXPRESSION}"\n',)
+    return lines
+
+
 def _build_invocation_steps(plan: ExecutionPlan, signal_config: StageSignalConfig) -> str:
-    """Return the step(s) that ask the backend to run.
+    """Return the step(s) that ask the backend to run, each gated on the eligibility step.
 
     A ``PR_COMMENT`` backend gets the real ``invoke`` step (#205): one process checks the
     completion guard and the in-flight lease, then posts the comment, so a skipped invocation is
@@ -217,19 +269,21 @@ def _build_invocation_steps(plan: ExecutionPlan, signal_config: StageSignalConfi
     if not signal_config.posts_pull_request_comment_invocation:
         return (
             "      - name: Check idempotency (stub)\n"
+            f'        if: "{_PROCEED_CONDITION}"\n'
             "        run: echo 'Idempotency guard placeholder (only PR_COMMENT backends are guarded)'\n"
             "\n"
             "      - name: Invoke backend (stub)\n"
+            f'        if: "{_PROCEED_CONDITION}"\n'
             "        run: echo 'Backend invocation placeholder (only PR_COMMENT backends are invoked)'\n"
             f"{_build_backend_env_section(plan, ())}"
         )
     invoke_environment_lines = (
         "          STAGR_MODE: invoke\n",
-        '          STAGR_PULL_NUMBER: "${{ github.event.pull_request.number }}"\n',
-        '          STAGR_EVENT_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"\n',
+        *_build_event_environment_lines(signal_config, include_event_name=False),
     )
     return (
         "      - name: Invoke backend (idempotent)\n"
+        f'        if: "{_PROCEED_CONDITION}"\n'
         f"{_build_backend_env_section(plan, invoke_environment_lines)}"
         f"        run: {_RUN_RUNTIME_COMMAND}\n"
     )

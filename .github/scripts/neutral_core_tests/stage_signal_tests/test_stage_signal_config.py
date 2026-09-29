@@ -72,6 +72,7 @@ def test_codex_review_plan_produces_the_expected_runtime_document() -> None:
         "gate": {"kind": "no_open_threads", "selector": "",
                  "createdBy": "chatgpt-codex-connector[bot]", "headShaBound": True},
         "invocation": {"kind": "pr_comment", "body": "@codex review", "leaseMinutes": 30},
+        "dependencies": [], "routing": None,
     }
     assert config.has_asynchronous_evidence and config.evidence_producers == ("chatgpt-codex-connector[bot]",)
 

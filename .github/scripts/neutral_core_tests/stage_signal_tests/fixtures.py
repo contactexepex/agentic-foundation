@@ -61,6 +61,8 @@ def build_config_document(**overrides: Any) -> dict[str, Any]:
         "evidence": [review_evidence_rule()],
         "gate": no_open_threads_gate(),
         "invocation": {"kind": "pr_comment", "body": "@codex review", "leaseMinutes": 30},
+        "dependencies": [],
+        "routing": None,
     }
     document.update(overrides)
     return document

@@ -1,4 +1,4 @@
-"""Stage runtime for Stagr-generated GitHub stage workflows (issues #206 and #205).
+"""Stage runtime for Stagr-generated GitHub stage workflows (issues #206, #205 and #207).
 
 This file is embedded verbatim into every generated ``stage-<id>.yml`` workflow and run on the
 GitHub Actions runner as ``python3 -c "$STAGR_RUNTIME_SCRIPT"``. It uses the standard library only
@@ -12,6 +12,9 @@ its comments, its review threads and the existing Check Run, and derives the des
 missed, duplicated or reordered events are harmless and the scheduled sweep is a pure backstop.
 
 Modes (``STAGR_MODE``):
+- ``eligibility`` execute job, first. Decides whether the backend may be invoked for this event and
+                writes ``proceed=true|false`` to ``GITHUB_OUTPUT``; the invoke step runs only on
+                ``true``. Holds the App token, never the backend credential (see "Eligibility").
 - ``invoke``    execute job, before ``publish``. Posts the backend invocation comment at most once per
                 (stage, head): skipped when completion evidence already exists for the head, or when a
                 still-unexpired in-flight marker written by the trusted posting account exists.
@@ -21,6 +24,29 @@ Modes (``STAGR_MODE``):
                 can never race into the duplicate Check Runs that governance rejects).
 - ``reconcile`` ``issue_comment`` wakeup for one pull request. Updates an existing Check Run only.
 - ``sweep``     scheduled: runs the same routine for every open pull request. Updates only.
+
+Eligibility (``StageEligibilityEvaluator``, one implementation shared by ``eligibility``, ``publish``,
+``reconcile`` and ``sweep``), in this order; the first failing check wins:
+1. the pull request: open, not a draft, trusted author, fork policy, event head is the current head;
+2. route applicability: when a route rule is configured, the stage must apply to the route that the
+   Stagr App published as ``RouteClassification`` for the head (missing, duplicated, forged or
+   unrecognised classification fails closed; a MISSING one is waited for, see below);
+3. dependency wake-ups only: a stage whose own signal is already ``pass`` or ``failed`` is final;
+   only a re-run of the execute job retries (a wake-up fires on unrelated Check Run chatter and
+   must never turn a failed backend into a retry loop);
+4. dependencies: every upstream signal must be ``completed`` + ``pass`` for the current head. An
+   upstream ``failed`` makes this stage ``failed`` without invoking the backend (FAILED
+   propagation). Anything else (missing, malformed, wrong head, running, blocked) means "not yet".
+
+An upstream signal is trusted only when it is the single Check Run of that stage on the head written
+by the Stagr App, and its ``output.summary`` payload states the same stage, head and schema version;
+the payload, not the native Check Run fields, is authoritative. Nothing derived from a payload is
+ever printed (a forged value could otherwise inject workflow commands).
+
+Only ``eligibility`` waits for a missing route classification (the routing workflow starts at the
+same moment as the stage workflow); the other modes evaluate once. ``sweep`` and ``reconcile`` never
+create a Check Run and never invoke, so a stage whose dependencies pass while only the sweep is
+looking starts the next time its execute job runs (a dependency wake-up, a reopen, a re-run).
 
 Invocation write policy (``invoke``): the only write is one issue comment carrying the lease marker
 ``<!-- stagr:stage:<stageId>:<headSha>:expires:<UTC ISO8601> -->``. A marker counts only when its
@@ -50,6 +76,7 @@ from urllib.parse import quote
 
 SIGNAL_SCHEMA_VERSION = 1
 
+MODE_ELIGIBILITY = "eligibility"
 MODE_INVOKE = "invoke"
 MODE_PUBLISH = "publish"
 MODE_RECONCILE = "reconcile"
@@ -60,6 +87,24 @@ ACTION_UNCHANGED = "unchanged"
 ACTION_CREATED = "created"
 ACTION_UPDATED = "updated"
 ACTION_INVOKED = "invoked"
+ACTION_ELIGIBLE = "eligible"
+
+OUTCOME_PROCEED = "proceed"
+OUTCOME_SKIP = "skip"
+OUTCOME_DEPENDENCY_FAILED = "dependency_failed"
+
+STEP_OUTPUT_PROCEED_NAME = "proceed"
+# Events that wake a stage because an upstream signal may have changed (not a new head, not a comment).
+DEPENDENCY_WAKEUP_EVENT_NAMES = frozenset({"check_run", "check_suite"})
+
+ROUTE_FAST = "FAST"
+ROUTE_NORMAL = "NORMAL"
+ROUTE_TITLE_PREFIX = "RouteClassification="
+CHECK_RUN_STATUS_COMPLETED = "completed"
+# The routing workflow starts together with the stage workflow, so its Check Run is often not there
+# yet when eligibility runs; wait for it for at most this long, then fail closed.
+ROUTE_WAIT_ATTEMPTS = 18
+ROUTE_WAIT_SECONDS = 10.0
 
 STATE_PENDING = "pending"
 STATE_RUNNING = "running"
@@ -158,6 +203,27 @@ class InvocationRule:
 
 
 @dataclass(frozen=True)
+class DependencyRule:
+    """An upstream stage that must be ``pass`` for the head, and the Check Run that says so."""
+
+    stage_id: str
+    check_run_name: str
+
+
+@dataclass(frozen=True)
+class RouteRule:
+    """Which stages apply to each route, and the Check Run that carries the classification."""
+
+    check_run_name: str
+    fast_stage_ids: frozenset[str]
+    normal_stage_ids: frozenset[str]
+
+    def is_applicable(self, stage_id: str, route: str) -> bool:
+        applicable_stage_ids = self.fast_stage_ids if route == ROUTE_FAST else self.normal_stage_ids
+        return stage_id in applicable_stage_ids
+
+
+@dataclass(frozen=True)
 class StageRuntimeConfig:
     stage_id: str
     check_run_name: str
@@ -168,6 +234,8 @@ class StageRuntimeConfig:
     evidence_rules: tuple[EvidenceRule, ...]
     gate_rule: GateRule
     invocation_rule: InvocationRule | None = None
+    dependency_rules: tuple[DependencyRule, ...] = ()
+    route_rule: RouteRule | None = None
 
     @classmethod
     def from_json_text(cls, config_text: str) -> "StageRuntimeConfig":
@@ -198,6 +266,11 @@ class StageRuntimeConfig:
                     head_sha_bound=bool(gate_document["headShaBound"]),
                 ),
                 invocation_rule=cls._parse_invocation_rule(document.get("invocation")),
+                dependency_rules=tuple(
+                    DependencyRule(stage_id=item["stageId"], check_run_name=item["checkRunName"])
+                    for item in document["dependencies"]
+                ),
+                route_rule=cls._parse_route_rule(document["routing"]),
             )
         except (ValueError, KeyError, TypeError, AttributeError) as error:
             raise RuntimeConfigError(f"Invalid STAGR_STAGE_CONFIG: {error!r}") from error
@@ -212,6 +285,16 @@ class StageRuntimeConfig:
             kind=invocation_document["kind"],
             body=invocation_document["body"],
             lease_minutes=invocation_document["leaseMinutes"],
+        )
+
+    @staticmethod
+    def _parse_route_rule(routing_document: Mapping[str, Any] | None) -> RouteRule | None:
+        if routing_document is None:
+            return None
+        return RouteRule(
+            check_run_name=routing_document["checkRunName"],
+            fast_stage_ids=frozenset(routing_document["fastStageIds"]),
+            normal_stage_ids=frozenset(routing_document["normalStageIds"]),
         )
 
     def reject_unsupported_rules(self) -> None:
@@ -245,6 +328,22 @@ class StageRuntimeConfig:
         ):
             raise RuntimeConfigError("EXPLICIT_PASS_MARKER requires a selector and evidence")
         self._reject_unsupported_invocation_rule()
+        self._reject_unsupported_eligibility_rules()
+
+    def _reject_unsupported_eligibility_rules(self) -> None:
+        for rule in self.dependency_rules:
+            names_are_text = all(
+                isinstance(name, str) and name for name in (rule.stage_id, rule.check_run_name)
+            )
+            if not names_are_text or rule.stage_id == self.stage_id:
+                raise RuntimeConfigError(f"Unsupported dependency rule: {rule!r}")
+        route_rule = self.route_rule
+        if route_rule is not None and not (
+            isinstance(route_rule.check_run_name, str) and route_rule.check_run_name
+            and all(isinstance(item, str) for item in route_rule.fast_stage_ids)
+            and all(isinstance(item, str) for item in route_rule.normal_stage_ids)
+        ):
+            raise RuntimeConfigError(f"Unsupported route rule: {route_rule!r}")
 
     def _reject_unsupported_invocation_rule(self) -> None:
         rule = self.invocation_rule
@@ -302,6 +401,40 @@ def serialize_signal_payload(stage_id: str, head_sha: str, signal: StageSignal) 
         },
         separators=(",", ":"),
     )
+
+
+KNOWN_STATES = frozenset({STATE_PENDING, STATE_RUNNING, STATE_COMPLETED, STATE_FAILED})
+KNOWN_CONCLUSIONS = frozenset(
+    {CONCLUSION_PASS, CONCLUSION_BLOCKED, CONCLUSION_FAILED, CONCLUSION_UNKNOWN}
+)
+
+
+def deserialize_signal_payload(
+    payload: Mapping[str, Any] | None, stage_id: str, head_sha: str
+) -> StageSignal | None:
+    """Return the signal ``payload`` states for exactly ``(stage_id, head_sha)``, else ``None``.
+
+    The payload is the consumers' authoritative source (issue #206). Anything that is not a
+    well-formed, version-1 payload for this stage and this head yields ``None`` ("no trustworthy
+    signal"), never a guess: wrong or missing schema version, another stage, a stale head, an
+    unknown state or conclusion, or a value of the wrong type.
+    """
+    if payload is None:
+        return None
+    schema_version = payload.get("schemaVersion")
+    if isinstance(schema_version, bool) or schema_version != SIGNAL_SCHEMA_VERSION:
+        return None
+    state, conclusion = payload.get("state"), payload.get("conclusion")
+    is_bound_to_stage_and_head = (
+        payload.get("stageId") == stage_id and payload.get("headSha") == head_sha
+    )
+    are_known_values = (
+        isinstance(state, str) and state in KNOWN_STATES
+        and isinstance(conclusion, str) and conclusion in KNOWN_CONCLUSIONS
+    )
+    if not (is_bound_to_stage_and_head and are_known_values):
+        return None
+    return StageSignal(state, conclusion)
 
 
 # ---------------------------------------------------------------------------
@@ -627,6 +760,8 @@ class ExistingSignalRun:
     status: str | None
     conclusion: str | None
     payload: Mapping[str, Any] | None
+    title: str | None = None
+    head_sha: str | None = None
 
     def has_signal_for(self, stage_id: str, head_sha: str, state: str, conclusion: str) -> bool:
         return (
@@ -639,6 +774,56 @@ class ExistingSignalRun:
         )
 
 
+class StagrCheckRunReader:
+    """Finds the single Check Run of a given name that the Stagr App wrote for a head.
+
+    Runs of the same name written by any other app are ignored (they cannot be trusted and must
+    not be able to displace or impersonate the real one); two Stagr runs are ambiguous and raise.
+    """
+
+    def __init__(self, github_api: GitHubApi, repository: str, publisher_app_id: str) -> None:
+        self._github_api = github_api
+        self._repository = repository
+        self._publisher_app_id = publisher_app_id
+
+    def find_single(self, check_run_name: str, head_sha: str) -> ExistingSignalRun | None:
+        listing_path = (
+            f"repos/{self._repository}/commits/{head_sha}/check-runs"
+            f"?check_name={quote(check_run_name, safe='')}&filter=all&per_page=100"
+        )
+        published_by_stagr = [
+            check_run
+            for check_run in self._github_api.get_items(listing_path, items_key="check_runs")
+            if check_run.get("name") == check_run_name
+            and str((check_run.get("app") or {}).get("id")) == self._publisher_app_id
+        ]
+        if len(published_by_stagr) > 1:
+            raise AmbiguousSignalError(
+                f"{len(published_by_stagr)} Check Runs named {check_run_name!r} "
+                f"exist for head {head_sha}; refusing to use them (governance rejects duplicates)."
+            )
+        if not published_by_stagr:
+            return None
+        check_run = published_by_stagr[0]
+        output = check_run.get("output") or {}
+        return ExistingSignalRun(
+            check_run_id=check_run["id"],
+            status=check_run.get("status"),
+            conclusion=check_run.get("conclusion"),
+            payload=parse_signal_payload_text(output.get("summary")),
+            title=output.get("title"),
+            head_sha=check_run.get("head_sha"),
+        )
+
+
+def parse_signal_payload_text(summary: str | None) -> Mapping[str, Any] | None:
+    try:
+        parsed = json.loads(summary or "")
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 class CheckRunStore:
     """Finds, creates and updates the single Check Run of this stage for a head."""
 
@@ -649,32 +834,10 @@ class CheckRunStore:
         self._github_api = github_api
         self._repository = repository
         self._run_url = run_url
+        self._reader = StagrCheckRunReader(github_api, repository, config.publisher_app_id)
 
     def find_existing(self, head_sha: str) -> ExistingSignalRun | None:
-        listing_path = (
-            f"repos/{self._repository}/commits/{head_sha}/check-runs"
-            f"?check_name={quote(self._config.check_run_name, safe='')}&filter=all&per_page=100"
-        )
-        published_by_stagr = [
-            check_run
-            for check_run in self._github_api.get_items(listing_path, items_key="check_runs")
-            if check_run.get("name") == self._config.check_run_name
-            and str((check_run.get("app") or {}).get("id")) == self._config.publisher_app_id
-        ]
-        if len(published_by_stagr) > 1:
-            raise AmbiguousSignalError(
-                f"{len(published_by_stagr)} Check Runs named {self._config.check_run_name!r} "
-                f"exist for head {head_sha}; refusing to write (governance rejects duplicates)."
-            )
-        if not published_by_stagr:
-            return None
-        check_run = published_by_stagr[0]
-        return ExistingSignalRun(
-            check_run_id=check_run["id"],
-            status=check_run.get("status"),
-            conclusion=check_run.get("conclusion"),
-            payload=self._parse_payload((check_run.get("output") or {}).get("summary")),
-        )
+        return self._reader.find_single(self._config.check_run_name, head_sha)
 
     def write_if_changed(
         self, existing: ExistingSignalRun | None, head_sha: str, signal: StageSignal
@@ -717,14 +880,6 @@ class CheckRunStore:
         suffix = f" ({signal.conclusion})" if signal.state in FINISHED_STATES else ""
         return f"Stagr stage {self._config.stage_id}: {signal.state}{suffix}"
 
-    @staticmethod
-    def _parse_payload(summary: str | None) -> Mapping[str, Any] | None:
-        try:
-            parsed = json.loads(summary or "")
-        except ValueError:
-            return None
-        return parsed if isinstance(parsed, dict) else None
-
 
 # ---------------------------------------------------------------------------
 # The reconciliation routine (one implementation for every mode)
@@ -737,6 +892,12 @@ class ReconcileRequest:
     pull_number: int
     event_head_sha: str | None = None
     job_status: str | None = None
+    event_name: str | None = None
+
+    @property
+    def is_dependency_wakeup(self) -> bool:
+        """True when a Check Run or Check Suite event, not a new head, started this run."""
+        return self.event_name in DEPENDENCY_WAKEUP_EVENT_NAMES
 
 
 @dataclass(frozen=True)
@@ -794,6 +955,171 @@ class PullRequestEligibility:
         return ""
 
 
+@dataclass(frozen=True)
+class EligibilityDecision:
+    """Whether the stage may run for a pull request head, and why not."""
+
+    outcome: str
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class RouteReading:
+    """The route classification of a head: a route, or the reason there is none yet."""
+
+    route: str | None
+    reason: str = ""
+    is_missing: bool = False
+
+
+class RouteClassificationReader:
+    """Reads the ``RouteClassification`` Check Run the Stagr App published for a head.
+
+    Fails closed: a run that is absent, still running, not bound to this head, or whose title is not
+    exactly ``RouteClassification=FAST`` or ``RouteClassification=NORMAL`` yields no route. Only an
+    absent or unfinished run is "missing" (worth waiting for); the others are final. Two Stagr runs
+    raise ``AmbiguousSignalError``. A run written by another app is ignored, i.e. it is missing.
+    """
+
+    def __init__(self, route_rule: RouteRule, check_run_reader: StagrCheckRunReader) -> None:
+        self._route_rule = route_rule
+        self._check_run_reader = check_run_reader
+
+    def read(self, head_sha: str) -> RouteReading:
+        route_run = self._check_run_reader.find_single(self._route_rule.check_run_name, head_sha)
+        if route_run is None or route_run.status != CHECK_RUN_STATUS_COMPLETED:
+            return RouteReading(None, "route classification has not been published yet", True)
+        if route_run.head_sha != head_sha:
+            return RouteReading(None, "route classification is not bound to this head")
+        title = route_run.title or ""
+        route = title[len(ROUTE_TITLE_PREFIX):] if title.startswith(ROUTE_TITLE_PREFIX) else ""
+        if route not in (ROUTE_FAST, ROUTE_NORMAL):
+            return RouteReading(None, "route classification is not FAST or NORMAL")
+        return RouteReading(route)
+
+
+class DependencyGate:
+    """Decides from the upstream signals of a head whether this stage may start."""
+
+    def __init__(
+        self, dependency_rules: tuple[DependencyRule, ...], check_run_reader: StagrCheckRunReader
+    ) -> None:
+        self._dependency_rules = dependency_rules
+        self._check_run_reader = check_run_reader
+
+    def evaluate(self, head_sha: str) -> EligibilityDecision:
+        """Proceed when every upstream passed, fail when one failed, else wait (skip)."""
+        waiting_reason = ""
+        for rule in self._dependency_rules:
+            signal = self._read_upstream_signal(rule, head_sha)
+            if signal is None:
+                waiting_reason = waiting_reason or (
+                    f"dependency '{rule.stage_id}' has not published a valid signal for this head"
+                )
+            elif signal.state == STATE_FAILED or signal.conclusion == CONCLUSION_FAILED:
+                return EligibilityDecision(
+                    OUTCOME_DEPENDENCY_FAILED, f"dependency '{rule.stage_id}' failed"
+                )
+            elif not (signal.state == STATE_COMPLETED and signal.conclusion == CONCLUSION_PASS):
+                waiting_reason = waiting_reason or f"dependency '{rule.stage_id}' has not passed"
+        if waiting_reason:
+            return EligibilityDecision(OUTCOME_SKIP, waiting_reason)
+        return EligibilityDecision(OUTCOME_PROCEED)
+
+    def _read_upstream_signal(self, rule: DependencyRule, head_sha: str) -> StageSignal | None:
+        upstream_run = self._check_run_reader.find_single(rule.check_run_name, head_sha)
+        if upstream_run is None:
+            return None
+        return deserialize_signal_payload(upstream_run.payload, rule.stage_id, head_sha)
+
+
+class StageEligibilityEvaluator:
+    """May this stage run for this pull request and event? One answer for every mode."""
+
+    def __init__(
+        self,
+        config: StageRuntimeConfig,
+        github_api: GitHubApi,
+        repository: str,
+        route_wait_attempts: int = 1,
+        route_wait_seconds: float = 0.0,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self._config = config
+        self._pull_request_eligibility = PullRequestEligibility(config)
+        self._check_run_reader = StagrCheckRunReader(github_api, repository, config.publisher_app_id)
+        self._dependency_gate = DependencyGate(config.dependency_rules, self._check_run_reader)
+        self._route_wait_attempts = max(1, route_wait_attempts)
+        self._route_wait_seconds = route_wait_seconds
+        self._sleep = sleep
+
+    def evaluate(self, pull: PullRequestView, request: ReconcileRequest) -> EligibilityDecision:
+        ineligible_reason = self._pull_request_eligibility.ineligible_reason(
+            pull, request.event_head_sha
+        )
+        if not ineligible_reason:
+            ineligible_reason = self._route_skip_reason(pull.head_sha)
+        if not ineligible_reason and request.is_dependency_wakeup:
+            ineligible_reason = self._final_signal_skip_reason(pull.head_sha)
+        if ineligible_reason:
+            return EligibilityDecision(OUTCOME_SKIP, ineligible_reason)
+        return self._dependency_gate.evaluate(pull.head_sha)
+
+    def _route_skip_reason(self, head_sha: str) -> str:
+        route_rule = self._config.route_rule
+        if route_rule is None:
+            return ""
+        route_reader = RouteClassificationReader(route_rule, self._check_run_reader)
+        reading = route_reader.read(head_sha)
+        for _ in range(self._route_wait_attempts - 1):
+            if not reading.is_missing:
+                break
+            self._sleep(self._route_wait_seconds)
+            reading = route_reader.read(head_sha)
+        if reading.route is None:
+            return reading.reason
+        if not route_rule.is_applicable(self._config.stage_id, reading.route):
+            return f"stage does not apply to the {reading.route} route"
+        return ""
+
+    def _final_signal_skip_reason(self, head_sha: str) -> str:
+        """A wake-up never restarts a stage whose own signal is already final for this head."""
+        own_run = self._check_run_reader.find_single(self._config.check_run_name, head_sha)
+        if own_run is None:
+            return ""
+        stage_id = self._config.stage_id
+        for state, conclusion in (
+            (STATE_COMPLETED, CONCLUSION_PASS),
+            (STATE_FAILED, CONCLUSION_FAILED),
+        ):
+            if own_run.has_signal_for(stage_id, head_sha, state, conclusion):
+                return "signal is already final; only a re-run of the execute job retries"
+        return ""
+
+
+class EligibilityChecker:
+    """``eligibility`` mode: may the backend be invoked for the pull request this event is about?"""
+
+    def __init__(
+        self,
+        evaluator: StageEligibilityEvaluator,
+        github_api: GitHubApi,
+        repository: str,
+    ) -> None:
+        self._evaluator = evaluator
+        self._github_api = github_api
+        self._repository = repository
+
+    def check(self, request: ReconcileRequest) -> ReconcileResult:
+        pull = PullRequestView.from_api(
+            self._github_api.get_object(f"repos/{self._repository}/pulls/{request.pull_number}")
+        )
+        decision = self._evaluator.evaluate(pull, request)
+        if decision.outcome == OUTCOME_PROCEED:
+            return ReconcileResult(ACTION_ELIGIBLE)
+        return ReconcileResult(ACTION_SKIPPED, decision.reason)
+
+
 class StageReconciler:
     def __init__(
         self, config: StageRuntimeConfig, github_api: GitHubApi, repository: str, run_url: str | None
@@ -802,7 +1128,7 @@ class StageReconciler:
         self._config = config
         self._github_api = github_api
         self._repository = repository
-        self._eligibility = PullRequestEligibility(config)
+        self._eligibility = StageEligibilityEvaluator(config, github_api, repository)
         self._check_run_store = CheckRunStore(config, github_api, repository, run_url)
         self._evidence_evaluator = CommentEvidenceEvaluator(config.evidence_rules)
         self._gate_evaluator = GateEvaluator(config.gate_rule, github_api, owner, name)
@@ -814,12 +1140,12 @@ class StageReconciler:
             prefetched_pull
             or self._github_api.get_object(f"repos/{self._repository}/pulls/{request.pull_number}")
         )
-        ineligible_reason = self._eligibility.ineligible_reason(pull, request.event_head_sha)
-        if ineligible_reason:
-            return ReconcileResult(ACTION_SKIPPED, ineligible_reason)
+        decision = self._eligibility.evaluate(pull, request)
+        if decision.outcome == OUTCOME_SKIP:
+            return ReconcileResult(ACTION_SKIPPED, decision.reason)
         existing = self._check_run_store.find_existing(pull.head_sha)
         if existing is None and request.mode != MODE_PUBLISH:
-            return ReconcileResult(ACTION_SKIPPED, "no signal has been published for this head")
+            return ReconcileResult(ACTION_SKIPPED, self._describe_missing_signal(decision))
         stage_id = self._config.stage_id
         if existing and existing.has_signal_for(
             stage_id, pull.head_sha, STATE_COMPLETED, CONCLUSION_PASS
@@ -831,11 +1157,30 @@ class StageReconciler:
             and existing.has_signal_for(stage_id, pull.head_sha, STATE_FAILED, CONCLUSION_FAILED)
         ):
             return ReconcileResult(ACTION_SKIPPED, "signal failed; re-run the stage to retry")
-        signal = self._derive_signal_or_failed(request, pull)
+        if decision.outcome == OUTCOME_DEPENDENCY_FAILED:
+            signal: StageSignal | None = FAILED_SIGNAL
+        else:
+            signal = self._derive_signal_or_failed(request, pull)
         if signal is None:
             return ReconcileResult(ACTION_SKIPPED, "completion evidence is absent")
         action = self._check_run_store.write_if_changed(existing, pull.head_sha, signal)
         return ReconcileResult(action)
+
+    def _describe_missing_signal(self, decision: EligibilityDecision) -> str:
+        """Why a wakeup or the sweep did nothing when the stage has no signal for the head yet.
+
+        Only the execute job creates a stage's Check Run and invokes its backend, so a stage whose
+        dependencies have passed (or failed) while only a wakeup or the sweep is looking waits for
+        its next execute run.
+        """
+        if decision.outcome == OUTCOME_DEPENDENCY_FAILED:
+            return f"{decision.reason}; the execute job publishes the failure"
+        if self._config.dependency_rules:
+            return (
+                "dependencies have passed but the stage has not started; "
+                "the execute job starts it and creates its signal"
+            )
+        return "no signal has been published for this head"
 
     def _derive_signal_or_failed(
         self, request: ReconcileRequest, pull: PullRequestView
@@ -1049,10 +1394,19 @@ def build_invoke_process_environment(environment: Mapping[str, str]) -> dict[str
     return {**environment, "GH_TOKEN": backend_token}
 
 
+def record_proceed_output(environment: Mapping[str, str], is_eligible: bool) -> None:
+    """Tell later steps of the job whether to go on (only constants are ever written)."""
+    output_path = environment.get("GITHUB_OUTPUT")
+    if output_path:
+        with open(output_path, "a", encoding="utf-8") as output_file:
+            output_file.write(f"{STEP_OUTPUT_PROCEED_NAME}={'true' if is_eligible else 'false'}\n")
+
+
 def main(
     environment: Mapping[str, str] | None = None,
     github_api: GitHubApi | None = None,
     clock: Callable[[], datetime] = read_current_utc_time,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     environment = os.environ if environment is None else environment
     try:
@@ -1071,22 +1425,33 @@ def main(
             reconciler = StageReconciler(config, github_api, repository, build_run_url(environment))
             if mode == MODE_SWEEP:
                 return 1 if OpenPullRequestSweeper(github_api, repository, reconciler).sweep() else 0
-            if mode not in (MODE_PUBLISH, MODE_RECONCILE):
+            if mode == MODE_ELIGIBILITY:
+                evaluator = StageEligibilityEvaluator(
+                    config, github_api, repository, ROUTE_WAIT_ATTEMPTS, ROUTE_WAIT_SECONDS, sleep
+                )
+                handle_pull_request = EligibilityChecker(evaluator, github_api, repository).check
+            elif mode in (MODE_PUBLISH, MODE_RECONCILE):
+                handle_pull_request = reconciler.reconcile_pull_request
+            else:
                 raise RuntimeConfigError(f"Unknown STAGR_MODE {mode!r}")
-            handle_pull_request = reconciler.reconcile_pull_request
         if not environment.get("STAGR_PULL_NUMBER"):
             print(f"Stage {config.stage_id}: no pull request context; no signal published.")
+            if mode == MODE_ELIGIBILITY:
+                record_proceed_output(environment, False)
             return 0
         request = ReconcileRequest(
             mode=mode,
             pull_number=int(environment["STAGR_PULL_NUMBER"]),
             event_head_sha=environment.get("STAGR_EVENT_HEAD_SHA") or None,
             job_status=environment.get("STAGR_JOB_STATUS") or None,
+            event_name=environment.get("STAGR_EVENT_NAME") or None,
         )
         result = handle_pull_request(request)
     except (KeyError, ValueError, GitHubApiError, AmbiguousSignalError) as error:
         print(f"::error::Stage signal runtime failed: {error}")
         return 1
+    if mode == MODE_ELIGIBILITY:
+        record_proceed_output(environment, result.action == ACTION_ELIGIBLE)
     print(
         f"Stage {config.stage_id} pull request #{request.pull_number}: "
         f"{result.action} {result.reason}".rstrip()
