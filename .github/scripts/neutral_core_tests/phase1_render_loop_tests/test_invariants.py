@@ -9,7 +9,7 @@ from neutral_core_tests.phase1_render_loop_tests.helpers import (
     build_execution_plan,
     build_minimal_render_context,
     build_stage,
-    build_stage_result_spec,
+    build_stage_render,
     TrackingPlatformRenderer,
 )
 
@@ -41,7 +41,7 @@ def test_phase1_resolved_plan_has_env_name_set() -> None:
     class _CapturingPlatformRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     provider_config = {
         "providers": {

@@ -82,6 +82,16 @@ def build_stage_result_spec(stage_id: str):
     )
 
 
+def build_stage_render(stage_id: str):
+    """Return a minimal StageRender (result spec plus artifact) for the given stage_id."""
+    from stagr.core.models import RenderedArtifact, StageRender
+
+    return StageRender(
+        result_spec=build_stage_result_spec(stage_id),
+        artifact=RenderedArtifact(path=f"stages/{stage_id}.yml", content=f"# stage {stage_id}\n"),
+    )
+
+
 class TrackingPlatformRenderer:
     """PlatformRenderer stub that records all render_stage calls.
 
@@ -94,15 +104,15 @@ class TrackingPlatformRenderer:
 
     def render_stage(self, plan, stage, render_context):
         self.render_stage_calls.append((plan, stage, render_context))
-        return build_stage_result_spec(stage.id)
+        return build_stage_render(stage.id)
 
-    def render_routing(self, render_context) -> None:
+    def render_routing(self, render_context):
         raise AssertionError(
             "render_routing must NOT be called during Phase 1 "
             "(Phase 2 method invoked unexpectedly)"
         )
 
-    def render_governance(self, result_specs, render_context) -> None:
+    def render_governance(self, result_specs, render_context):
         raise AssertionError(
             "render_governance must NOT be called during Phase 1 "
             "(Phase 2 method invoked unexpectedly)"

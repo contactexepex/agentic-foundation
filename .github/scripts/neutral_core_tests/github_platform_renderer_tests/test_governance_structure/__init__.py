@@ -6,7 +6,7 @@ test runner.
 from __future__ import annotations
 
 from neutral_core_tests.github_platform_renderer_tests.test_governance_structure.test_token_and_publisher import (
-    test_governance_file_written_at_correct_path,
+    test_governance_artifact_has_correct_path,
     test_governance_workflow_references_private_key_secret,
     test_governance_workflow_references_publisher_app_id_in_token_step,
     test_governance_workflow_app_token_step_uses_pinned_sha,
@@ -41,7 +41,7 @@ from neutral_core_tests.github_platform_renderer_tests.test_governance_structure
 )
 
 __all__ = [
-    "test_governance_file_written_at_correct_path",
+    "test_governance_artifact_has_correct_path",
     "test_governance_workflow_references_private_key_secret",
     "test_governance_workflow_references_publisher_app_id_in_token_step",
     "test_governance_workflow_app_token_step_uses_pinned_sha",

@@ -15,7 +15,7 @@ import dataclasses
 from typing import TYPE_CHECKING
 
 from .backend_renderer_registry import BackendRendererRegistry
-from .models import ExecutionPlan, NormalizedStage, RenderContext, SecretRef, StageResultSpec
+from .models import ExecutionPlan, NormalizedStage, RenderContext, SecretRef, StageRender
 
 if TYPE_CHECKING:
     from .platform_renderer import PlatformRenderer
@@ -105,7 +105,7 @@ def run_phase1(
     registry: BackendRendererRegistry,
     platform_renderer: "PlatformRenderer",
     provider_config: dict,
-) -> list[StageResultSpec]:
+) -> list[StageRender]:
     """Execute Phase 1 of the rendering pipeline for all stages in context.
 
     For each NormalizedStage in ``context.stages``:
@@ -119,8 +119,8 @@ def run_phase1(
        ``_resolve_secret_aliases`` (explicit mapping → ``api_key_secret`` →
        convention), before the PlatformRenderer is called.
     4. Call ``platform_renderer.render_stage(resolved_plan, stage, context)``
-       to get a ``StageResultSpec``.
-    5. Collect and return all ``StageResultSpec`` objects.
+       to get a ``StageRender`` (the stage artifact and its ``StageResultSpec``).
+    5. Collect and return all ``StageRender`` objects.
 
     Phase 1 invariant: ``render_routing`` and ``render_governance`` are never
     called here. ``context.routing_policy`` and ``context.merge_policy`` are
@@ -128,10 +128,8 @@ def run_phase1(
 
     Returns a list of length ``len(context.stages)`` in stage order.
     """
-    # Preparation pass: validate every plan and resolve every alias before any render_stage call.
-    # This prevents a partially-rendered pipeline when a later stage has an unresolvable alias —
-    # render_stage is a file-producing operation (e.g. writing a workflow file), so atomicity
-    # requires all static checks to succeed first.
+    # Preparation pass: validate every plan and resolve every alias before any render_stage call,
+    # so a later stage's unresolvable alias is reported before any stage is rendered.
     prepared: list[tuple[ExecutionPlan, NormalizedStage]] = []
     for stage in context.stages:
         backend_renderer = registry.get(stage.provider, stage.backend)
@@ -151,18 +149,18 @@ def run_phase1(
         prepared.append((resolved_plan, stage))
 
     # Rendering pass: only reached when all stages have a validated, fully-resolved plan.
-    stage_result_specs: list[StageResultSpec] = []
+    stage_renders: list[StageRender] = []
     for resolved_plan, stage in prepared:
-        stage_result_spec: StageResultSpec = platform_renderer.render_stage(
+        stage_render: StageRender = platform_renderer.render_stage(
             resolved_plan, stage, context
         )
-        if stage_result_spec.stage_id != stage.id:
+        if stage_render.result_spec.stage_id != stage.id:
             raise ValueError(
                 f"PlatformRenderer returned a StageResultSpec with stage_id "
-                f"{stage_result_spec.stage_id!r} but was called for stage "
+                f"{stage_render.result_spec.stage_id!r} but was called for stage "
                 f"{stage.id!r}; the renderer must return a result for the "
                 f"stage it received."
             )
-        stage_result_specs.append(stage_result_spec)
+        stage_renders.append(stage_render)
 
-    return stage_result_specs
+    return stage_renders

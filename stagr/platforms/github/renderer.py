@@ -1,15 +1,18 @@
 """GitHubPlatformRenderer: Phase 1, Phase 2a, and Phase 2b artifact generator for GitHub Actions.
 
-Phase 1 (render_stage): translates a (ExecutionPlan, NormalizedStage, RenderContext)
-triple into a GitHub Actions workflow file (.github/workflows/stage-<id>.yml) inside
-output_dir and returns a StageResultSpec that describes the Check Run this stage will
-emit at run time.
+The renderer only builds text: every method returns a ``RenderedArtifact`` (repository-relative
+path plus content) and nothing is written to disk here.
 
-Phase 2a (render_routing): generates the routing artifact
+Phase 1 (render_stage): translates a (ExecutionPlan, NormalizedStage, RenderContext)
+triple into a GitHub Actions workflow artifact (.github/workflows/stage-<id>.yml) and
+returns it with a StageResultSpec that describes the Check Run this stage will emit at
+run time.
+
+Phase 2a (render_routing): builds the routing artifact
 (.github/workflows/routing.yml) that classifies each PR head commit as FAST or NORMAL
 and publishes a ``RouteClassification`` Check Run authenticated by the Stagr GitHub App.
 
-Phase 2b (render_governance): generates the merge-gate workflow at
+Phase 2b (render_governance): builds the merge-gate workflow artifact
 .github/workflows/governance.yml.  The workflow reads StageResultSignal values from
 Check Runs published by stage execution artifacts, verifies publisher identity against
 the Stagr App ID (rendered as a literal constant), and blocks merge when any blocking
@@ -52,20 +55,16 @@ Trigger mapping (design-doc 08):
   StageTrigger.PR_UPDATED   → pull_request_target: [synchronize]
   StageTrigger.MANUAL       → workflow_dispatch
   StageTrigger.ISSUE_LABELED → issues: [labeled]
-
-Dry-run mode: when ``output_dir`` is ``None``, ``render_stage`` returns a
-StageResultSpec without writing any files. ``render_routing`` and
-``render_governance`` raise ``ValueError`` in dry-run mode.
 """
 from __future__ import annotations
-
-from pathlib import Path
 
 from stagr.core.enums import InvocationKind, StageResultSignalKind
 from stagr.core.models import (
     ExecutionPlan,
     NormalizedStage,
     RenderContext,
+    RenderedArtifact,
+    StageRender,
     StageResultProvenance,
     StageResultSpec,
 )
@@ -81,26 +80,29 @@ from stagr.platforms.github.stage_signal_config import (
 from stagr.platforms.github.stage_workflow import build_on_section, build_stage_workflow_yaml
 
 
+WORKFLOW_DIRECTORY = ".github/workflows"
+GOVERNANCE_WORKFLOW_FILENAME = "governance.yml"
+
+
 class GitHubPlatformRenderer:
-    """PlatformRenderer that generates GitHub Actions workflow YAML files.
+    """PlatformRenderer that generates GitHub Actions workflow YAML artifacts.
 
     ``SUPPORTED_INVOCATION_KINDS`` declares which ``InvocationKind`` values
     this renderer can translate into GitHub Actions workflow steps.  The static
     validator (V-S08) reads this to ensure no stage backend requires a kind the
     platform cannot handle.
 
-    Phase 1 (render_stage): generates a stage execution workflow file at
-    ``output_dir/.github/workflows/stage-<id>.yml`` (or dry-run when
-    ``output_dir`` is None) and returns the StageResultSpec.
+    Phase 1 (render_stage): returns the stage execution workflow artifact
+    ``.github/workflows/stage-<id>.yml`` together with its StageResultSpec.
 
-    Phase 2a (render_routing): generates the routing workflow at
-    ``output_dir/.github/workflows/routing.yml`` that classifies PR head commits
-    and publishes an authenticated ``RouteClassification`` Check Run.
+    Phase 2a (render_routing): returns the routing workflow artifact
+    ``.github/workflows/routing.yml`` that classifies PR head commits and publishes
+    an authenticated ``RouteClassification`` Check Run.
 
-    Phase 2b (render_governance): generates the merge-gate workflow at
-    ``output_dir/.github/workflows/governance.yml``.
+    Phase 2b (render_governance): returns the merge-gate workflow artifact
+    ``.github/workflows/governance.yml``.
 
-    All three methods raise ``ValueError`` in dry-run mode (``output_dir`` is None).
+    No method writes to the file system.
     """
 
     # GitHub Actions supports all current InvocationKind values: native CI steps
@@ -116,23 +118,18 @@ class GitHubPlatformRenderer:
 
     def __init__(
         self,
-        output_dir: Path | None,
         publisher_app_id: str,
         publisher_private_key_secret: str,
     ) -> None:
         """Initialise the renderer.
 
         Args:
-            output_dir: Filesystem path where generated workflow files are written.
-                        ``None`` activates dry-run mode — StageResultSpec is
-                        returned but no files are written.
             publisher_app_id: Numeric GitHub App ID for the Stagr publisher App,
                               rendered as a literal into the token-acquisition step.
             publisher_private_key_secret: Name of the repository secret that holds
                               the App's RSA private key (e.g. ``STAGR_APP_PRIVATE_KEY``).
                               Rendered as ``${{ secrets.<name> }}`` in the workflow.
         """
-        self._output_dir = output_dir
         self._publisher_app_id = publisher_app_id
         self._publisher_private_key_secret = publisher_private_key_secret
 
@@ -145,12 +142,10 @@ class GitHubPlatformRenderer:
         plan: ExecutionPlan,
         stage: NormalizedStage,
         render_context: RenderContext,
-    ) -> StageResultSpec:
-        """Generate the stage execution workflow and return its StageResultSpec.
+    ) -> StageRender:
+        """Generate the stage execution workflow artifact and its StageResultSpec.
 
-        Writes ``.github/workflows/stage-<stage.id>.yml`` inside
-        ``output_dir`` when not in dry-run mode.  In dry-run mode (``output_dir``
-        is None) no file is written and the StageResultSpec is still returned.
+        The artifact path is ``.github/workflows/stage-<stage.id>.yml``.
 
         Raises ValueError if the stage is privileged (non-empty
         ``plan.required_secrets``) but any of its triggers cannot be satisfied by
@@ -175,31 +170,29 @@ class GitHubPlatformRenderer:
             self._publisher_private_key_secret,
         )
 
-        if self._output_dir is not None:
-            workflow_file_path = (
-                self._output_dir / ".github" / "workflows" / f"stage-{stage.id}.yml"
-            )
-            workflow_file_path.parent.mkdir(parents=True, exist_ok=True)
-            workflow_file_path.write_text(workflow_yaml, encoding="utf-8")
-
-        return StageResultSpec(
-            stage_id=stage.id,
-            signal_kind=StageResultSignalKind.CHECK_RUN,
-            signal_selector=check_run_name,
-            provenance=StageResultProvenance(
-                publisher_identity=self._publisher_app_id,
+        return StageRender(
+            result_spec=StageResultSpec(
+                stage_id=stage.id,
+                signal_kind=StageResultSignalKind.CHECK_RUN,
+                signal_selector=check_run_name,
+                provenance=StageResultProvenance(
+                    publisher_identity=self._publisher_app_id,
+                ),
+            ),
+            artifact=RenderedArtifact(
+                path=f"{WORKFLOW_DIRECTORY}/stage-{stage.id}.yml",
+                content=workflow_yaml,
             ),
         )
 
     # ------------------------------------------------------------------
-    # PlatformRenderer Protocol — Phase 2 (stubs)
+    # PlatformRenderer Protocol — Phase 2
     # ------------------------------------------------------------------
 
-    def render_routing(self, render_context: RenderContext) -> None:
-        """Phase 2a: write the routing artifact.
+    def render_routing(self, render_context: RenderContext) -> RenderedArtifact:
+        """Phase 2a: return the routing artifact ``.github/workflows/routing.yml``.
 
-        Generates ``.github/workflows/routing.yml`` inside ``output_dir``.  When
-        ``render_context.routing_policy.fast_path`` is ``None``, the workflow
+        When ``render_context.routing_policy.fast_path`` is ``None``, the workflow
         immediately emits ``RouteClassification=NORMAL`` with no path analysis.
         When a ``FastPathPolicy`` is present, the workflow fetches changed file
         paths, tests them against the configured glob patterns, and emits FAST or
@@ -207,50 +200,35 @@ class GitHubPlatformRenderer:
 
         In both cases the ``RouteClassification`` result is published as an
         authenticated Check Run using the Stagr GitHub App installation token.
-
-        Raises ValueError in dry-run mode (output_dir is None).
         """
-        if self._output_dir is None:
-            raise ValueError(
-                "render_routing cannot be called in dry-run mode (output_dir is None)"
-            )
         workflow_yaml = generate_routing_workflow_yaml(
             fast_path_policy=render_context.routing_policy.fast_path,
             publisher_app_id=self._publisher_app_id,
             publisher_private_key_secret=self._publisher_private_key_secret,
         )
-        routing_workflow_path = (
-            self._output_dir / ".github" / "workflows" / ROUTING_WORKFLOW_FILENAME
+        return RenderedArtifact(
+            path=f"{WORKFLOW_DIRECTORY}/{ROUTING_WORKFLOW_FILENAME}",
+            content=workflow_yaml,
         )
-        routing_workflow_path.parent.mkdir(parents=True, exist_ok=True)
-        routing_workflow_path.write_text(workflow_yaml, encoding="utf-8")
 
     def render_governance(
         self,
         result_specs: tuple[StageResultSpec, ...],
         render_context: RenderContext,
-    ) -> None:
-        """Phase 2b: write the governance / merge-gate workflow artifact.
+    ) -> RenderedArtifact:
+        """Phase 2b: return the governance / merge-gate artifact ``.github/workflows/governance.yml``.
 
-        Generates ``.github/workflows/governance.yml`` inside ``output_dir``.
         The workflow reads StageResultSignal values from Check Runs published
         by stage execution artifacts, verifies that each Check Run was
         published by the Stagr GitHub App (using the publisher_app_id rendered
         as a literal constant), and blocks merge when any blocking stage
         reports a BLOCKED or FAILED conclusion.
 
-        Raises ValueError in dry-run mode (output_dir is None).
-
         Args:
             result_specs: StageResultSpec for every stage produced in Phase 1.
             render_context: RenderContext carrying MergePolicy, TrustPolicy,
                 and RoutingPolicy used to determine blocking stages.
         """
-        if self._output_dir is None:
-            raise ValueError(
-                "render_governance cannot be called in dry-run mode (output_dir is None)"
-            )
-
         governance_yaml = generate_governance_workflow_yaml(
             publisher_app_id=self._publisher_app_id,
             publisher_private_key_secret=self._publisher_private_key_secret,
@@ -258,11 +236,10 @@ class GitHubPlatformRenderer:
             render_context=render_context,
         )
 
-        governance_file_path = (
-            self._output_dir / ".github" / "workflows" / "governance.yml"
+        return RenderedArtifact(
+            path=f"{WORKFLOW_DIRECTORY}/{GOVERNANCE_WORKFLOW_FILENAME}",
+            content=governance_yaml,
         )
-        governance_file_path.parent.mkdir(parents=True, exist_ok=True)
-        governance_file_path.write_text(governance_yaml, encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Private helpers

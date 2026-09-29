@@ -10,7 +10,7 @@ from neutral_core_tests.phase1_render_loop_tests.helpers import (
     build_execution_plan,
     build_minimal_render_context,
     build_stage,
-    build_stage_result_spec,
+    build_stage_render,
     TrackingPlatformRenderer,
 )
 
@@ -42,7 +42,7 @@ def test_phase1_provider_api_key_resolves_to_provider_default_when_providers_abs
     class _CapturingPlatformRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     provider_config: dict = {}  # no providers block — provider default must apply
 
@@ -83,7 +83,7 @@ def test_phase1_trusted_commenter_token_resolves_to_remediation_token_when_platf
     class _CapturingPlatformRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     provider_config: dict = {}  # no platform.auth — default must apply
 
@@ -124,7 +124,7 @@ def test_phase1_platform_auth_token_secret_overrides_trusted_commenter_default()
     class _CapturingPlatformRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     provider_config = {
         "platform": {

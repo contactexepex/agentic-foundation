@@ -174,11 +174,9 @@ from neutral_core_tests.codex_renderer_tests import CODEX_RENDERER_TESTS
 from neutral_core_tests.test_platform_renderer import (
     test_platform_renderer_protocol_conformance,
     test_platform_renderer_interface_uses_only_neutral_types,
-    test_platform_renderer_dry_run_render_stage_returns_spec,
-    test_platform_renderer_dry_run_produces_no_files,
-    test_platform_renderer_non_dry_run_render_stage_writes_file,
-    test_platform_renderer_dry_run_render_routing_raises_value_error,
-    test_platform_renderer_dry_run_render_governance_raises_value_error,
+    test_platform_renderer_methods_return_artifacts,
+    test_rendered_artifact_accepts_repository_relative_posix_path,
+    test_rendered_artifact_rejects_unsafe_paths,
 )
 from neutral_core_tests.phase1_render_loop_tests import PHASE1_RENDER_LOOP_TESTS
 from neutral_core_tests.github_platform_renderer_tests import GITHUB_PLATFORM_RENDERER_TESTS
@@ -317,11 +315,9 @@ _TESTS = [
     *CODEX_RENDERER_TESTS,
     test_platform_renderer_protocol_conformance,
     test_platform_renderer_interface_uses_only_neutral_types,
-    test_platform_renderer_dry_run_render_stage_returns_spec,
-    test_platform_renderer_dry_run_produces_no_files,
-    test_platform_renderer_non_dry_run_render_stage_writes_file,
-    test_platform_renderer_dry_run_render_routing_raises_value_error,
-    test_platform_renderer_dry_run_render_governance_raises_value_error,
+    test_platform_renderer_methods_return_artifacts,
+    test_rendered_artifact_accepts_repository_relative_posix_path,
+    test_rendered_artifact_rejects_unsafe_paths,
     *PHASE1_RENDER_LOOP_TESTS,
     *GITHUB_PLATFORM_RENDERER_TESTS,
     *STAGE_SIGNAL_TESTS,

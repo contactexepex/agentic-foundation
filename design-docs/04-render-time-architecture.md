@@ -39,9 +39,15 @@ PlatformRenderer
 ```
 
 Each `(ExecutionPlan, NormalizedStage)` pair is processed independently. The
-PlatformRenderer writes the stage execution artifact **and** produces a `StageResultSpec`
+PlatformRenderer returns the stage execution artifact **and** a `StageResultSpec`
 describing the platform-native signal location where the artifact will publish
 `StageResultSignal` values.
+
+**Renderers return artifacts; they never write files.** Every PlatformRenderer method returns
+`RenderedArtifact { path, content }` values (`path` is a POSIX path relative to the repository
+root). The Stagr CLI decides what to do with them: `stagr plan` lists them, `stagr apply` writes
+them. Because both commands call the same renderer methods and only differ in that last step,
+a plan can never disagree with what apply writes.
 
 ### Phase 2 — Pipeline: governance artifacts from collected StageResultSpecs
 
@@ -53,7 +59,7 @@ RoutingPolicy + MergePolicy + TrustPolicy + StageResultSpec[]
       │
       ▼
 PlatformRenderer
-      │  writes
+      │  returns
       ▼
 Routing artifact + Governance/merge artifact
 ```

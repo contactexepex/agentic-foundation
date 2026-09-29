@@ -9,13 +9,13 @@ from neutral_core_tests.phase1_render_loop_tests.helpers import (
     build_execution_plan,
     build_minimal_render_context,
     build_stage,
-    build_stage_result_spec,
+    build_stage_render,
     TrackingPlatformRenderer,
 )
 
 
 def test_phase1_two_stages_returns_two_specs() -> None:
-    """run_phase1 with 2 stages returns exactly 2 StageResultSpecs in stage order."""
+    """run_phase1 with 2 stages returns exactly 2 StageRenders in stage order."""
     from stagr.core.render_loop import run_phase1
     from stagr.core.backend_renderer_registry import BackendRendererRegistry
 
@@ -38,13 +38,13 @@ def test_phase1_two_stages_returns_two_specs() -> None:
     result = run_phase1(render_context, registry, platform_renderer, provider_config)
 
     assert len(result) == 2, (
-        f"Expected 2 StageResultSpecs for 2 stages; got {len(result)}"
+        f"Expected 2 StageRenders for 2 stages; got {len(result)}"
     )
-    assert result[0].stage_id == "stage-alpha", (
-        f"First spec must have stage_id 'stage-alpha'; got {result[0].stage_id!r}"
+    assert result[0].result_spec.stage_id == "stage-alpha", (
+        f"First spec must have stage_id 'stage-alpha'; got {result[0].result_spec.stage_id!r}"
     )
-    assert result[1].stage_id == "stage-beta", (
-        f"Second spec must have stage_id 'stage-beta'; got {result[1].stage_id!r}"
+    assert result[1].result_spec.stage_id == "stage-beta", (
+        f"Second spec must have stage_id 'stage-beta'; got {result[1].result_spec.stage_id!r}"
     )
 
 
@@ -119,7 +119,7 @@ def test_phase1_provider_api_key_resolved_from_api_key_secret() -> None:
     class _CapturingPlatformRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     # api_key_secret field present; no explicit secrets map for PROVIDER_API_KEY.
     provider_config = {
@@ -167,7 +167,7 @@ def test_phase1_explicit_secrets_map_takes_precedence_over_api_key_secret() -> N
     class _CapturingPlatformRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     # Both explicit secrets map and api_key_secret present — explicit map must win.
     provider_config = {
@@ -219,7 +219,7 @@ def test_phase1_multiple_secrets_all_resolved() -> None:
     class _CapturingPlatformRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     provider_config = {
         "providers": {

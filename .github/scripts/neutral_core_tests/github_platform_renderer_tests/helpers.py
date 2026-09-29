@@ -1,8 +1,6 @@
 """Shared test helpers for GitHubPlatformRenderer tests."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from stagr.core.enums import (
     AuthorRole,
     ForkPolicy,
@@ -32,10 +30,9 @@ TEST_PUBLISHER_APP_ID = "99001"
 TEST_PUBLISHER_PRIVATE_KEY_SECRET = "STAGR_APP_PRIVATE_KEY"
 
 
-def build_renderer(output_dir: Path | None = None) -> GitHubPlatformRenderer:
+def build_renderer() -> GitHubPlatformRenderer:
     """Return a GitHubPlatformRenderer with test-fixture credentials."""
     return GitHubPlatformRenderer(
-        output_dir=output_dir,
         publisher_app_id=TEST_PUBLISHER_APP_ID,
         publisher_private_key_secret=TEST_PUBLISHER_PRIVATE_KEY_SECRET,
     )

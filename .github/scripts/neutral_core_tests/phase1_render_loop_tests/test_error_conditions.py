@@ -9,7 +9,7 @@ from neutral_core_tests.phase1_render_loop_tests.helpers import (
     build_execution_plan,
     build_minimal_render_context,
     build_stage,
-    build_stage_result_spec,
+    build_stage_render,
     TrackingPlatformRenderer,
 )
 
@@ -74,7 +74,7 @@ def test_phase1_alias_with_no_mapping_resolves_by_convention() -> None:
     class _CapturingRenderer(TrackingPlatformRenderer):
         def render_stage(self, plan, stage_arg, render_context_arg):
             received_plans.append(plan)
-            return build_stage_result_spec(stage_arg.id)
+            return build_stage_render(stage_arg.id)
 
     provider_config: dict = {}  # no secrets mapping — convention applies
 
@@ -187,7 +187,7 @@ def test_phase1_mismatched_stage_result_id_raises_value_error() -> None:
     from stagr.core.backend_renderer_registry import BackendRendererRegistry
     from neutral_core_tests.phase1_render_loop_tests.helpers import (
         build_execution_plan,
-        build_stage_result_spec,
+        build_stage_render,
     )
 
     stage = build_stage("correct-stage-id")
@@ -195,7 +195,7 @@ def test_phase1_mismatched_stage_result_id_raises_value_error() -> None:
 
     class _MismatchingPlatformRenderer:
         def render_stage(self, plan, stage_arg, ctx):
-            return build_stage_result_spec("wrong-stage-id")
+            return build_stage_render("wrong-stage-id")
 
         def render_routing(self, ctx) -> None:
             pass

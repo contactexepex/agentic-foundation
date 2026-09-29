@@ -4,30 +4,37 @@ Defines the contract every platform renderer must satisfy. A PlatformRenderer
 maps an ExecutionPlan and NormalizedStage to platform-specific artifacts in
 two phases:
 
-  Phase 1  — render_stage: write the stage execution artifact; return its
-              StageResultSpec for use in Phase 2.
-  Phase 2a — render_routing: write the routing artifact (path classification
+  Phase 1  — render_stage: return the stage execution artifact and its
+              StageResultSpec (used in Phase 2).
+  Phase 2a — render_routing: return the routing artifact (path classification
               workflow) from the RenderContext.
-  Phase 2b — render_governance: write the governance artifact from collected
+  Phase 2b — render_governance: return the governance artifact from collected
               StageResultSpecs.
 
-Concrete renderers must accept ``output_dir: Path | None``; ``None`` signals
-dry-run mode where no files are written. ``render_routing`` and
-``render_governance`` must raise ``ValueError`` when called in dry-run mode;
-``render_stage`` returns a ``StageResultSpec`` in both modes.
+A renderer is a pure function of its inputs: it returns ``RenderedArtifact``
+values (repository-relative path plus content) and never touches the file
+system. ``stagr plan`` lists the artifacts; ``stagr apply`` writes the same
+artifacts, so the two commands cannot differ.
 """
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from .models import ExecutionPlan, NormalizedStage, RenderContext, StageResultSpec
+from .models import (
+    ExecutionPlan,
+    NormalizedStage,
+    RenderContext,
+    RenderedArtifact,
+    StageRender,
+    StageResultSpec,
+)
 
 
 @runtime_checkable
 class PlatformRenderer(Protocol):
-    """Writes platform-specific artifacts from neutral-core render inputs.
+    """Builds platform-specific artifacts from neutral-core render inputs.
 
-    Implementations write CI platform artifacts (workflows, gate checks) from
+    Implementations produce CI platform artifacts (workflows, gate checks) from
     neutral-core data types. No platform-specific types appear in the
     interface; they are internal to each concrete implementation.
     """
@@ -37,21 +44,21 @@ class PlatformRenderer(Protocol):
         plan: ExecutionPlan,
         stage: NormalizedStage,
         render_context: RenderContext,
-    ) -> StageResultSpec:
-        """Phase 1: write the stage execution artifact; return its StageResultSpec."""
+    ) -> StageRender:
+        """Phase 1: return the stage execution artifact and its StageResultSpec."""
         ...
 
     def render_routing(
         self,
         render_context: RenderContext,
-    ) -> None:
-        """Phase 2a: write the routing artifact (path classification workflow)."""
+    ) -> RenderedArtifact:
+        """Phase 2a: return the routing artifact (path classification workflow)."""
         ...
 
     def render_governance(
         self,
         result_specs: tuple[StageResultSpec, ...],
         render_context: RenderContext,
-    ) -> None:
-        """Phase 2b: write the governance artifact from collected StageResultSpecs."""
+    ) -> RenderedArtifact:
+        """Phase 2b: return the governance artifact built from collected StageResultSpecs."""
         ...

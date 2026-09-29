@@ -28,7 +28,7 @@ from stagr.core.models import FastPathPolicy
 # changing it is a breaking change that requires coordinated governance updates.
 ROUTE_CLASSIFICATION_CHECK_RUN_NAME = "stagr/route-classification"
 
-# Output file name, relative to the ``output_dir/.github/workflows/`` directory.
+# Output file name inside ``.github/workflows/``.
 ROUTING_WORKFLOW_FILENAME = "routing.yml"
 
 # Pinned commit SHA for actions/create-github-app-token v1.11.1.
