@@ -53,11 +53,11 @@ and defines what the correct implementation looks like.
 stages:
   - id: review
     type: review
-    dependencies: []
+    depends_on: []
 
   - id: security
     type: security
-    dependencies: [review]    # starts after the code review has passed
+    depends_on: [review]      # starts after the code review has passed
 ```
 
 The `standard` profile declares this dependency (`09-check-stages.md`, section 10). It is
@@ -139,7 +139,7 @@ Reconciliation events: issue_comment [created, edited], check_suite [completed]
 ```
 
 Both artifacts fire on the same declared StageTrigger events (`PR_OPENED` and
-`PR_UPDATED`). With `dependencies: [review]` the security artifact's eligibility check
+`PR_UPDATED`). With `depends_on: [review]` the security artifact's eligibility check
 (below) waits until `review` has passed; without it neither waits for the other.
 
 ### Codex Evidence path
@@ -327,7 +327,7 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
 ## Where the review order lives
 
 The order of the two reviews is declared in the neutral config
-(`security.dependencies: [review]`, from the `standard` profile) and enforced by the rendered
+(`security` with `depends_on: [review]`, from the `standard` profile) and enforced by the rendered
 stage through the dependency rule. Nothing in the rendered artifacts orders the reviews on its
 own.
 

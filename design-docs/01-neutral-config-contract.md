@@ -102,11 +102,11 @@ stages:
     backend: codex          # invocation mechanism (defaults per provider)
     # model: gpt-4o         # optional; omit to use the backend's default
     skill: code-review      # skill id → .agentic/skills/<id>/SKILL.md
-    gate: blocking          # StageGate: blocking | non_blocking
+    gate: blocking          # blocking | advisory (default blocking)
     triggers:               # StageTrigger[]: when this stage runs
       - pr_opened
       - pr_updated
-    dependencies: []        # stage ids that must reach conclusion=PASS before this starts
+    depends_on: []          # stage ids that must reach conclusion=PASS before this starts
 
   - id: security
     type: security
@@ -117,7 +117,7 @@ stages:
     triggers:
       - pr_opened
       - pr_updated
-    dependencies: [review]  # starts after the code review has passed
+    depends_on: [review]    # starts after the code review has passed
 
   # Check stages have no provider, backend or skill (see 09-check-stages.md):
   # a managed one runs commands on a CI job Stagr renders, an observed one reads a
@@ -140,6 +140,21 @@ stages:
     triggers:
       - issue_labeled
 ```
+
+### Config keys and the normalized model
+
+The config uses the vocabulary of `stagr/config.schema.json`; normalization translates it into
+the model of `02-canonical-stage-model.md`. This table is the only place the two are mapped.
+
+| Config key | Normalized model |
+|---|---|
+| `type: review` (lowercase) | `kind: REVIEW` |
+| `depends_on: [ids]` | `dependencies: string[]` |
+| `gate: blocking` / `gate: advisory` | `StageGate.BLOCKING` / `StageGate.NON_BLOCKING` |
+| `triggers: [pr_opened, ...]` | `StageTrigger[]` |
+| `provider`, `backend`, `model`, `skill` | `AgentExecutor` |
+| `commands`, `timeout_minutes` | `CommandsExecutor` |
+| `observe: { check, producer }` | `ObservedExecutor` |
 
 ### Module flags
 

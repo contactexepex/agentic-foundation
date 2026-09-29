@@ -137,7 +137,7 @@ error regardless of `enabled: false`. The operator receives the same schema feed
 they would receive if the stage were active.
 
 **Dependency rule:** An active stage must not declare a dependency on a disabled stage
-id. If stage B has `dependencies: [A]` and stage A has `enabled: false`, Stagr reports
+id. If stage B has `depends_on: [A]` and stage A has `enabled: false`, Stagr reports
 a schema error (V-S02 reference validity) at render time. The operator must either
 re-enable A, remove B's dependency on A, or also disable B.
 

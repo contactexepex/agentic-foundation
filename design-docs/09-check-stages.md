@@ -55,7 +55,8 @@ NormalizedStage { id, kind, gate, triggers, dependencies, executor }
   `ALWAYS_PASS` gate disposition, `WORKFLOW_RESULT` or `CHECK_RESULT` evidence, and **no
   required secrets**.
 - Gate default: **`BLOCKING` for every kind**, `CUSTOM` included. A stage is advisory only when
-  it says so. `REVIEW` and `SECURITY` stages must be blocking, because their findings share one
+  it says `gate: advisory` (which normalizes to `NON_BLOCKING`; config keys are mapped to the
+  model in `01-neutral-config-contract.md`). `REVIEW` and `SECURITY` stages must be blocking, because their findings share one
   thread scope (`06-runtime-boundary.md`, "Gate-semantics constraint"); advisory therefore
   exists only for `commands` and `observed` stages.
 
@@ -80,8 +81,21 @@ build:
 | `install`, `build`, `lint`, `typecheck` | `build` | in this order; the first failing command fails the stage |
 | `install`, `test` | `unit-test` | stages share nothing, so it installs again; `test` must build what it needs |
 
-`build.commands.build` (compile or package) is new; each preset supplies a default where the
-language has such a step. An empty command is skipped.
+`build.commands.build` (compile or package) is new. Its default per preset:
+
+| Preset | `build.commands.build` default |
+|---|---|
+| `python` | none (no compile step; `install`, `lint` and `typecheck` still run) |
+| `maven` | `mvn -B -q -DskipTests package` |
+| `gradle` | `./gradlew assemble` |
+| `node` | `npm run build --if-present` |
+| `go` | `go build ./...` |
+| `rust` | `cargo build` |
+| `dotnet` | `dotnet build --no-restore` |
+| `custom` | none; the operator sets every command |
+
+An empty command is skipped. The `install`, `lint` and `test` defaults are the existing preset
+values.
 
 Extra check stages use `stages:`:
 
@@ -327,7 +341,7 @@ Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline, and
 - Done when: `NormalizedStage` has an executor; a `commands` or `observed` stage needs no
   provider; the schema adds `build` to `type`, `build.commands.build` with preset defaults,
   `commands`, `timeout_minutes`, `observe.check`, `observe.producer`; rules 1–5 of section 2
-  hold; the gate defaults to blocking for every kind; secret values are never echoed in errors.
+  hold; the preset table of section 2 is implemented and mirrored in the preset docs; the gate defaults to blocking for every kind; secret values are never echoed in errors.
 - Test: `validate_config.py` and the neutral-core tests, one accepting and one rejecting case per
   rule; removing any rule makes a test fail.
 
