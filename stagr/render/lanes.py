@@ -146,6 +146,16 @@ def _ensure_auto_merge_coherent(stages: list[dict[str, Any]], cfg: dict[str, Any
     """
     if not _auto_merge_enabled(cfg):
         return
+    # V-S10: when auto_merge is on, at least one BLOCKING stage must exist. A merge gate with no
+    # blocking stages is trivially satisfied — every PR merges without any review or check — which
+    # is almost certainly a misconfiguration.
+    if not any(_effective_gate(stage) == GATE_BLOCKING for stage in stages):
+        raise RenderError(
+            "V-S10: modules.auto_merge: true but no BLOCKING stages are configured. "
+            "A trivially-satisfied merge gate is almost certainly a misconfiguration — "
+            "the auto-merge gate would merge every PR without any blocking review or check. "
+            "Add at least one stage with gate: blocking, or disable modules.auto_merge."
+        )
     # (a) Every BLOCKING stage must yield a gate signal the auto-merge gate actually verifies. Today
     # that is only the Codex code review and Codex security review (alongside CI/Validate and
     # merge.required_status_checks). A blocking stage of any other type — test, integration-test, docs,
