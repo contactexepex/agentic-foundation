@@ -51,7 +51,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stagr.core.enums import StageResultSignalKind, StageTrigger
+from stagr.core.enums import InvocationKind, StageResultSignalKind, StageTrigger
 from stagr.core.models import (
     ExecutionPlan,
     NormalizedStage,
@@ -84,6 +84,11 @@ _APP_TOKEN_ACTION_REF = (
 class GitHubPlatformRenderer:
     """PlatformRenderer that generates GitHub Actions workflow YAML files.
 
+    ``SUPPORTED_INVOCATION_KINDS`` declares which ``InvocationKind`` values
+    this renderer can translate into GitHub Actions workflow steps.  The static
+    validator (V-S08) reads this to ensure no stage backend requires a kind the
+    platform cannot handle.
+
     Phase 1 (render_stage): generates a stage execution workflow file at
     ``output_dir/.github/workflows/stage-<id>.yml`` (or dry-run when
     ``output_dir`` is None) and returns the StageResultSpec.
@@ -97,6 +102,17 @@ class GitHubPlatformRenderer:
 
     All three methods raise ``ValueError`` in dry-run mode (``output_dir`` is None).
     """
+
+    # GitHub Actions supports all current InvocationKind values: native CI steps
+    # (CI_COMPONENT / Actions), pull-request comments (PR_COMMENT), direct API
+    # calls from a workflow step (API_CALL), and workflow_dispatch triggers
+    # (WORKFLOW_DISPATCH).
+    SUPPORTED_INVOCATION_KINDS: frozenset[InvocationKind] = frozenset({
+        InvocationKind.PR_COMMENT,
+        InvocationKind.API_CALL,
+        InvocationKind.CI_COMPONENT,
+        InvocationKind.WORKFLOW_DISPATCH,
+    })
 
     def __init__(
         self,
