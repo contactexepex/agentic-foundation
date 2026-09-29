@@ -192,7 +192,16 @@ def _scaffold_skill_files(
             )
             blocked.append(skill_id)
             continue
+        if dest_file.is_file():
+            continue
         if dest_file.exists():
+            # dest_file exists but is not a regular file (directory, special device, etc.)
+            print(
+                f"init: skill '{skill_id}' destination {dest_file} exists but is not a "
+                f"regular file; cannot scaffold skill.",
+                file=sys.stderr,
+            )
+            failed.append(skill_id)
             continue
         try:
             dest_file.parent.mkdir(parents=True, exist_ok=True)

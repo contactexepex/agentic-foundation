@@ -67,6 +67,7 @@ from neutral_core_tests.test_dag import (
     test_dag_direct_two_stage_cycle_raises_v_s04,
     test_dag_cycle_error_excludes_downstream_dependents,
 )
+from neutral_core_tests.test_dag_validator import DAG_VALIDATOR_TESTS
 from neutral_core_tests.test_skill_validator import (
     test_v_s06_stage_with_no_skill_raises_no_error,
     test_v_s06_missing_skill_file_raises_error_with_code,
@@ -236,6 +237,7 @@ _TESTS = [
     test_dag_empty_active_stages_passes,
     test_dag_direct_two_stage_cycle_raises_v_s04,
     test_dag_cycle_error_excludes_downstream_dependents,
+    *DAG_VALIDATOR_TESTS,
     test_v_s06_stage_with_no_skill_raises_no_error,
     test_v_s06_missing_skill_file_raises_error_with_code,
     test_v_s06_missing_skill_file_error_names_expected_path,

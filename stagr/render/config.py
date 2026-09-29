@@ -124,6 +124,18 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
     # review that skips pushed heads) would deadlock silently — reject it at the front door too.
     _ensure_auto_merge_coherent(expanded, cfg)
 
+    # V-S05 / V-S04: dependency reference validity and DAG acyclicity. These are pure structural
+    # checks that do not require the filesystem, so they run unconditionally (without project_root)
+    # on the same expanded (enabled-only) stage list already computed above.
+    from stagr.core.dag_validator import validate_dag_acyclicity, validate_dependency_references  # noqa: PLC0415
+    from stagr.core.models import StaticValidationError  # noqa: PLC0415
+
+    try:
+        validate_dependency_references(expanded)
+        validate_dag_acyclicity(expanded)
+    except StaticValidationError as exc:
+        raise RenderError(str(exc)) from exc
+
     # Templating safety: building the context runs every safe-literal validator (rejecting a ${{ }}
     # expression / breakout char in a label, external-check name, glob, branch, secret name, or model,
     # and an invalid app_id / protected path). Run it here so `stagr validate` — the front door — catches

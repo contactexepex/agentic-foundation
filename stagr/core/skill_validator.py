@@ -63,7 +63,11 @@ def validate_skill_file_existence(
         skills_base = project_root / ".agentic" / "skills"
         try:
             real_file = expected_skill_file.resolve()
-            real_skills_base = skills_base.resolve()
+            # Use project_root.resolve() as the trusted anchor and append the skills path
+            # lexically.  If skills_base.resolve() were used instead, a symlink at
+            # .agentic/skills would make both real_file and real_skills_base resolve into
+            # the same external directory, defeating the confinement check entirely.
+            real_skills_base = project_root.resolve() / ".agentic" / "skills"
             if not str(real_file).startswith(str(real_skills_base) + os.sep):
                 stage_id = stage.get("id", "<unknown>")
                 raise StaticValidationError(
