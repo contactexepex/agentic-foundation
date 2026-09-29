@@ -169,6 +169,10 @@ State machine per stage and head:
 - Only the publish unit writes a terminal result. Only the eligibility unit writes `RUNNING`.
   The work unit writes nothing.
 - Every result names its head. A result for another head never counts.
+- Between the start of a new attempt and the moment its `RUNNING` is written (event delivery,
+  normally seconds) the previous result is still visible; a missed event lasts until the next
+  scheduled run. This short window is accepted: the previous result is genuine evidence about
+  the same head, and it applies equally to managed and observed stages.
 - Optional informational data (duration, link to the run page) may sit beside the signal and
   never affects the decision.
 
@@ -248,9 +252,12 @@ An observed stage has no work unit. One trusted job reads the **latest** result 
 | two different latest results with that name from the producer | state `FAILED` + conclusion `FAILED` (ambiguous; the next run re-reads) |
 
 Results with the same name from any other author identity are ignored, so nobody else can
-satisfy the stage by creating a check with that name. The job runs on pull request events, on completion of
-the producer's result, and on a schedule; because it only reads and derives, running it again is
-always safe, so a missed event is corrected by the next run. SonarCloud is an observed stage
+satisfy the stage by creating a check with that name. The job runs on pull request events, when
+the producer's result is **created, re-requested or completed**, and on a schedule. Waking when
+the producer *starts* matters: a producer that re-runs a check after an earlier success flips
+the signal from `PASS` to `RUNNING` at the start of the re-run, not at its end. Because the job
+only reads and derives, running it again is always safe, so a missed event is corrected by the
+next run. SonarCloud is an observed stage
 like any other, and an absent result blocks; there is no `modules.sonar`.
 
 ## 7. Merge gate
@@ -276,7 +283,7 @@ provides these capabilities; a renderer that cannot provide one refuses to rende
 | 6 | Result carrier authored by the publisher identity and bound to a head | Check Run written by the Stagr App |
 | 7 | Wake-up when another stage's result changes | `check_run` / `check_suite` completed |
 | 8 | Per-job timeout | `timeout-minutes` |
-| 9 | Observed stages only: list results by name and authenticated author identity for a head | Check Runs API, latest per name, matched on `.app.id` |
+| 9 | Observed stages only: list results by name and authenticated author identity for a head, and wake when such a result is created, re-requested or completed | Check Runs API, latest per name, matched on `.app.id`; `check_run` created, rerequested, completed |
 
 Other platforms (GitLab, Azure DevOps, Bitbucket, Jenkins) are added later as one column of
 this table each, checked against that vendor's documentation at that time. None is claimed now.
@@ -293,7 +300,8 @@ section (item S below):
 3. A `pull_request_target` job can check out the head SHA with a read-only, non-stored token and
    no App token.
 4. The Check Runs API with `filter=latest` returns one result per name and author after a re-run.
-5. A `check_run` completed event from a foreign producer starts a workflow for the pull request.
+5. A `check_run` created, rerequested or completed event from a foreign producer starts a
+   workflow for the pull request.
 6. `cancel-in-progress` accepts an expression.
 
 If a fact turns out false, this document is corrected first, then the code.
@@ -383,11 +391,12 @@ Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline, and
 
 **E. Observed stages and `modules.sonar` removal.**
 - Done when: an observed stage behaves exactly as section 6 and runs on pull request events,
-  the producer's completion event and a schedule; `modules.sonar` and `merge.required_status_checks`
-  (the same purpose, already keyed by name and numeric App id) are gone from the schema, the
-  neutral policy code, the dogfood config and the docs; the GitHub renderer rejects a producer
-  that is not a numeric App id.
-- Test: a vector per row of the section 6 table plus a wrong-producer case; governance interop.
+  the producer's created, re-requested and completed events and a schedule; `modules.sonar` and
+  `merge.required_status_checks` (the same purpose, already keyed by name and numeric App id) are
+  gone from the schema, the neutral policy code, the dogfood config and the docs; the GitHub
+  renderer rejects a producer that is not a numeric App id.
+- Test: a vector per row of the section 6 table plus a wrong-producer case; a producer re-run
+  after `PASS` turns the signal to `RUNNING` when the re-run starts; governance interop.
 
 **F. Merge gate check.**
 - Done when: the governance workflow blocks on every non-`PASS` state of a blocking stage and
