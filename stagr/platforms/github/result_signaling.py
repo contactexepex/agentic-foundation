@@ -146,6 +146,14 @@ def _build_in_progress_step(
         f'          STAGR_APP_ID: "{publisher_app_id}"\n'
         f"        run: |\n"
         f"          set -euo pipefail\n"
+        f"          PAYLOAD=$(jq -n \\\n"
+        f'            --arg stageId "{stage_id}" \\\n'
+        f'            --arg headSha "${{HEAD_SHA}}" \\\n'
+        f'            --arg state "running" \\\n'
+        f'            --arg conclusion "unknown" \\\n'
+        f'            --argjson schemaVersion {_SIGNAL_SCHEMA_VERSION} \\\n'
+        f"            '{{schemaVersion: $schemaVersion, stageId: $stageId,"
+        f" headSha: $headSha, state: $state, conclusion: $conclusion}}')\n"
         f"          existing_id=$(gh api \\\n"
         f'            "repos/${{GITHUB_REPOSITORY}}/commits/${{HEAD_SHA}}'
         f"/check-runs?check_name={check_run_name}&filter=all&per_page=2\" \\\n"
@@ -154,12 +162,14 @@ def _build_in_progress_step(
         f'          if [[ -n "${{existing_id}}" ]]; then\n'
         f"            gh api --method PATCH \\\n"
         f'              "repos/${{GITHUB_REPOSITORY}}/check-runs/${{existing_id}}" \\\n'
-        f"              -f status=in_progress\n"
+        f'              -f status=in_progress \\\n'
+        f'              --field "output[summary]=${{PAYLOAD}}"\n'
         f"          else\n"
         f"            gh api --method POST \\\n"
         f'              "repos/${{GITHUB_REPOSITORY}}/check-runs" \\\n'
         f'              -f "name={check_run_name}" -f "head_sha=${{HEAD_SHA}}" \\\n'
-        f"              -f status=in_progress\n"
+        f'              -f status=in_progress \\\n'
+        f'              --field "output[summary]=${{PAYLOAD}}"\n'
         f"          fi\n"
     )
 
