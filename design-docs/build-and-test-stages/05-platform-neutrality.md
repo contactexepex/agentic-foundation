@@ -42,13 +42,14 @@ not versioned in V1; it changes together with the code in one pull request.
 
 | Situation | Behaviour |
 |---|---|
-| Blocking **managed** stage and any of `attested_outcome=none`, `head_binding=no`, `ephemeral_runners=no` | **Refuse to render** (error). The guarantee cannot be met (P5) |
+| Blocking **managed** stage and any of `attested_outcome=none`, `head_binding=no` | **Refuse to render** (error). The guarantee cannot be met (P5) |
+| **Any** managed stage (blocking or advisory) and `ephemeral_runners=no` | **Refuse to render** (error). Untrusted pull-request code on a reusable runner can leave files or binaries that a later trusted job or another build runs; a non-blocking result does not reduce that isolation risk |
 | Blocking stage and `publisher_identity=name_only` | Refuse. Provenance level too weak (below) |
 | `definition_source=pr_branch` | Render, but `doctor` warns that the pull request can alter the definition that judges it, and an empty `merge.protected_paths` becomes an error (04) |
 | `fork_isolation=none` | Managed stages refuse forks anyway (S13); the fork policy for review stages must be `DENY` |
 | Observed stage and `read_foreign_results=no` | Refuse to render |
 | Observed or managed stage and `attempt_lineage=no` | Attempts cannot be ordered, so any duplicate result of the same name is ambiguous and not passed |
-| Advisory stage | Weaker capabilities allowed; the stage cannot block, so it cannot be a false pass |
+| Advisory stage | The result-integrity capabilities above (`attested_outcome`, `head_binding`, provenance level) may be weaker, because the stage cannot block and so cannot be a false pass. Isolation capabilities (`ephemeral_runners`, `fork_isolation`) are **not** relaxed |
 
 ## Provenance levels
 

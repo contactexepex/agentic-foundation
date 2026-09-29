@@ -59,7 +59,7 @@ is the renderer's business (05).
 | S11 | The publisher credential is scoped so that only the trusted default-branch definition can read it (an environment or protected-variable restriction), not every branch workflow. |
 | S12 | `run.secrets` can never name a credential Stagr itself uses (03, rule 4). |
 | S13 | **Managed stages never run fork code.** Fork policy `ALLOW_UNPRIVILEGED` (design doc 05) does not extend to managed check stages; a fork pull request only gets the review stages' existing behavior. |
-| S14 | Blocking managed stages run on ephemeral runners. A platform without them cannot host a blocking managed stage (05). |
+| S14 | Every managed stage, blocking or advisory, runs on an ephemeral runner. A platform without them cannot host a managed stage (05); advisory does not lessen the isolation risk. |
 
 ## Threat table
 
@@ -76,7 +76,7 @@ is the renderer's business (05).
 | T9 | Secret values leaked through config, Stagr output or errors | Names only in config; schema rejects invalid names; errors never echo secret-named fields. Leak by the code under test itself: R4 | Redaction tests + `run.secrets` case |
 | T10 | Config or event text injected into a shell command | Data-not-code delivery (S7); YAML serialized by a library, not string-built | Test: hostile command/branch strings render as inert data |
 | T11 | Runaway or repeated jobs burn runner time | Mandatory timeout (S6); a wake-up never re-runs work that already has a result for the head (06); the work unit has its own cancel-superseded concurrency group; eligibility has its own non-cancelling group per stage and pull request; publish has a group per workflow run (06) | Tests: timeout present; wake-up chatter starts no second run; a later wake-up does not evict a queued publisher; group keys |
-| T12 | Persistent self-hosted runner carries state between jobs | Blocking managed stages require ephemeral runners (S14) | Capability refusal test (05) |
+| T12 | Persistent self-hosted runner carries state between jobs | Every managed stage requires ephemeral runners (S14) | Capability refusal test (05) |
 | T13 | A same-repository branch workflow reads repository secrets, including the publisher key | Credential scoped to the trusted default-branch definition (S11); `doctor` checks the scope when the platform exposes it | `doctor` test with a fake platform |
 | T14 | Dependency-update bots or other non-trusted authors deadlock the gate | Not solved by loosening trust. Decision D10: bot pull requests get no managed stages and need a human to re-author or a documented allowlist | See 08 |
 | T15 | A trusted actor repeatedly re-runs or pushes to replace a `RUNNING` or `FAILED` result (churn, runner cost) | Replacing a result needs write access (explicit re-run) or trusted-pull-request authorship (pull request event), both checked by eligibility (S1); it cannot change the head (S9); it is no larger a denial-of-service surface than those actors already have by pushing or re-running; attempt tokens (06) stop an older attempt from overwriting a newer result | Tests: an untrusted trigger replaces nothing; an older attempt publishes late and is a no-op |

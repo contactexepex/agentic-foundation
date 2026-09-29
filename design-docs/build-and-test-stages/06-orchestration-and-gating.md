@@ -12,7 +12,7 @@ exist. The one gate-side change this plan needs is in this repository's own foun
             |                                |
             +--> code review, security ------+--> merge gate
                  review (their order:        |
-                 unchanged, see D11)
+                 sequential by default, D11)
    (optional, team-defined: integration, performance, SQL, SAST, DAST, scans)
 ```
 
@@ -31,10 +31,16 @@ no safety gain, because the merge gate needs both anyway. (Decision D4 in 08.)
 
 This repository's contract (`AGENTS.md`, `CLAUDE.md`) says code review and security review run
 **in sequence** in this repository's own automation, while `08-github-codex-mapping.md` plans them
-as independent stages. This plan takes no side: it adds `build` in front of both and leaves the
-relation between them exactly as configured (`depends_on`). Whether the generated default should
-make `security` depend on `review` is Decision D11 for the owners; nothing else in this plan
-depends on the answer.
+as independent stages. This plan **chooses the generated default: sequential**. `stagr init` writes
+`security` with `depends_on: [review]` (it already does), so the security review starts only after the
+code review has completed clean and the two Codex requests never overlap (a concurrent pair is a
+known error case of the reviewer backend). Reasons: it is the binding contract of this repository,
+it is what `stagr init` generates today, and the extra latency is small next to the cost of a failed
+security review. A repository can still remove the dependency explicitly. Delivery therefore has
+nothing to invent; the owners confirm the choice as Decision D11, and if they choose independent
+instead, only the generated default in I6 and the amended documents (below) change. Amending design
+doc 02 (`standard` profile) and `08-github-codex-mapping.md` (removal of the review serialization)
+is listed in 08.
 
 Per design invariant R1 (no invented dependencies) every ordering is **written explicitly** into the
 generated config by `stagr init` as `depends_on`; the renderer never adds an edge on its own.
@@ -94,6 +100,12 @@ Stages that wait need a nudge when their upstream changes. The mechanism exists 
   - Eligibility and publish may write the result only when their own token is **greater than or
     equal to** the stored one. A smaller token is a logged no-op: an older attempt that publishes
     late can never clobber a newer result (an older green after a newer red stays red).
+  - **A run superseded by a newer run of the same head cannot publish over it.** Tokens compare run
+    id first, so a re-run (even of only the failed jobs) of an older run has a smaller token than the
+    newer run and is a logged no-op with a visible reason ("superseded by run N; re-run the latest
+    run"). This is deliberate: the newer run is a complete validation of the same head and its result
+    is genuine evidence; an operator who wants fresh evidence re-runs the latest run. The alternative,
+    a platform-wide time-ordered sequence, needs an atomic counter the platform does not provide.
   - Publish never creates. If no Check Run exists it fails loudly and writes nothing.
   - Reconcile and the sweep have no attempt of their own. They only complete a non-final result for
     the attempt named in its `lease`, keep that token, and never replace or revoke a completed
@@ -145,7 +157,10 @@ Stages that wait need a nudge when their upstream changes. The mechanism exists 
     That is harmless for wake-ups and pull request events, which read current state, but **not** for
     an explicit re-run: a pending re-run can be replaced by a later wake-up's eligibility job, which
     then skips because a result exists, and no work starts. This affects availability only. Safety
-    is unchanged: nothing passes, the result keeps its previous value and the gate stays closed. The
+    is unchanged: the eviction never turns any result green. The result keeps its previous value (an
+    earlier, genuinely earned `PASS` stays `PASS`; a `FAILED` stays `FAILED`), and the requested fresh
+    validation simply does not happen. A queued re-run cannot invalidate the old result first,
+    because the job that would do it is the one that was replaced. The
     platform shows the replaced run as cancelled, eligibility logs "skipped: existing result", and
     a human simply re-runs. A second eligibility group is deliberately not added, because it would
     break the single creator.

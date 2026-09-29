@@ -115,7 +115,7 @@ from becoming a second CI language.
 |---|---|---|
 | `build`, `test` | `blocking` | Baseline (01) |
 | `review`, `security` | `blocking` | Baseline (01); already the neutral default |
-| `custom` | Write it explicitly | The two config lanes disagree on an omitted `gate` today; Phase 1 (I1) makes it one documented value. Until then examples always write `gate:` |
+| `custom` | **Required.** Omitting `gate` on a `custom` stage is a configuration error in both lanes, naming the stage (Decision D16) | The two config lanes disagree on an omitted `gate` today (one blocks, one does not). Choosing either would silently change the other lane, and the choice decides whether a failed stage can merge, so the operator states it |
 
 `stagr init` writes the four baseline stages as blocking. Their `build:` commands are commented
 placeholders (option A, already implemented for review/security).

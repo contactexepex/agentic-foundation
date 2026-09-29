@@ -6,7 +6,7 @@ document only **after** this plan is merged.
 
 ## Decisions to confirm (with recommendations)
 
-Reviewers: please confirm or change each one (D1 to D15). Nothing below is built until they are settled.
+Reviewers: please confirm or change each one (D1 to D16). Nothing below is built until they are settled.
 
 | # | Decision | Recommendation | Alternative and why not |
 |---|---|---|---|
@@ -20,11 +20,12 @@ Reviewers: please confirm or change each one (D1 to D15). Nothing below is built
 | D8 | Upstream not green | Dependents **wait** on every non-`PASS` upstream, including state `FAILED`, instead of failing terminally (06) | Keep propagation: paid review stages stuck after a fixed test or a transient `build` error |
 | D9 | Re-run after a published `PASS` | Within one lineage (one result per stage, head and verified producer) the **latest terminal attempt decides**: a red explicit re-run turns `PASS` into `COMPLETED` + `FAILED`, a green re-run turns it back to `PASS`. Different lineages or producers stay ambiguous and fail closed. The gate is closed during the re-run because eligibility first replaces the result with `RUNNING` (06). Attempts are ordered by an attempt token (06), so an older attempt that publishes late cannot clobber a newer result. A `PASS` is re-run only through an explicit action (manual trigger or re-run); a plain pull request event on a `PASS` leaves it alone. Needs a runtime change (06, non-normative section) | `PASS` is final for a head. It matches today's runtime write policy (nothing ever rewrites `pass`), so it needs no runtime change and results never flip. The cost: a red re-run of the same trusted job is ignored, so Stagr can say `PASS` while the platform's own check for the same work is red; the result is stale by design and conflicts with P5 and with "every blocking stage must be green". Owners may still choose it |
 | D10 | Dependency-update bots and other non-trusted authors | No managed stages for them and no loosening of trust; the team either re-authors the change or adds an explicit, reviewed allowlist in a later design | Trust bots by default: widens the attack surface the threat model closes |
-| D11 | Order of code review and security review | Owners decide. This repository's contract says in sequence; design doc 08 plans independent stages. This plan works with either | Choosing silently in this plan: would contradict one of the two documents |
+| D11 | Order of code review and security review | **Sequential by default**: `stagr init` writes `security.depends_on: [review]` (as it does today), matching this repository's contract; a repository can remove it. Design doc 02 (`standard` profile) and `08-github-codex-mapping.md` are amended to match | Choosing silently in this plan: would contradict one of the two documents |
 | D12 | Compile step in `build:` | Add optional `build.commands.build` with a default per preset | Leave as is: "compiles" is not guaranteed by `install`/`test` for every preset |
 | D13 | Cache poisoning residual risk on GitHub (04, R1) | Accept and document for trusted same-repository authors | Run PR code on `pull_request`: gives up base-branch workflow definition (S4) |
 | D14 | Who writes the `RUNNING` lease | The trusted eligibility unit, after its checks pass, in its own non-cancelling group per stage and pull request (06). It is the only creator of the Check Run and holds the publisher credential but runs no pull-request code (S1) | The work unit: has no credential (S1, S3). The publish unit only: it runs after the work, too late to prevent a double run |
-| D15 | A pending explicit re-run replaced by a later wake-up's eligibility job (06, known limitation) | Accept the limitation. It affects availability only: nothing passes, the gate stays closed, the platform shows the replaced run as cancelled, eligibility logs "skipped: existing result", and a human re-runs | A second eligibility group class with duplicate-safe creation: needs an atomic create-if-absent for the Check Run, which the platform may not offer, and without it it breaks the single creator |
+| D15 | A pending explicit re-run replaced by a later wake-up's eligibility job (06, known limitation) | Accept the limitation. It affects availability only: the eviction never turns a result green (an earned `PASS` stays `PASS`, a `FAILED` stays `FAILED`, and the requested fresh validation does not happen), the platform shows the replaced run as cancelled, eligibility logs "skipped: existing result", and a human re-runs | A second eligibility group class with duplicate-safe creation: needs an atomic create-if-absent for the Check Run, which the platform may not offer, and without it it breaks the single creator |
+| D16 | Gate of a `custom` stage | `gate` is required; omitting it is an error naming the stage (no silent default in either direction) | Default `blocking`: safest for merges but a new placeholder or unfinished stage blocks every PR. Default `advisory`: a failed custom stage can merge. Both change one lane silently |
 
 ## Phases
 
@@ -35,8 +36,8 @@ P7 needs P3 and P4.
 
 **I1. Schema and config: align stage types and add the new keys.**
 - Acceptance: the schema `type` enum contains every neutral `StageKind` value (`build`
-  included); `build.commands.build` exists with per-preset defaults (D12); the gate default of a
-  `custom` stage is one documented value in both config lanes; legacy values (`integration-test`, `plan`, `docs`, `release`) still load with a
+  included); `build.commands.build` exists with per-preset defaults (D12); `gate` is required on `custom` stages in both config lanes, with a clear error naming the stage
+  (D16); legacy values (`integration-test`, `plan`, `docs`, `release`) still load with a
   documented mapping and a warning; `execution`, `run.*`, `observe.*` exist with the rules in 03
   (mutual exclusion, commands only from `build:` for the baseline stages, mandatory
   `observe.producer`, secret-name pattern, no name of a Stagr-used credential or reserved platform
@@ -101,7 +102,7 @@ P7 needs P3 and P4.
   forks.
 - Test: render-structure tests for every rule; behavioural tests with the fake CLI for
   success, failure, timeout, cancelled, skipped, re-run, moved head, and two concurrent wake-ups
-  (only one starts the work), a stale `RUNNING` after a dead runner, and a re-run after `FAILED`;
+  (only one starts the work), a stale `RUNNING` after a dead runner, a re-run of an older run that a newer run has superseded (logged no-op with reason), and a re-run after `FAILED`;
   `PASS`, then a red explicit re-run (the gate blocks), then a green re-run (the gate passes); a
   second same-name result from another lineage stays ambiguous; a later wake-up's eligibility job
   does not evict a queued publisher; a pending explicit re-run replaced by a wake-up's eligibility
@@ -114,8 +115,8 @@ P7 needs P3 and P4.
 ### P4 Init, plan, apply, doctor
 
 **I6. Generate and validate check stages from `build:`.**
-- Acceptance: `stagr init` writes `build` and `unit-test` as blocking stages wired per D4 and
-  commented command placeholders; `plan`/`apply` render them; `doctor` reports missing commands
+- Acceptance: `stagr init` writes `build` and `unit-test` as blocking stages wired per D4 and D11
+  (`security` depends on `review`) and commented command placeholders; `plan`/`apply` render them; `doctor` reports missing commands
   (blocking stage with nothing to run), drift between config and rendered files, capability
   refusals, protected-path changes (D3), and deprecations.
 - Test: end-to-end CLI tests init to plan to apply to doctor for three presets; each doctor
@@ -170,8 +171,8 @@ Documentation for each item ships **with** that item (`CONFIGURATION.md`, `ARCHI
 | Document | Change | Phase |
 |---|---|---|
 | `05-governance-and-trust.md` | External gates: mark V1 fail-open as deprecated, point to observed stages | I8 |
-| `08-github-codex-mapping.md` | Dependency rule for recoverable failures; check-stage mapping section | I4, I5 |
-| `02-canonical-stage-model.md` | Execution modes (managed and observed) for check stages | I1 |
+| `08-github-codex-mapping.md` | Dependency rule for recoverable failures; check-stage mapping section; keep the review serialization instead of removing it (D11) | I4, I5 |
+| `02-canonical-stage-model.md` | Sequential `standard` profile (D11); execution modes (managed and observed) for check stages | I1, I6 |
 | `07-validation.md` | New doctor checks | I6 |
 
 ## Risks
@@ -205,6 +206,6 @@ Documentation for each item ships **with** that item (`CONFIGURATION.md`, `ARCHI
 1. Code review and security review have completed on the current head and every finding is fixed
    or declined with evidence.
 2. No unresolved review thread remains.
-3. D1 to D15 are confirmed or changed in this document.
+3. D1 to D16 are confirmed or changed in this document.
 4. Then the pull request is merged and issues I1 to I10 are created, each copying its
    acceptance criteria and test item.
