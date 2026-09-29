@@ -182,7 +182,17 @@ platform:
 ```
 
 Steps for the operator: create the GitHub App, install it on the repository, save its private key as a
-repository secret with the name you put in `private_key_secret`, and set `app_id`. A value that is not a
+repository secret with the name you put in `private_key_secret`, and set `app_id`.
+
+Give the App these repository permissions (without them the generated workflows fail with
+authorization errors):
+
+| Permission | Access | Why |
+|---|---|---|
+| Checks | Read and write | Create and update the stage Check Runs; the merge gate reads them |
+| Pull requests | Read | Read pull requests, changed files and review threads |
+| Issues | Read | Read pull request comments, where review backends post their results |
+| Metadata | Read | Granted automatically | A value that is not a
 valid secret name (for example a pasted key) is rejected when the config is validated. The private key
 gives access wherever the App is installed, so guard it and rotate it if it leaks.
 
