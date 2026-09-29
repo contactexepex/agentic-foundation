@@ -126,10 +126,11 @@ stages:
     type: custom
     commands: ["./scripts/integration.sh"]   # custom stages only
     timeout_minutes: 30                      # 1..360, default 30
+    # triggers omitted: runs on pr_opened and pr_updated
     gate: advisory
   - id: analysis
     type: custom
-    observe: { check: "Code Analysis", producer: "sonarqubecloud[bot]" }
+    observe: { check: "Code Analysis", producer: 12526 }   # GitHub App id of the tool that posts it
 
   # A stage with enabled: false is excluded before normalization — not rendered,
   # not in the dependency graph, not in blockingStageIds. See 02-canonical-stage-model.md.

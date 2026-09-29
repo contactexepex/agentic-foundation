@@ -39,7 +39,7 @@ Every stage has an **executor** that says who does the work:
 |---|---|---|
 | `agent` | An AI backend (today's review, security and implement stages) | `provider`, `backend`, `model`, `skill` |
 | `commands` | A CI job that Stagr renders (**managed**) | `commands`, `timeoutMinutes` |
-| `observed` | The team's own CI or an external service; Stagr only reads the result | `check`, `producer` |
+| `observed` | The team's own CI or an external service; Stagr only reads the result | `check`, `producer` (author identity) |
 
 ```
 NormalizedStage { id, kind, gate, triggers, dependencies, executor }
@@ -109,8 +109,12 @@ stages:
     gate: advisory               # optional; default blocking
   - id: analysis
     type: custom
-    observe: { check: "Code Analysis", producer: "sonarqubecloud[bot]" }
+    observe: { check: "Code Analysis", producer: 12526 }   # GitHub App id of the tool
 ```
+
+An extra stage that omits `triggers` runs on `pr_opened` and `pr_updated`. For an observed
+stage those are its pull-request runs; its other run causes are renderer-internal wake-ups
+(section 6), not triggers.
 
 Validation rules (static, fail `stagr plan` and `stagr apply`):
 
@@ -123,6 +127,10 @@ Validation rules (static, fail `stagr plan` and `stagr apply`):
    disabled stage, `02-canonical-stage-model.md`).
 3. `observe.check` and `observe.producer` are both required. An observed stage has no
    `depends_on` (nothing of it is started; stages that depend on it are fine).
+   `observe.producer` is the platform's **immutable identity of the author** of the result,
+   never a display name or login (those are mutable and forgeable). On GitHub it is the numeric
+   App registration id, the `.app.id` of a check run the tool posted; a number or a quoted
+   string is accepted and normalized to a string. The platform renderer rejects any other form.
 4. There is **no `secrets` key**: a managed stage never receives a secret (section 4, E2). A
    check that needs a credential runs in the team's own CI and is `observed`.
 5. Unknown keys are rejected. `build` becomes a recognized Stagr key.
@@ -141,7 +149,7 @@ reports for the work job (section 4).
 |---|---|
 | success | `COMPLETED` + `PASS` — the **only** outcome that passes |
 | failure, timed out, cancelled, skipped | `COMPLETED` + `FAILED`, with the reason recorded |
-| Stagr could not read or verify the outcome | state `FAILED` |
+| Stagr could not read or verify the outcome | state `FAILED` + conclusion `FAILED` |
 
 State machine per stage and head:
 
@@ -153,6 +161,8 @@ State machine per stage and head:
      |     \-> FAILED                 Stagr could not evaluate; fixed by the next attempt
 ```
 
+- A result that is not `COMPLETED` never passes: `RUNNING` carries conclusion `UNKNOWN`, and
+  state `FAILED` carries conclusion `FAILED`.
 - A new head starts every stage over. A new **attempt** on the same head (manual run or
   re-run) moves the stage back to `RUNNING` first, whatever it held before, `PASS` included.
   The newest attempt decides. Nothing is immutable.
@@ -227,17 +237,18 @@ cancelled and the operator runs it again. Nothing ever turns green because of it
 ## 6. Observed stages
 
 An observed stage has no work unit. One trusted job reads the **latest** result named
-`observe.check` for the current head, authored by `observe.producer`, and publishes the signal:
+`observe.check` for the current head, whose authenticated author identity equals
+`observe.producer`, and publishes the signal:
 
 | Result of the producer | Signal |
 |---|---|
 | success | `COMPLETED` + `PASS` |
 | completed, not success (failure, cancelled, skipped, neutral, timed out) | `COMPLETED` + `FAILED` |
 | not present, or still running | no result / `RUNNING` |
-| two different latest results with that name from the producer | not passed (ambiguous) |
+| two different latest results with that name from the producer | state `FAILED` + conclusion `FAILED` (ambiguous; the next run re-reads) |
 
-Results with the same name from any other producer are ignored, so nobody else can satisfy the
-stage by creating a check with that name. The job runs on pull request events, on completion of
+Results with the same name from any other author identity are ignored, so nobody else can
+satisfy the stage by creating a check with that name. The job runs on pull request events, on completion of
 the producer's result, and on a schedule; because it only reads and derives, running it again is
 always safe, so a missed event is corrected by the next run. SonarCloud is an observed stage
 like any other, and an absent result blocks; there is no `modules.sonar`.
@@ -265,7 +276,7 @@ provides these capabilities; a renderer that cannot provide one refuses to rende
 | 6 | Result carrier authored by the publisher identity and bound to a head | Check Run written by the Stagr App |
 | 7 | Wake-up when another stage's result changes | `check_run` / `check_suite` completed |
 | 8 | Per-job timeout | `timeout-minutes` |
-| 9 | Observed stages only: list results by name and author for a head | Check Runs API, latest per name |
+| 9 | Observed stages only: list results by name and authenticated author identity for a head | Check Runs API, latest per name, matched on `.app.id` |
 
 Other platforms (GitLab, Azure DevOps, Bitbucket, Jenkins) are added later as one column of
 this table each, checked against that vendor's documentation at that time. None is claimed now.
@@ -341,7 +352,8 @@ Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline, and
 - Done when: `NormalizedStage` has an executor; a `commands` or `observed` stage needs no
   provider; the schema adds `build` to `type`, `build.commands.build` with preset defaults,
   `commands`, `timeout_minutes`, `observe.check`, `observe.producer`; rules 1–5 of section 2
-  hold; the preset table of section 2 is implemented and mirrored in the preset docs; the gate defaults to blocking for every kind; secret values are never echoed in errors.
+  hold; the preset table of section 2 is implemented and mirrored in the preset docs; `triggers`
+  defaults to `pr_opened` and `pr_updated` for `commands` and `observed` stages; the gate defaults to blocking for every kind; secret values are never echoed in errors.
 - Test: `validate_config.py` and the neutral-core tests, one accepting and one rejecting case per
   rule; removing any rule makes a test fail.
 
@@ -371,8 +383,10 @@ Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline, and
 
 **E. Observed stages and `modules.sonar` removal.**
 - Done when: an observed stage behaves exactly as section 6 and runs on pull request events,
-  the producer's completion event and a schedule; `modules.sonar` is gone from the schema, the
-  neutral policy code, the dogfood config and the docs.
+  the producer's completion event and a schedule; `modules.sonar` and `merge.required_status_checks`
+  (the same purpose, already keyed by name and numeric App id) are gone from the schema, the
+  neutral policy code, the dogfood config and the docs; the GitHub renderer rejects a producer
+  that is not a numeric App id.
 - Test: a vector per row of the section 6 table plus a wrong-producer case; governance interop.
 
 **F. Merge gate check.**

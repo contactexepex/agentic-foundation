@@ -116,7 +116,8 @@ For stages with a `commands` or `observed` executor (`09-check-stages.md`, secti
 2. Every `commands` stage has at least one command, after the `build:` block is applied to the
    `build` and `unit-test` stages. A stage with nothing to run is an error.
 3. `observe.check` and `observe.producer` are both present; an observed stage has no
-   `depends_on`.
+   `depends_on`. The target platform renderer accepts the form of `observe.producer` (on GitHub
+   a numeric App id, never a login or display name).
 4. `timeout_minutes` is an integer from 1 to 360.
 5. `BUILD` and `TEST` stages are never agent stages; `REVIEW` and `SECURITY` stages are always
    `agent` stages with a blocking gate.

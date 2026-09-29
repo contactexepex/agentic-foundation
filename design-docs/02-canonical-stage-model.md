@@ -93,7 +93,7 @@ CommandsExecutor {              // a CI job rendered by Stagr runs the commands
 
 ObservedExecutor {              // the team's own CI or a service does the work
   check:        string          // name of the result to read
-  producer:     string          // identity allowed to author it
+  producer:     string          // immutable platform identity of the author (GitHub: numeric App id)
 }
 ```
 
