@@ -51,7 +51,7 @@ _OPTIONAL_STAGE_LINES = (
 )
 
 _ROADMAP_STAGE_LINES = {
-    "integration-test": ("- id: integration-test", "  type: integration-test", "  gate: blocking"),
+    "integration-test": ("- id: integration-test", "  type: custom", "  gate: blocking"),
 }
 
 _STAGES_LIST_COMMENT_PREFIX = "  # "
@@ -110,7 +110,7 @@ def _unavailable_and_optional_stage_notes(comment_prefix: str, roadmap_stage_ids
 # as-is; uncomment and edit. Each stage is one agent step; `type` drives sensible defaults.
 _CUSTOM_SKELETON = (
     "# Define your pipeline here (this block is commented so the config is valid until you fill it in).\n"
-    "# Stage types: plan | implement | review | security | test | integration-test | docs | release | custom\n"
+    "# Stage types: implement | review | security | test | custom\n"
     + _commented(_GATE_EXPLANATION_LINES, "# ")
     + "\n# Example — Claude implementer + Codex code review (the tool is derived from `provider`):\n"
     "# stages:\n"

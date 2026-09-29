@@ -28,10 +28,11 @@ version: 2
 # ===========================================================================
 
 # Onboarding shortcut. Expands to a default stage graph you can override below.
-#   minimal  = implement + review (advisory; humans merge)
-#   standard = implement + review (blocking) + security (advisory)   <- default
-#   full     = implement + security + test + integration-test + review
-#   custom   = no auto stages; you define them all under `stages:`
+#   minimal  = review (blocking)
+#   standard = review (blocking) + security (blocking)   <- default
+#   custom   = no auto stages; you define them all under `stages:` (needed for implement,
+#              test and other stages; `full` is only supported by the legacy renderer)
+# The Codex review/security stages of `stagr plan` / `stagr apply` are always blocking.
 profile: standard
 
 platform:

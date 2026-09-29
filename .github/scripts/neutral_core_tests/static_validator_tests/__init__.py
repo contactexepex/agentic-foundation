@@ -33,11 +33,21 @@ from neutral_core_tests.static_validator_tests.test_v_s10_v_s11 import (
     test_v_s11_warns_when_disabled_fast_path_keeps_routing_keys,
     test_v_s11_is_silent_when_nothing_is_dormant,
 )
+from neutral_core_tests.static_validator_tests.test_v_s15_v_s16 import (
+    test_v_s15_accepts_absent_or_empty_required_status_checks,
+    test_v_s15_rejects_non_empty_required_status_checks,
+    test_v_s15_warns_only_when_modules_sonar_is_enabled,
+    test_v_s16_warns_for_minimal_and_standard_only,
+)
 from neutral_core_tests.static_validator_tests.test_v_s08_renderer_rejection import (
     test_v_s08_reports_a_backend_renderer_rejection_with_stage_and_reason,
 )
 
 STATIC_VALIDATOR_TESTS = [
+    test_v_s15_rejects_non_empty_required_status_checks,
+    test_v_s15_accepts_absent_or_empty_required_status_checks,
+    test_v_s15_warns_only_when_modules_sonar_is_enabled,
+    test_v_s16_warns_for_minimal_and_standard_only,
     test_v_s07_passes_when_all_backends_registered,
     test_v_s07_raises_for_unregistered_backend,
     test_v_s07_names_stage_id_in_error,

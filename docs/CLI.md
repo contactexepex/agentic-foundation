@@ -145,6 +145,12 @@ files `apply` writes. Stage workflows that an earlier run wrote but this config 
 are listed as stale (hand-written workflows are never mentioned). Warnings (for example V-S11,
 routing keys kept while `fast_path` is disabled) go to stderr and do not change the exit code.
 
+Two more settings are not silently ignored (see `design-docs/07-validation.md`): a non-empty
+`merge.required_status_checks` **fails** with V-S15, because the governance workflow that `plan` and
+`apply` generate cannot enforce external check runs yet; `modules.sonar: true` and the
+`minimal`/`standard` profile shortcuts (V-S15, V-S16) only warn. `--out` is refused when it, or any
+directory between the project root and it, is a symlink.
+
 One warning is worth acting on: a stage whose backend uses a `CI_COMPONENT`, `API_CALL` or
 `WORKFLOW_DISPATCH` invocation (for example the Claude implement stage) is accepted, but its
 generated workflow contains only a placeholder step and does **not** run the backend yet. Only

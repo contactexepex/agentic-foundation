@@ -151,10 +151,12 @@ def test_uncommenting_the_build_and_test_examples_only_renders_placeholders() ->
                   "  - id: build\n    type: custom\n    gate: blocking\n"),
         "test": ("  # - id: test\n  #   type: test\n  #   gate: blocking\n",
                  "  - id: test\n    type: test\n    gate: blocking\n"),
+        "integration-test": ("  # - id: integration-test\n  #   type: custom\n  #   gate: blocking\n",
+                             "  - id: integration-test\n    type: custom\n    gate: blocking\n"),
     }
     for stage_id, (commented_block, active_block) in example_blocks.items():
         with _project_dir():
-            generated_text = init_profile_in_current_project("standard")
+            generated_text = init_profile_in_current_project("full" if stage_id == "integration-test" else "standard")
             check(commented_block in generated_text, f"init: the commented '{stage_id}' example has the expected shape")
             DEFAULT_CONFIG_FILE.write_text(
                 uncomment_publisher_block(generated_text).replace(commented_block, active_block), encoding="utf-8")

@@ -6,7 +6,10 @@ Used by ``stagr plan`` (classify only) and ``stagr apply`` (classify, then write
 Safety rules, all checked while classifying so that a problem is reported before anything
 is written:
 
-* the target directory, if it exists, must be a directory;
+* the target directory, if it exists, must be a directory, and no directory on the way to it from the
+  project root (the current directory) may be a symlink, because ``mkdir``/``mkstemp``/``os.replace``
+  would follow it and write outside the checkout. A target outside the project root is the operator's
+  explicit choice, so only its own final component is checked;
 * an existing target path must be a regular file, never a directory or a symlink;
 * only files named by the artifacts are ever written; nothing else in the directory is
   touched, and stale per-stage files are removed only by the explicit :func:`remove_stale_files`.
@@ -53,7 +56,27 @@ def classify_artifacts(
     """
     if target_directory.exists() and not target_directory.is_dir():
         raise RenderPipelineError(f"output path '{target_directory}' exists and is not a directory")
+    _reject_symlinked_directory_chain(target_directory)
     return tuple(_classify_one(target_directory, artifact) for artifact in artifacts)
+
+
+def _reject_symlinked_directory_chain(target_directory: Path) -> None:
+    """Refuse an output path that reaches its directory through a symlink inside the project root."""
+    project_root = Path(os.getcwd())
+    absolute_target = Path(os.path.abspath(target_directory))
+    if absolute_target.is_relative_to(project_root):
+        path_parts = absolute_target.relative_to(project_root).parts
+        directories_to_check = [
+            project_root.joinpath(*path_parts[:prefix_length]) for prefix_length in range(1, len(path_parts) + 1)
+        ]
+    else:
+        directories_to_check = [absolute_target]
+    for directory in directories_to_check:
+        if directory.is_symlink():
+            raise RenderPipelineError(
+                f"refusing to write through '{directory}': it is a symlink on the output path "
+                f"'{target_directory}'"
+            )
 
 
 def _classify_one(target_directory: Path, artifact: RenderedArtifact) -> ArtifactChange:

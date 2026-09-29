@@ -107,6 +107,14 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
 }
 
 
+# The config schema still accepts `full` (legacy lane), but design-docs/02-canonical-stage-model.md
+# ships only minimal, standard and custom in the neutral contract.
+_LEGACY_ONLY_PROFILE_HINT = (
+    "; 'full' is accepted by the config schema but has no neutral definition - "
+    "use 'custom' and list its stages explicitly"
+)
+
+
 def expand_profile_defaults(
     profile_name: str,
     explicit_stages: list[dict[str, Any]],
@@ -162,6 +170,7 @@ def expand_profile_defaults(
         raise ValueError(
             f"V-S01: unrecognised profile '{profile_name}' — "
             f"valid profiles are: {valid_profile_names}"
+            f"{_LEGACY_ONLY_PROFILE_HINT if profile_name == 'full' else ''}"
         )
 
     validated_explicit_stages = _validate_and_copy_explicit_stages(explicit_stages)

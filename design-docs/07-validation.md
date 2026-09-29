@@ -99,6 +99,23 @@ resolvable: either an explicit mapping exists in provider configuration, or the 
 equals the platform secret name by convention. Static resolution means the alias is
 registered; run-time presence is checked by `stagr doctor`.
 
+### V-S15 — Settings the generated governance cannot enforce
+
+`merge.required_status_checks` has no representation in the neutral `MergePolicy`, and the
+governance workflow that `stagr plan` / `stagr apply` generate never queries external check
+runs. A non-empty list is therefore a **hard static error** (a requirement the operator wrote
+must never be silently dropped). `modules.sonar: true` produces a **warning** only: it is the
+V1 fail-open external gate, which the generated workflow does not evaluate either. Enforcement of
+external gates with producer identity is V2 scope (see `05-governance-and-trust.md`).
+
+### V-S16 — Profile shortcut semantics
+
+`profile: minimal` and `profile: standard` expand to the neutral definitions in
+`02-canonical-stage-model.md` (blocking code review; plus a blocking security review for
+`standard`; no implement stage). These differ from the legacy renderer's profiles, so using either
+produces a **warning** naming the difference. `profile: full` has no neutral definition and is
+rejected (V-S01) with a pointer to `profile: custom`.
+
 ### V-S14 — Trusted-role value validation
 
 Every string in `platform.trusted_roles` must be a recognised :class:`AuthorRole`

@@ -30,6 +30,12 @@ from .test_invalid_configs import (
     test_missing_skill_file_is_rejected,
     test_pasted_key_material_is_never_echoed,
 )
+from .test_merge_and_profile_settings import (
+    test_empty_required_status_checks_are_accepted,
+    test_modules_sonar_warns_that_the_generated_gate_does_not_evaluate_it,
+    test_profile_shortcuts_warn_and_full_explains_how_to_proceed,
+    test_required_status_checks_are_rejected_rather_than_silently_dropped,
+)
 from .test_plan import (
     test_placeholder_invocation_stages_are_warned_about_by_plan_and_apply,
     test_plan_after_apply_reports_everything_unchanged,
@@ -37,6 +43,12 @@ from .test_plan import (
     test_plan_valid_config_exits_zero_and_lists_every_artifact,
     test_plan_writes_nothing_into_an_existing_target_directory,
     test_plan_writes_nothing_when_target_directory_does_not_exist,
+)
+
+from .test_symlinked_output_path import (
+    test_ordinary_output_directories_still_work,
+    test_symlinked_ancestor_of_the_default_output_directory_is_refused,
+    test_symlinked_custom_output_directory_is_refused_even_outside_the_project_root,
 )
 
 PLAN_APPLY_TESTS = [
@@ -69,4 +81,11 @@ PLAN_APPLY_TESTS = [
     test_unsafe_target_paths_are_refused_before_any_write,
     test_extends_base_config_is_resolved,
     test_explicit_backend_object_is_normalized_to_its_name,
+    test_symlinked_ancestor_of_the_default_output_directory_is_refused,
+    test_symlinked_custom_output_directory_is_refused_even_outside_the_project_root,
+    test_ordinary_output_directories_still_work,
+    test_required_status_checks_are_rejected_rather_than_silently_dropped,
+    test_empty_required_status_checks_are_accepted,
+    test_modules_sonar_warns_that_the_generated_gate_does_not_evaluate_it,
+    test_profile_shortcuts_warn_and_full_explains_how_to_proceed,
 ]

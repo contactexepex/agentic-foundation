@@ -49,9 +49,12 @@ from .renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
 from .skill_validator import validate_skill_file_existence
 from .static_validator import (
     collect_dormant_routing_warnings,
+    collect_profile_shortcut_warnings,
+    collect_unenforced_sonar_warnings,
     collect_placeholder_invocation_warnings,
     validate_backend_renderer_availability,
     validate_merge_policy_has_blocking_stages,
+    validate_merge_settings_are_enforceable,
     validate_platform_invocation_compatibility,
     validate_route_dependency_closure,
 )
@@ -133,6 +136,7 @@ def _load_render_inputs(
     )
     validate_route_dependency_closure(routing_policy, normalized_stages)
     validate_merge_policy_has_blocking_stages(merge_policy)
+    validate_merge_settings_are_enforceable(raw_config)
 
     render_context = RenderContext(
         stages=normalized_stages,
@@ -149,6 +153,8 @@ def _load_render_inputs(
         backend_registry=backend_registry,
         platform_target=platform_target,
         warnings=collect_dormant_routing_warnings(raw_config)
+        + collect_unenforced_sonar_warnings(raw_config)
+        + collect_profile_shortcut_warnings(raw_config)
         + collect_placeholder_invocation_warnings(
             normalized_stages, backend_registry, platform_target.functional_invocation_kinds
         ),

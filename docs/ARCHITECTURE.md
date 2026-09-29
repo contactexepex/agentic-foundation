@@ -161,6 +161,11 @@ Profile expansions:
 | `full` | implement, security, test, integration-test, review |
 | `custom` | none — you define every stage |
 
+The table is the legacy renderer (`python -m stagr.render`). `stagr plan` / `stagr apply` use the neutral
+definitions instead: `minimal` = a blocking code review; `standard` = a blocking code review and a blocking
+security review; neither includes an `implement` stage (declare it explicitly), and `full` is not supported
+(use `custom`). `stagr plan` warns about this difference (V-S16).
+
 ---
 
 ## 7. Cross-cutting invariants

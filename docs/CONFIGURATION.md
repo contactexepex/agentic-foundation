@@ -334,8 +334,9 @@ that within the gate's own authority. See `AGENTS.md`.
 | `method` | The merge method the gate uses: `squash` (default), `merge`, or `rebase`. The target repository must have that method enabled, or GitHub rejects every merge. |
 | `discussions.require_resolved` | When `true`, all open review discussions must be resolved before the merge gate passes. Default `false` (discussion state is not checked). |
 
-> The auto-merge gate requires a Codex review only for a **blocking** review/security stage (an
-> `advisory` stage stays comment-only). Because a blocking Codex review must cover pushed heads, enabling
+> The auto-merge gate requires a Codex review only for a **blocking** review/security stage (in the
+> legacy renderer an `advisory` stage stays comment-only; `stagr plan` / `stagr apply` reject an advisory
+> Codex stage). Because a blocking Codex review must cover pushed heads, enabling
 > `auto_merge` with a blocking Codex `review` stage requires that stage to include the `pr_updated`
 > trigger **and** `routing.fast_path.enabled: false` — otherwise a fast-path-approved or open-only head
 > would have no head-bound review and could never merge. `stagr doctor`/`plan` fail loud on these
@@ -530,8 +531,9 @@ verbatim. Override any per key by setting it under `build.commands`; `custom` pr
 1. Add `.agentic/config.yml`. The quickest way is `stagr init` (guided wizard) or
    `stagr init --profile <minimal|standard|full|custom>` (non-interactive), which writes a commented
    starter with blocking Codex review stages. Then uncomment its `platform.publisher` block and set
-   `app_id` to your Stagr GitHub App's ID, so `stagr plan` and `stagr apply` can run; or write it by hand starting from a `profile`, a `platform`, and a model
-   binding for any model-consuming stage, adding `stages` only for finer control. (An AI drafting
+   `app_id` to your Stagr GitHub App's ID, so `stagr plan` and `stagr apply` can run.
+   Or write it by hand, starting from a `profile`, a `platform`, and a model binding for any
+   model-consuming stage, and add `stages` only for finer control. (An AI drafting
    *skill* that proposes a tailored config is a separate, roadmap item — M4.)
 2. Run `stagr doctor` — it validates the config and lists the exact secret NAMES to create.
 3. Create those secrets in your CI/SCM secret store (section 2), then run `stagr plan` to preview and
