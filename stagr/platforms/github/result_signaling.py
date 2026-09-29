@@ -194,12 +194,17 @@ def _build_no_open_threads_result_step(
         f"query($owner:String!,$repo:String!,$pr:Int!){{"
         f"repository(owner:$owner,name:$repo){{"
         f"pullRequest(number:$pr){{"
-        f"reviewThreads(first:100){{nodes{{isResolved}}}}}}}}}}' \\\n"
+        f"reviewThreads(first:100){{nodes{{isResolved,"
+        f"comments(first:1){{nodes{{author{{login}}}}}}}}}}}}}}}}}}' \\\n"
         f'            -f owner="${{GITHUB_REPOSITORY_OWNER}}" \\\n'
         f'            -f repo="${{GITHUB_REPOSITORY#*/}}" \\\n'
         f'            -F pr="${{PR_NUMBER}}" \\\n'
-        f"            --jq '.data.repository.pullRequest.reviewThreads.nodes"
-        f" | map(select(.isResolved == false)) | length')\n"
+        f"            | jq --arg author \"${{FINDINGS_AUTHOR}}\" \\\n"
+        "            '[.data.repository.pullRequest.reviewThreads.nodes[]\n"
+        "             | select(.isResolved == false)\n"
+        "             | select($author == \"\" or\n"
+        "               .comments.nodes[0].author.login == $author)]\n"
+        "            | length')\n"
         f'          if [[ "${{thread_count}}" -gt 0 ]]; then\n'
         f'            CONCLUSION_NATIVE="action_required"\n'
         f'            CONCLUSION_PAYLOAD="blocked"\n'
@@ -409,18 +414,24 @@ def _build_sweep_step(
     )
     if gate_kind is GateDispositionKind.NO_OPEN_THREADS:
         scope = plan.gate_disposition.scope
+        findings_author = scope.created_by if scope is not None and scope.created_by else ""
         gate_eval = (
             f"          thread_count=$(gh api graphql \\\n"
             f"            -f query='"
             f"query($owner:String!,$repo:String!,$pr:Int!){{"
             f"repository(owner:$owner,name:$repo){{"
             f"pullRequest(number:$pr){{"
-            f"reviewThreads(first:100){{nodes{{isResolved}}}}}}}}}}' \\\n"
+            f"reviewThreads(first:100){{nodes{{isResolved,"
+            f"comments(first:1){{nodes{{author{{login}}}}}}}}}}}}}}}}}}' \\\n"
             f'            -f owner="${{GITHUB_REPOSITORY_OWNER}}" \\\n'
             f'            -f repo="${{GITHUB_REPOSITORY#*/}}" \\\n'
             f'            -F pr="${{pr_number}}" \\\n'
-            f"            --jq '.data.repository.pullRequest.reviewThreads.nodes"
-            f" | map(select(.isResolved == false)) | length')\n"
+            f"            | jq --arg author \"{findings_author}\" \\\n"
+            "            '[.data.repository.pullRequest.reviewThreads.nodes[]\n"
+            "             | select(.isResolved == false)\n"
+            "             | select($author == \"\" or\n"
+            "               .comments.nodes[0].author.login == $author)]\n"
+            "            | length')\n"
             f'          if [[ "${{thread_count}}" -gt 0 ]]; then\n'
             f'            conclusion_native="action_required"; conclusion_payload="blocked"\n'
             f"          else\n"

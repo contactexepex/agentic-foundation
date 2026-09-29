@@ -325,12 +325,22 @@ class GitHubPlatformRenderer:
             render_context=render_context,
         )
 
-        has_pr_triggers = any(
-            t in (StageTrigger.PR_OPENED, StageTrigger.PR_UPDATED) for t in stage.triggers
-        )
-        execute_if_line = (
-            "    if: github.event_name == 'pull_request_target'\n" if has_pr_triggers else ""
-        )
+        _trigger_to_event: dict[StageTrigger, str] = {
+            StageTrigger.PR_OPENED: "pull_request_target",
+            StageTrigger.PR_UPDATED: "pull_request_target",
+            StageTrigger.MANUAL: "workflow_dispatch",
+            StageTrigger.ISSUE_LABELED: "issues",
+        }
+        trigger_event_names = sorted(set(
+            _trigger_to_event[t] for t in stage.triggers if t in _trigger_to_event
+        ))
+        if trigger_event_names:
+            conditions = " || ".join(
+                f"github.event_name == '{event_name}'" for event_name in trigger_event_names
+            )
+            execute_if_line = f"    if: {conditions}\n"
+        else:
+            execute_if_line = ""
 
         return (
             f'name: "Stagr stage: {stage.id}"\n'

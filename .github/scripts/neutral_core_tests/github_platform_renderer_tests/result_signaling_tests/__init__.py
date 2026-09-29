@@ -1,8 +1,44 @@
-"""Thin re-export wrapper — implementation split into result_signaling_tests sub-package."""
+"""Result-signaling test sub-package — exposes RESULT_SIGNALING_TESTS."""
 from __future__ import annotations
 
-from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests import (
-    RESULT_SIGNALING_TESTS,
+from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.test_triggers import (
+    test_stage_workflow_has_check_suite_trigger,
+    test_stage_workflow_has_issue_comment_trigger,
+    test_stage_workflow_has_schedule_trigger,
+    test_manual_trigger_execute_job_guarded_for_workflow_dispatch,
+    test_issue_labeled_trigger_execute_job_guarded_for_issues,
+)
+from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.test_publish_step import (
+    test_always_pass_result_step_emits_success_conclusion,
+    test_always_pass_result_payload_has_conclusion_pass,
+    test_result_payload_has_schema_version_one,
+    test_result_payload_embeds_stage_id,
+    test_result_payload_includes_head_sha_reference,
+    test_result_step_patches_existing_check_run,
+    test_result_step_posts_new_check_run_when_absent,
+    test_result_step_uses_filter_all_to_find_existing_check_run,
+    test_no_open_threads_step_emits_action_required_for_blocked,
+    test_no_open_threads_step_emits_blocked_in_payload,
+    test_no_open_threads_step_emits_success_for_zero_threads,
+    test_no_open_threads_step_queries_graphql_review_threads,
+    test_no_open_threads_step_filters_by_findings_author,
+)
+from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.test_reconcile_job import (
+    test_reconcile_job_exists_in_generated_workflow,
+    test_reconcile_job_runs_on_issue_comment_and_check_suite,
+    test_reconcile_job_exits_when_evidence_absent,
+    test_reconcile_job_fetches_head_sha_from_pr_api,
+)
+from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.test_sweep_job import (
+    test_sweep_job_exists_in_generated_workflow,
+    test_sweep_job_runs_on_schedule_only,
+    test_sweep_job_enumerates_open_prs,
+    test_sweep_job_filters_untrusted_author_association,
+    test_sweep_job_skips_fork_prs_when_fork_policy_deny,
+    test_sweep_job_bakes_trusted_roles_as_literal,
+)
+
+RESULT_SIGNALING_TESTS = [
     test_stage_workflow_has_issue_comment_trigger,
     test_stage_workflow_has_check_suite_trigger,
     test_stage_workflow_has_schedule_trigger,
@@ -31,7 +67,7 @@ from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests im
     test_sweep_job_filters_untrusted_author_association,
     test_sweep_job_skips_fork_prs_when_fork_policy_deny,
     test_sweep_job_bakes_trusted_roles_as_literal,
-)
+]
 
 __all__ = [
     "RESULT_SIGNALING_TESTS",
