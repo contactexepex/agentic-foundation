@@ -184,13 +184,14 @@ def test_dry_run_render_governance_raises_value_error() -> None:
         pass  # expected
 
 
-def test_live_mode_render_governance_raises_not_implemented_error() -> None:
-    """render_governance raises NotImplementedError in live mode (output_dir set)."""
+def test_live_mode_render_governance_writes_governance_workflow_file() -> None:
+    """render_governance writes governance.yml in live mode (output_dir set)."""
     from stagr.core.enums import StageResultSignalKind
     from stagr.core.models import StageResultProvenance
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        renderer = build_renderer(output_dir=Path(temp_dir))
+        output_dir = Path(temp_dir)
+        renderer = build_renderer(output_dir=output_dir)
         stage = build_stage()
         context = build_render_context(stage)
         spec = StageResultSpec(
@@ -199,11 +200,13 @@ def test_live_mode_render_governance_raises_not_implemented_error() -> None:
             signal_selector="stagr/stage/review",
             provenance=StageResultProvenance(publisher_identity="99001"),
         )
-        try:
-            renderer.render_governance((spec,), context)
-            assert False, "render_governance must raise NotImplementedError in live mode"  # noqa: B011
-        except NotImplementedError:
-            pass  # expected
+        # Must not raise — render_governance is now implemented.
+        renderer.render_governance((spec,), context)
+        governance_file = output_dir / ".github" / "workflows" / "governance.yml"
+        assert governance_file.exists(), (
+            "render_governance must write governance.yml at "
+            ".github/workflows/governance.yml inside output_dir"
+        )
 
 
 # ------------------------------------------------------------------

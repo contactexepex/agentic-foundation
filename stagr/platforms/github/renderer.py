@@ -1,4 +1,4 @@
-"""GitHubPlatformRenderer: phase 1 and phase 2a artifact generator for GitHub Actions.
+"""GitHubPlatformRenderer: Phase 1, Phase 2a, and Phase 2b artifact generator for GitHub Actions.
 
 Phase 1 (render_stage): translates a (ExecutionPlan, NormalizedStage, RenderContext)
 triple into a GitHub Actions workflow file (.github/workflows/stage-<id>.yml) inside
@@ -8,6 +8,13 @@ emit at run time.
 Phase 2a (render_routing): generates the routing artifact
 (.github/workflows/routing.yml) that classifies each PR head commit as FAST or NORMAL
 and publishes a ``RouteClassification`` Check Run authenticated by the Stagr GitHub App.
+
+Phase 2b (render_governance): generates the merge-gate workflow at
+.github/workflows/governance.yml.  The workflow reads StageResultSignal values from
+Check Runs published by stage execution artifacts, verifies publisher identity against
+the Stagr App ID (rendered as a literal constant), and blocks merge when any blocking
+stage has a BLOCKED or FAILED conclusion.  See _governance.py for the complete
+governance logic specification.
 
 Security invariant (stage workflows): stages with required_secrets (privileged stages)
 MUST use ``pull_request_target`` — never ``pull_request``. The ``pull_request`` event
@@ -52,6 +59,7 @@ from stagr.core.models import (
     StageResultProvenance,
     StageResultSpec,
 )
+from stagr.platforms.github._governance import generate_governance_workflow_yaml
 from stagr.platforms.github.routing_workflow import (
     generate_routing_workflow_yaml,
     ROUTING_WORKFLOW_FILENAME,
@@ -84,8 +92,8 @@ class GitHubPlatformRenderer:
     ``output_dir/.github/workflows/routing.yml`` that classifies PR head commits
     and publishes an authenticated ``RouteClassification`` Check Run.
 
-    Phase 2b (render_governance): raises NotImplementedError in live mode until
-    implemented in a later issue (#196).
+    Phase 2b (render_governance): generates the merge-gate workflow at
+    ``output_dir/.github/workflows/governance.yml``.
 
     All three methods raise ``ValueError`` in dry-run mode (``output_dir`` is None).
     """
@@ -194,21 +202,39 @@ class GitHubPlatformRenderer:
         result_specs: tuple[StageResultSpec, ...],
         render_context: RenderContext,
     ) -> None:
-        """Phase 2b: write the governance artifact.
+        """Phase 2b: write the governance / merge-gate workflow artifact.
+
+        Generates ``.github/workflows/governance.yml`` inside ``output_dir``.
+        The workflow reads StageResultSignal values from Check Runs published
+        by stage execution artifacts, verifies that each Check Run was
+        published by the Stagr GitHub App (using the publisher_app_id rendered
+        as a literal constant), and blocks merge when any blocking stage
+        reports a BLOCKED or FAILED conclusion.
 
         Raises ValueError in dry-run mode (output_dir is None).
-        Raises NotImplementedError in live mode until the full implementation
-        lands in a later issue (#195/#196); fail-loud prevents Phase 2
-        orchestration from silently receiving an incomplete pipeline.
+
+        Args:
+            result_specs: StageResultSpec for every stage produced in Phase 1.
+            render_context: RenderContext carrying MergePolicy, TrustPolicy,
+                and RoutingPolicy used to determine blocking stages.
         """
         if self._output_dir is None:
             raise ValueError(
                 "render_governance cannot be called in dry-run mode (output_dir is None)"
             )
-        raise NotImplementedError(
-            "render_governance is not yet implemented for live mode "
-            "(full implementation is out of scope for issue #194)"
+
+        governance_yaml = generate_governance_workflow_yaml(
+            publisher_app_id=self._publisher_app_id,
+            publisher_private_key_secret=self._publisher_private_key_secret,
+            result_specs=result_specs,
+            render_context=render_context,
         )
+
+        governance_file_path = (
+            self._output_dir / ".github" / "workflows" / "governance.yml"
+        )
+        governance_file_path.parent.mkdir(parents=True, exist_ok=True)
+        governance_file_path.write_text(governance_yaml, encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Private helpers
