@@ -126,15 +126,13 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
     # V-S10 (non-empty blocking stages when auto_merge: true) is enforced inside this call.
     _ensure_auto_merge_coherent(expanded, cfg)
 
-    # V-S05 / V-S04: dependency reference validity and DAG acyclicity. These are pure structural
-    # checks that do not require the filesystem, so they run unconditionally (without project_root)
-    # on the same expanded (enabled-only) stage list already computed above.
-    from stagr.core.dag_validator import validate_dag_acyclicity, validate_dependency_references  # noqa: PLC0415
+    # V-S05 / V-S04: dependency reference validity and DAG acyclicity. Delegates to the same
+    # production validator used by the normalization pipeline, keeping a single source of truth.
+    from stagr.core.dag import build_and_validate_dag  # noqa: PLC0415
     from stagr.core.models import StaticValidationError  # noqa: PLC0415
 
     try:
-        validate_dependency_references(expanded)
-        validate_dag_acyclicity(expanded)
+        build_and_validate_dag(expanded)
     except StaticValidationError as exc:
         raise RenderError(str(exc)) from exc
 

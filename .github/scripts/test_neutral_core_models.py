@@ -55,7 +55,7 @@ from neutral_core_tests.test_normalize import (
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
 )
-from neutral_core_tests.test_dag_validator import DAG_VALIDATOR_TESTS
+from neutral_core_tests.test_dag import DAG_TESTS
 from neutral_core_tests.test_skill_validator import (
     test_v_s06_stage_with_no_skill_raises_no_error,
     test_v_s06_missing_skill_file_raises_error_with_code,
@@ -218,7 +218,7 @@ _TESTS = [
     test_expand_profile_defaults_standard_includes_all_profile_stages,
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
-    *DAG_VALIDATOR_TESTS,
+    *DAG_TESTS,
     test_v_s06_stage_with_no_skill_raises_no_error,
     test_v_s06_missing_skill_file_raises_error_with_code,
     test_v_s06_missing_skill_file_error_names_expected_path,

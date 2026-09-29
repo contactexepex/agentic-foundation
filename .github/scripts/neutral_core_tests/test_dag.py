@@ -215,3 +215,17 @@ def test_dag_cycle_error_excludes_downstream_dependents() -> None:
             f"Downstream stage 'd' must NOT appear in the cycle error: {error_message}"
         )
     assert raised, "Expected StaticValidationError for a cycle with a downstream dependent"
+
+
+DAG_TESTS = [
+    test_dag_linear_chain_passes,
+    test_dag_cycle_raises_v_s04,
+    test_dag_unknown_dep_raises_v_s05,
+    test_dag_disabled_dep_raises_v_s05,
+    test_dag_no_deps_passes,
+    test_dag_does_not_mutate_input,
+    test_dag_parallel_stages_pass,
+    test_dag_empty_active_stages_passes,
+    test_dag_direct_two_stage_cycle_raises_v_s04,
+    test_dag_cycle_error_excludes_downstream_dependents,
+]
