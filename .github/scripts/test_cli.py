@@ -45,6 +45,7 @@ from cli_tests.init_guards import (
     test_init_rejects_pasted_credential_value,
     test_init_rejects_values_the_pipeline_would_reject,
     test_init_reports_write_failure_without_traceback,
+    test_init_skill_symlink_is_refused,
     test_init_write_and_overwrite_guard,
 )
 from cli_tests.detect import (
@@ -71,6 +72,7 @@ def main() -> int:
     test_help_command()
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
+    test_init_skill_symlink_is_refused()
     test_init_rejects_values_the_pipeline_would_reject()
     test_init_rejects_pasted_credential_value()
     test_init_next_steps_carry_custom_config_path()
