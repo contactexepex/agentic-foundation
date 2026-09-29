@@ -79,8 +79,8 @@ The PlatformRenderer maps each semantic kind to the appropriate platform API.
 |---|---|---|
 | `REVIEW_RESULT` | A formal review object produced by a reviewer agent | Codex summary comment containing a structured review table |
 | `COMMENT_MATCH` | A PR comment whose body satisfies the backend-defined selector expression | PR issue comment evaluated against the backend-defined `selector` (see compound selector convention below) |
-| `CHECK_RESULT` | A CI check run with a pass/fail conclusion | GitHub check run on the head commit |
-| `WORKFLOW_RESULT` | A CI workflow run with a pass/fail conclusion | GitHub Actions workflow run |
+| `CHECK_RESULT` | A named result authored by a named producer, with a pass/fail conclusion (an `observed` stage, `09-check-stages.md`) | GitHub check run on the head commit, matched by name and author |
+| `WORKFLOW_RESULT` | The platform's own outcome of the work unit a `commands` stage runs (`09-check-stages.md`) | Result of the workflow job that ran the commands |
 
 Using semantic vocabulary keeps EvidenceSpec portable: a `REVIEW_RESULT` on GitHub is
 a comment with a specific format; on GitLab it might be a note on an MR. The renderer
@@ -277,7 +277,7 @@ StageResultSignal {
 | `PENDING` | Stage has not started or invocation has not been posted yet |
 | `RUNNING` | Stage invocation is in flight; backend is processing |
 | `COMPLETED` | Backend finished processing (findings may be present) |
-| `FAILED` | Stage could not finish (infra failure, timeout, dependency failure) |
+| `FAILED` | Stagr could not evaluate the stage (infrastructure or API failure, ambiguous evidence) |
 
 ### StageResultConclusion
 
@@ -298,11 +298,12 @@ no unresolved findings linked to this stage  →  conclusion = PASS
 unresolved findings linked to this stage  →  conclusion = BLOCKED
 ```
 
-For `TEST` and `BUILD` stages:
+For `TEST` and `BUILD` stages, and any other `commands` or `observed` stage (the full table
+is in `09-check-stages.md`):
 
 ```
-check run conclusion = success  →  state = COMPLETED, conclusion = PASS
-check run conclusion = failure  →  state = COMPLETED, conclusion = FAILED
+outcome = success                                  →  state = COMPLETED, conclusion = PASS
+failure, timed out, cancelled, skipped, neutral    →  state = COMPLETED, conclusion = FAILED
 ```
 
 > **Note on "unresolved findings":** The stage execution artifact determines findings
@@ -368,8 +369,12 @@ On each reconciliation event, the stage execution artifact:
 signal only when it reaches a terminal state that cannot change without a new push:
 
 - `COMPLETED + PASS` — the gate condition is satisfied; re-evaluation adds no value.
-- `FAILED` (irrecoverable) — infrastructure failure, dependency failure, or similar
-  non-recoverable condition.
+- `FAILED` (irrecoverable) — infrastructure failure or similar non-recoverable condition.
+
+**A new attempt is not reconciliation.** For a `commands` stage, a manual run or an
+explicit re-run of the same head starts a new attempt that first moves the signal to
+`RUNNING`, whatever it held, `PASS` included (`09-check-stages.md`, section 3). Reconciliation
+and the sweep never replace a completed result.
 
 **`COMPLETED + BLOCKED` is not terminal for reconciliation.** A BLOCKED conclusion means
 the backend finished but found blocking issues. Those issues can be resolved (e.g.,

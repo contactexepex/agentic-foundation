@@ -26,7 +26,8 @@ For each `NormalizedStage` in `RenderContext.stages`:
 NormalizedStage
       │
       ▼
-BackendRenderer(provider, backend)
+BackendRenderer(provider, backend)     for an agent executor
+built-in check planner                 for a commands or observed executor (09-check-stages.md)
       │  produces
       ▼
 ExecutionPlan { stageId, invocation, requiredSecrets, evidence, gateDisposition }
@@ -135,6 +136,8 @@ Invocation {
 | `API_CALL` | Call the provider's API directly from a CI step | Backend-specific HTTP call |
 | `WORKFLOW_DISPATCH` | Trigger a CI workflow by name/id | GitHub: `workflow_dispatch` event |
 | `CI_COMPONENT` | Insert a native CI component (Action, GitLab component, etc.) | **Platform-dependent by design.** Validation catches incompatibilities at render time. |
+| `RUN_COMMANDS` | Run the stage's commands in a CI job with no credentials and no secrets (`commands` executor) | GitHub: the untrusted work job of the stage workflow |
+| `READ_RESULT` | Read a named result from a named producer (`observed` executor); starts nothing | GitHub: a job that reads Check Runs |
 
 ### StageResultSpec
 

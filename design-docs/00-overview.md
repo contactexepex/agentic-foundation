@@ -77,3 +77,4 @@ never contradict the neutral core.
 | `06-runtime-boundary.md` | EvidenceSpec, StageResultSignal, RouteClassification, idempotency |
 | `07-validation.md` | Static and environment validation checklists |
 | `08-github-codex-mapping.md` | How the neutral model maps to the current GitHub+Codex implementation |
+| `09-check-stages.md` | Build, test and other CI-result stages: executors, results, trust, ordering, work items |

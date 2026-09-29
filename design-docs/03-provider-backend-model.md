@@ -64,17 +64,17 @@ provider: deepseek  → default backend: generic
 Defaults are registered per provider by the BackendRenderer registry. No defaults are
 hardcoded in the neutral contract itself — they are part of the backend registration.
 
-After default resolution, every `NormalizedStage` always has non-null `provider`,
-`backend`, and either an explicit `model` or a documented backend default (null in the
-normalized model = "use backend default").
+After default resolution, every stage with an `agent` executor always has non-null
+`provider`, `backend`, and either an explicit `model` or a documented backend default (null
+in the normalized model = "use backend default"). Stages with a `commands` or `observed`
+executor (`09-check-stages.md`) have none of them and are never resolved against `defaults`.
 
 ---
 
-## NormalizedStage fields (provider/backend/model)
+## AgentExecutor fields (provider/backend/model)
 
 ```
-NormalizedStage {
-  ...
+AgentExecutor {
   provider: string          // always present after normalization
   backend:  string          // always present after normalization
   model:    string | null   // null = backend's own default; never "unknown"
