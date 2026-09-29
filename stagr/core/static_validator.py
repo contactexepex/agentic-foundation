@@ -201,3 +201,23 @@ def collect_dormant_routing_warnings(config: dict[str, Any]) -> tuple[str, ...]:
     if "globs" in fast_path_config or "stages" in fast_path_config:
         return (DORMANT_ROUTING_WARNING,)
     return ()
+
+
+def collect_placeholder_invocation_warnings(
+    normalized_stages: tuple[NormalizedStage, ...],
+    registry: BackendRendererRegistry,
+    functional_invocation_kinds: frozenset[InvocationKind],
+) -> tuple[str, ...]:
+    """Return one warning per stage whose invocation kind is accepted but not yet rendered for real.
+
+    V-S08 passes for every kind the platform *supports*, but some are rendered as a placeholder
+    step that does not run the backend. That must never be silent: the generated workflow would
+    look installed while doing nothing. Requires V-S07/V-S08 to have passed.
+    """
+    return tuple(
+        f"stage '{stage.id}' uses a {plan.invocation.kind.name} invocation, which this platform "
+        f"renders only as a placeholder step: the generated workflow does not run the backend yet"
+        for stage in normalized_stages
+        for plan in (registry.get(stage.provider, stage.backend).render(stage),)
+        if plan.invocation.kind not in functional_invocation_kinds
+    )

@@ -131,6 +131,12 @@ files `apply` writes. Stage workflows that an earlier run wrote but this config 
 are listed as stale (hand-written workflows are never mentioned). Warnings (for example V-S11,
 routing keys kept while `fast_path` is disabled) go to stderr and do not change the exit code.
 
+One warning is worth acting on: a stage whose backend uses a `CI_COMPONENT`, `API_CALL` or
+`WORKFLOW_DISPATCH` invocation (for example the Claude implement stage) is accepted, but its
+generated workflow contains only a placeholder step and does **not** run the backend yet. Only
+`PR_COMMENT` invocations (the Codex review and security stages) are fully rendered. The
+warning names each affected stage so a workflow that does nothing is never mistaken for a working one.
+
 Exit code `0` on success, `1` on any error (the message names the failed check).
 
 ```bash

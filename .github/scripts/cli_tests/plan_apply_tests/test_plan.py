@@ -75,3 +75,16 @@ def test_plan_after_apply_reports_everything_unchanged() -> None:
         check(exit_code == 0 and plan_output.count("= unchanged") == len(DOGFOOD_WORKFLOW_NAMES)
               and "+ new" not in plan_output and "~ changed" not in plan_output,
               "plan: right after apply every artifact is unchanged")
+
+
+def test_placeholder_invocation_stages_are_warned_about_by_plan_and_apply() -> None:
+    """Review finding: an accepted-but-not-yet-rendered invocation kind must never be silent."""
+    with dogfood_project():
+        for command in ("plan", "apply"):
+            exit_code, _, error_output = run_cli(command)
+            check(exit_code == 0 and "implement-claude" in error_output and "CI_COMPONENT" in error_output
+                  and "placeholder" in error_output,
+                  f"{command}: warns that the CI_COMPONENT implement stage is only a placeholder (stderr: "
+                  f"{error_output.strip()})")
+            check("stage 'review'" not in error_output and "stage 'security'" not in error_output,
+                  f"{command}: PR_COMMENT review stages are functional and produce no placeholder warning")

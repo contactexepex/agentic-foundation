@@ -122,3 +122,35 @@ def test_apply_into_temp_dir_then_validate_config_passes() -> None:
         capture_output=True, text=True, cwd=REPO_ROOT, check=False,
     )
     check(validation.returncode == 0, f"validate_config.py passes after apply ({validation.stderr.strip()[:200]})")
+
+
+def test_apply_never_follows_a_planted_symlink_at_the_old_temporary_name() -> None:
+    """Review finding: a committed `.<artifact>.stagr-tmp` symlink must not redirect the write."""
+    with dogfood_project() as project_root:
+        workflow_directory = project_root / DEFAULT_WORKFLOW_DIRECTORY
+        workflow_directory.mkdir(parents=True)
+        victim_file = project_root / "victim.txt"
+        victim_file.write_text("do not overwrite", encoding="utf-8")
+        planted_names = [f".{workflow_name}.stagr-tmp" for workflow_name in DOGFOOD_WORKFLOW_NAMES]
+        for planted_name in planted_names:
+            (workflow_directory / planted_name).symlink_to(victim_file)
+        exit_code, _, apply_errors = run_cli("apply")
+        check(exit_code == 0, f"apply: succeeds with planted symlinks present (stderr: {apply_errors.strip()})")
+        check(victim_file.read_text(encoding="utf-8") == "do not overwrite",
+              "apply: a symlink at the predictable temporary name is never written through")
+        check(all((workflow_directory / planted_name).is_symlink() for planted_name in planted_names),
+              "apply: planted symlinks are left exactly as they were")
+        for workflow_name in DOGFOOD_WORKFLOW_NAMES:
+            written_workflow = workflow_directory / workflow_name
+            check(written_workflow.is_file() and not written_workflow.is_symlink(),
+                  f"apply: {workflow_name} is a regular file, not the planted symlink")
+
+
+def test_apply_leaves_no_temporary_files_and_writes_readable_workflows() -> None:
+    with dogfood_project() as project_root:
+        exit_code, _, _ = run_cli("apply")
+        workflow_directory = project_root / DEFAULT_WORKFLOW_DIRECTORY
+        leftovers = sorted(path.name for path in workflow_directory.glob(".*stagr-tmp"))
+        check(exit_code == 0 and leftovers == [], f"apply: leaves no temporary files ({leftovers})")
+        modes = {(workflow_directory / name).stat().st_mode & 0o777 for name in DOGFOOD_WORKFLOW_NAMES}
+        check(modes == {0o644}, f"apply: writes workflows with mode 0644 ({sorted(oct(mode) for mode in modes)})")

@@ -14,12 +14,17 @@ is written:
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
 from .errors import RenderPipelineError
 from .render_pipeline import RenderedArtifact
+
+
+# mkstemp creates files 0600; generated workflows are ordinary readable repository files.
+_ARTIFACT_FILE_MODE = 0o644
 
 
 class ArtifactStatus(str, Enum):
@@ -77,10 +82,21 @@ def write_changed_artifacts(changes: tuple[ArtifactChange, ...]) -> tuple[Artifa
 
 
 def _write_file_atomically(target_path: Path, content: bytes) -> None:
+    """Write ``content`` beside ``target_path`` under a unique, exclusively created temporary name.
+
+    ``tempfile.mkstemp`` creates the file with ``O_CREAT | O_EXCL`` under a random name, so a
+    pre-existing file or symlink (for example one committed to the repository) can never be
+    followed or reused; ``os.replace`` then swaps it in atomically.
+    """
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = target_path.with_name(f".{target_path.name}.stagr-tmp")
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        dir=target_path.parent, prefix=f".{target_path.name}.", suffix=".stagr-tmp"
+    )
+    temporary_path = Path(temporary_name)
     try:
-        temporary_path.write_bytes(content)
+        with os.fdopen(file_descriptor, "wb") as temporary_file:
+            temporary_file.write(content)
+        os.chmod(temporary_path, _ARTIFACT_FILE_MODE)
         os.replace(temporary_path, target_path)
     finally:
         temporary_path.unlink(missing_ok=True)

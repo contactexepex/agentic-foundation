@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from .test_apply import (
     test_apply_honours_a_custom_out_directory,
+    test_apply_leaves_no_temporary_files_and_writes_readable_workflows,
+    test_apply_never_follows_a_planted_symlink_at_the_old_temporary_name,
     test_apply_into_temp_dir_then_validate_config_passes,
     test_apply_never_touches_unrelated_files_and_prunes_only_stale_stage_workflows,
     test_apply_repairs_a_changed_workflow_and_only_that_one,
@@ -29,6 +31,7 @@ from .test_invalid_configs import (
     test_pasted_key_material_is_never_echoed,
 )
 from .test_plan import (
+    test_placeholder_invocation_stages_are_warned_about_by_plan_and_apply,
     test_plan_after_apply_reports_everything_unchanged,
     test_plan_reports_stale_stage_workflows_but_not_hand_written_ones,
     test_plan_valid_config_exits_zero_and_lists_every_artifact,
@@ -49,6 +52,9 @@ PLAN_APPLY_TESTS = [
     test_apply_never_touches_unrelated_files_and_prunes_only_stale_stage_workflows,
     test_apply_honours_a_custom_out_directory,
     test_apply_into_temp_dir_then_validate_config_passes,
+    test_apply_never_follows_a_planted_symlink_at_the_old_temporary_name,
+    test_apply_leaves_no_temporary_files_and_writes_readable_workflows,
+    test_placeholder_invocation_stages_are_warned_about_by_plan_and_apply,
     test_invalid_configs_are_rejected_identically_by_plan_and_apply,
     test_missing_skill_file_is_rejected,
     test_missing_and_malformed_config_files_are_rejected,

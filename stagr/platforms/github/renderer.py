@@ -110,6 +110,11 @@ class GitHubPlatformRenderer:
         InvocationKind.WORKFLOW_DISPATCH,
     })
 
+    # Invocation kinds whose workflow step is a functional backend call. The other supported
+    # kinds are accepted by V-S08 but currently render an "Invoke backend (stub)" placeholder
+    # step; `stagr plan`/`apply` warn about each stage that uses one so a no-op is never silent.
+    FUNCTIONAL_INVOCATION_KINDS: frozenset[InvocationKind] = frozenset({InvocationKind.PR_COMMENT})
+
     def __init__(
         self,
         output_dir: Path | None,

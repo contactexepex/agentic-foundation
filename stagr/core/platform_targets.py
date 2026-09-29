@@ -1,7 +1,8 @@
 """The platforms the render pipeline can target, and how to build each one's renderer.
 
 A :class:`PlatformTarget` bundles what the pipeline must know about a platform without
-importing platform code anywhere else: the invocation kinds its renderer supports (V-S08),
+importing platform code anywhere else: the invocation kinds its renderer supports (V-S08) and the subset that is fully rendered (the rest
+are placeholders that `plan`/`apply` warn about),
 the directory its renderer writes artifacts into (relative to the renderer's output root),
 the file-name pattern of the per-stage artifacts it owns (used to spot stale ones), and a
 factory that builds the renderer. Adding a platform means adding one entry to
@@ -27,6 +28,7 @@ class PlatformTarget:
 
     name: str
     supported_invocation_kinds: frozenset[InvocationKind]
+    functional_invocation_kinds: frozenset[InvocationKind]
     artifact_directory: PurePosixPath
     stage_artifact_glob: str
     create_renderer: Callable[[Path, PublisherConfig], PlatformRenderer]
@@ -44,6 +46,7 @@ PLATFORM_TARGETS: dict[str, PlatformTarget] = {
     "github": PlatformTarget(
         name="github",
         supported_invocation_kinds=GitHubPlatformRenderer.SUPPORTED_INVOCATION_KINDS,
+        functional_invocation_kinds=GitHubPlatformRenderer.FUNCTIONAL_INVOCATION_KINDS,
         artifact_directory=PurePosixPath(".github/workflows"),
         stage_artifact_glob="stage-*.yml",
         create_renderer=_create_github_renderer,
