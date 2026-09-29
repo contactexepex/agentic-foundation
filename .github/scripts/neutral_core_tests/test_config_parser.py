@@ -138,6 +138,59 @@ def test_parse_config_raises_config_version_error_for_non_mapping_document() -> 
         config_path.unlink(missing_ok=True)
 
 
+def test_parse_config_raises_config_version_error_for_float_version() -> None:
+    """parse_config raises ConfigVersionError when version is the float 2.0.
+
+    YAML parses ``version: 2.0`` as a Python float.  Python equality (2.0 == 2)
+    would previously have accepted it, but the contract requires strictly the
+    integer 2.  Regression coverage for the type-check fix.
+    """
+    from stagr.core.config_parser import parse_config
+    from stagr.core.errors import ConfigVersionError
+
+    config_path = Path(tempfile.mktemp(suffix=".yml"))
+    config_path.write_text("version: 2.0\nprofile: standard\n", encoding="utf-8")
+    try:
+        raised = False
+        try:
+            parse_config(config_path)
+        except ConfigVersionError as exc:
+            raised = True
+            assert exc.found_version == 2.0, (
+                f"Float 2.0 must be reported as found_version, got {exc.found_version!r}"
+            )
+        assert raised, "Expected ConfigVersionError when version is the float 2.0"
+    finally:
+        config_path.unlink(missing_ok=True)
+
+
+def test_parse_config_raises_config_version_error_for_bool_version() -> None:
+    """parse_config raises ConfigVersionError when version is the bool True.
+
+    ``bool`` is a subclass of ``int`` in Python, so ``True == 1`` and
+    ``isinstance(True, int)`` is True.  The strict ``type(version) is int``
+    check correctly rejects booleans.  Regression coverage for the type-check
+    fix.
+    """
+    from stagr.core.config_parser import parse_config
+    from stagr.core.errors import ConfigVersionError
+
+    config_path = Path(tempfile.mktemp(suffix=".yml"))
+    config_path.write_text("version: true\nprofile: standard\n", encoding="utf-8")
+    try:
+        raised = False
+        try:
+            parse_config(config_path)
+        except ConfigVersionError as exc:
+            raised = True
+            assert exc.found_version is True, (
+                f"Bool True must be reported as found_version, got {exc.found_version!r}"
+            )
+        assert raised, "Expected ConfigVersionError when version is the bool True"
+    finally:
+        config_path.unlink(missing_ok=True)
+
+
 def test_parse_config_error_message_names_found_version() -> None:
     """ConfigVersionError message includes the actual version value."""
     from stagr.core.config_parser import parse_config

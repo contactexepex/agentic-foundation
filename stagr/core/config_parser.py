@@ -59,7 +59,7 @@ def parse_config(config_path: Path) -> dict[str, Any]:
         raise ConfigVersionError(None)
 
     version = raw_config.get("version")
-    if version != SUPPORTED_VERSION:
+    if type(version) is not int or version != SUPPORTED_VERSION:
         raise ConfigVersionError(version)
 
     return raw_config
