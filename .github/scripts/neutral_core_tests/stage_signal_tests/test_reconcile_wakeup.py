@@ -98,11 +98,27 @@ def test_evidence_that_disappears_does_not_regress_a_blocked_signal() -> None:
     assert result.action == "skipped" and not fake.write_calls
 
 
-def test_failed_signal_recovers_when_evidence_arrives() -> None:
+def test_failed_signal_is_terminal_for_wakeups_even_when_evidence_arrives() -> None:
+    """design-doc 06: FAILED is irrecoverable; unrelated evidence must not overwrite it."""
     fake = build_world(comments=completed_review_comments())
     fake.check_runs.append(build_existing_check_run("failed", "failed"))
-    build_reconciler(fake).reconcile_pull_request(request(RECONCILE))
-    assert _payload(fake.check_runs[0])["conclusion"] == "pass"
+    fake.failing_path_fragments.add("graphql")  # would raise if the stage were re-evaluated
+    result = build_reconciler(fake).reconcile_pull_request(request(RECONCILE))
+    assert result.action == "skipped" and not fake.write_calls
+
+
+def test_failed_signal_is_terminal_for_the_sweep() -> None:
+    import io
+    from contextlib import redirect_stdout
+
+    from neutral_core_tests.stage_signal_tests.fake_github import REPOSITORY
+    from stagr.platforms.github.runtime import stage_signal_runtime as runtime
+
+    fake = build_world(comments=completed_review_comments())
+    fake.check_runs.append(build_existing_check_run("failed", "failed"))
+    with redirect_stdout(io.StringIO()):
+        runtime.OpenPullRequestSweeper(fake, REPOSITORY, build_reconciler(fake)).sweep()
+    assert not fake.write_calls
 
 
 def test_failed_signal_stays_failed_while_evidence_is_absent() -> None:

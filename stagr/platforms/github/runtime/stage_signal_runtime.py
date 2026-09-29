@@ -18,9 +18,10 @@ Modes (``STAGR_MODE``):
 - ``reconcile`` ``issue_comment`` wakeup for one pull request. Updates an existing Check Run only.
 - ``sweep``     scheduled: runs the same routine for every open pull request. Updates only.
 
-Write policy: a ``completed`` + ``pass`` signal is terminal and never rewritten; ``blocked`` and
-``failed`` signals are re-evaluated on every wakeup; a write happens only when the desired signal
-differs from the existing Check Run.
+Write policy: ``completed`` + ``pass`` and ``failed`` are terminal for wakeups and the sweep
+(design-doc 06); a re-run of the execute job (``publish``) may replace ``failed`` with a fresh
+attempt but never rewrites ``pass``. ``blocked`` is re-evaluated on every wakeup. A write happens
+only when the desired signal differs from the existing Check Run.
 """
 from __future__ import annotations
 
@@ -563,14 +564,14 @@ class ExistingSignalRun:
     conclusion: str | None
     payload: Mapping[str, Any] | None
 
-    def is_terminal_pass_for(self, stage_id: str, head_sha: str) -> bool:
+    def has_signal_for(self, stage_id: str, head_sha: str, state: str, conclusion: str) -> bool:
         return (
             self.payload is not None
             and self.payload.get("schemaVersion") == SIGNAL_SCHEMA_VERSION
             and self.payload.get("stageId") == stage_id
             and self.payload.get("headSha") == head_sha
-            and self.payload.get("state") == STATE_COMPLETED
-            and self.payload.get("conclusion") == CONCLUSION_PASS
+            and self.payload.get("state") == state
+            and self.payload.get("conclusion") == conclusion
         )
 
 
@@ -731,8 +732,17 @@ class StageReconciler:
         existing = self._check_run_store.find_existing(pull.head_sha)
         if existing is None and request.mode != MODE_PUBLISH:
             return ReconcileResult(ACTION_SKIPPED, "no signal has been published for this head")
-        if existing and existing.is_terminal_pass_for(self._config.stage_id, pull.head_sha):
+        stage_id = self._config.stage_id
+        if existing and existing.has_signal_for(
+            stage_id, pull.head_sha, STATE_COMPLETED, CONCLUSION_PASS
+        ):
             return ReconcileResult(ACTION_SKIPPED, "signal is already completed and passed")
+        if (
+            existing
+            and request.mode != MODE_PUBLISH
+            and existing.has_signal_for(stage_id, pull.head_sha, STATE_FAILED, CONCLUSION_FAILED)
+        ):
+            return ReconcileResult(ACTION_SKIPPED, "signal failed; re-run the stage to retry")
         signal = self._derive_signal_or_failed(request, pull)
         if signal is None:
             return ReconcileResult(ACTION_SKIPPED, "completion evidence is absent")

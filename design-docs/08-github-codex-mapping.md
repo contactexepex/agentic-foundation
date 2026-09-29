@@ -207,9 +207,10 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
 - **One Check Run per stage and head.** Only the `execute` job creates it. `reconcile` and
   `sweep` update it in place. Governance rejects duplicates and cannot repair them, so creation
   has a single owner that is already serialized by the stage's concurrency group.
-- **Terminal states.** `completed` + `pass` is final. `blocked` and `failed` are re-evaluated on
-  every wakeup, so resolving threads turns `blocked` into `pass` without a new push. A write
-  happens only when the signal changed.
+- **Terminal states.** `completed` + `pass` and `failed` are final for wakeups and the sweep. A
+  `failed` signal is retried only by re-running the stage's `execute` job. `blocked` is
+  re-evaluated on every wakeup, so resolving threads turns it into `pass` without a new push. A
+  write happens only when the signal changed.
 - **Evidence is authenticated.** Only comments written by `EvidenceSpec.produced_by` count. A
   login ending in `[bot]` matches only a Bot account, never a person with a similar name.
   Evidence must also be bound to the current head commit.
