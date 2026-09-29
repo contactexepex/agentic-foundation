@@ -118,6 +118,6 @@ def collect_report(cfg: dict[str, Any], platform: str) -> dict[str, Any]:
 
 def _load_validated(config_path: Path) -> tuple[dict[str, Any], str]:
     cfg = render.load_config(render.confine_config_path(config_path))
-    render.validate_config(cfg)
+    render.validate_config(cfg, project_root=Path.cwd())
     platform = (cfg.get("platform", {}) or {}).get("type", "github")
     return cfg, platform

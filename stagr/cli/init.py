@@ -156,6 +156,63 @@ def _write_generated_config(dest: Path, text: str, force: bool) -> int:
     return 0
 
 
+def _scaffold_skill_files(
+    generated_cfg: dict[str, Any], project_root: Path
+) -> tuple[list[str], list[str], list[str]]:
+    """Copy packaged skill templates to .agentic/skills/<id>/SKILL.md for every skill in the config.
+
+    Returns a tuple of (scaffolded, blocked, failed):
+    - scaffolded: sorted list of skill ids successfully written.
+    - blocked: sorted list of skill ids whose destination was blocked by a symlink.
+    - failed: sorted list of skill ids whose write raised an OSError.
+    Skips ids with no packaged template.
+    """
+    skills_template_dir = render.PKG_ROOT / "templates" / "skills"
+    stages = render.expand_stages(generated_cfg)
+    seen_skills: set[str] = set()
+    scaffolded: list[str] = []
+    blocked: list[str] = []
+    failed: list[str] = []
+    for stage in stages:
+        skill_id = stage.get("skill")
+        if not skill_id or skill_id in seen_skills:
+            continue
+        seen_skills.add(skill_id)
+        template_file = skills_template_dir / skill_id / "SKILL.md"
+        if not template_file.is_file():
+            continue
+        dest_file = project_root / ".agentic" / "skills" / skill_id / "SKILL.md"
+        linked = _symlink_in_chain(dest_file)
+        if linked is not None:
+            which = "" if linked == dest_file else f" (via ancestor {linked})"
+            print(
+                f"init: skill '{skill_id}' destination {dest_file} is reached through a "
+                f"symlink{which}; skipping.",
+                file=sys.stderr,
+            )
+            blocked.append(skill_id)
+            continue
+        if dest_file.is_file():
+            continue
+        if dest_file.exists():
+            # dest_file exists but is not a regular file (directory, special device, etc.)
+            print(
+                f"init: skill '{skill_id}' destination {dest_file} exists but is not a "
+                f"regular file; cannot scaffold skill.",
+                file=sys.stderr,
+            )
+            failed.append(skill_id)
+            continue
+        try:
+            dest_file.parent.mkdir(parents=True, exist_ok=True)
+            dest_file.write_text(template_file.read_text(encoding="utf-8"), encoding="utf-8")
+            scaffolded.append(skill_id)
+        except OSError as exc:
+            print(f"init: could not write skill '{skill_id}' to {dest_file}: {exc}", file=sys.stderr)
+            failed.append(skill_id)
+    return sorted(scaffolded), sorted(blocked), sorted(failed)
+
+
 def _print_init_next_steps(dest: Path) -> None:
     """Point the user at the follow-up commands after `init` writes the config."""
     # Follow-up commands default to .agentic/config.yml; when init wrote elsewhere, point the user at
@@ -206,6 +263,27 @@ def cmd_init(args: argparse.Namespace) -> int:
     rc = _write_generated_config(dest, text, args.force)
     if rc != 0:
         return rc
+    project_root = Path.cwd()
+    scaffolded_skills, blocked_skills, failed_skills = _scaffold_skill_files(
+        yaml.safe_load(text), project_root
+    )
     print(f"init: wrote {dest} (profile: {choices['profile']}).")
+    if scaffolded_skills:
+        print(f"init: scaffolded skill files: {', '.join(scaffolded_skills)}")
+    if blocked_skills:
+        print(
+            f"init: skill scaffolding blocked by symlink for: {', '.join(blocked_skills)}. "
+            f"The config was written but will fail doctor/plan/apply with V-S06 until the "
+            f"symlink is removed.",
+            file=sys.stderr,
+        )
+        return 1
+    if failed_skills:
+        print(
+            f"init: could not write skill files for: {', '.join(failed_skills)}. "
+            f"The config was written but will fail doctor/plan/apply with V-S06.",
+            file=sys.stderr,
+        )
+        return 1
     _print_init_next_steps(dest)
     return 0

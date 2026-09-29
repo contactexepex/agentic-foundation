@@ -24,6 +24,8 @@ from render_tests.behaviors import (
     test_round3_fixes,
     test_round4_fixes,
     test_budgets_max_review_iterations,
+    test_v_s06_via_shared_validation_path,
+    test_v_s06_from_preset_expands_skill,
 )
 from render_tests.selection import test_pipeline_selection
 from render_tests.auto_merge import (
@@ -52,6 +54,8 @@ def main() -> int:
     test_pipeline_selection()
     test_round4_fixes()
     test_budgets_max_review_iterations()
+    test_v_s06_via_shared_validation_path()
+    test_v_s06_from_preset_expands_skill()
     test_auto_merge_templating_closure()
     test_auto_merge_injection_matrix()
     test_auto_merge_config_hardening()

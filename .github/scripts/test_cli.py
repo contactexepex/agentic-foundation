@@ -18,6 +18,7 @@ from cli_tests.report import (
     test_doctor_fail_loud,
     test_doctor_no_secret_values_and_exit,
     test_report,
+    test_v_s06_enforced_by_load_validated,
 )
 from cli_tests.paths import (
     test_config_path_confined_to_project_root,
@@ -34,6 +35,7 @@ from cli_tests.init_generate import (
     test_init_profiles_generate_valid_configs,
     test_init_quotes_yaml_keyword_scalars,
     test_init_review_gate_derived_from_profile,
+    test_init_scaffolds_skill_files,
     test_init_wizard_defaults_and_nontty,
     test_init_wizard_governance_unrecognized_keeps_profile_default,
     test_init_writes_utf8,
@@ -43,6 +45,7 @@ from cli_tests.init_guards import (
     test_init_rejects_pasted_credential_value,
     test_init_rejects_values_the_pipeline_would_reject,
     test_init_reports_write_failure_without_traceback,
+    test_init_skill_symlink_is_refused,
     test_init_write_and_overwrite_guard,
 )
 from cli_tests.detect import (
@@ -58,15 +61,18 @@ def main() -> int:
     test_report()
     test_doctor_no_secret_values_and_exit()
     test_doctor_fail_loud()
+    test_v_s06_enforced_by_load_validated()
     test_config_path_confined_to_project_root()
     test_config_path_symlink_loop_is_clean_error()
     test_plan_apply_idempotent()
     test_init_profiles_generate_valid_configs()
+    test_init_scaffolds_skill_files()
     test_init_write_and_overwrite_guard()
     test_init_wizard_defaults_and_nontty()
     test_help_command()
     test_init_escapes_test_command()
     test_init_refuses_symlink_destination()
+    test_init_skill_symlink_is_refused()
     test_init_rejects_values_the_pipeline_would_reject()
     test_init_rejects_pasted_credential_value()
     test_init_next_steps_carry_custom_config_path()

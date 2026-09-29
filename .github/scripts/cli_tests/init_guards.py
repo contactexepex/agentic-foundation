@@ -142,6 +142,40 @@ def test_init_rejects_pasted_credential_value() -> None:
         scaffold.run_wizard = original_run_wizard
 
 
+def test_init_skill_symlink_is_refused() -> None:
+    # Subcase 1: the SKILL.md leaf itself is a symlink to an external file; init must refuse
+    # and leave the external target untouched.
+    with _project_dir() as d:
+        external_dir = Path(d) / "external"
+        external_dir.mkdir()
+        sentinel = external_dir / "SKILL.md"
+        sentinel.write_text("do-not-clobber\n")
+        skill_dir = Path(d) / ".agentic" / "skills" / "code-review"
+        skill_dir.mkdir(parents=True)
+        os.symlink(sentinel, skill_dir / "SKILL.md")
+        dest = Path(d) / ".agentic" / "config.yml"
+        rc = cli.main(["init", "--profile", "standard", "--config", str(dest)])
+        check(
+            rc == 1 and sentinel.read_text() == "do-not-clobber\n",
+            "init: refuses to write a skill through a symlinked SKILL.md destination",
+        )
+
+    # Subcase 2: the skill directory itself is a symlink; writing SKILL.md inside would follow
+    # the symlink and land outside the project root.
+    with _project_dir() as d:
+        external_skill_dir = Path(d) / "external" / "code-review"
+        external_skill_dir.mkdir(parents=True)
+        skills_parent = Path(d) / ".agentic" / "skills"
+        skills_parent.mkdir(parents=True)
+        os.symlink(external_skill_dir, skills_parent / "code-review")
+        dest = Path(d) / ".agentic" / "config.yml"
+        rc = cli.main(["init", "--profile", "standard", "--config", str(dest)])
+        check(
+            rc == 1 and not (external_skill_dir / "SKILL.md").exists(),
+            "init: refuses to write a skill through a symlinked skill directory",
+        )
+
+
 def test_init_reports_write_failure_without_traceback() -> None:
     with _project_dir() as d:
         blocker = Path(d) / "afile"

@@ -189,14 +189,15 @@ def main() -> int:
             continue
         validate(cfg, rel)
         check_stage_graph(cfg, rel)
-        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) + templating
-        # safety (no ${{ }} / breakout char in any operator literal). Same code path as `stagr validate`.
-        # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g. a
-        # <anthropic-default-model>) that a real config replaces and that resolution would reject.
+        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) +
+        # templating safety (no ${{ }} / breakout char in any operator literal) + V-S06 skill file
+        # existence. Same code path as `stagr validate` / `stagr plan` / `stagr apply`.
+        # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g.
+        # a <anthropic-default-model>) that a real config replaces and that resolution would reject.
         if rel == ".agentic/config.yml":
             try:
-                render.validate_config(cfg)
-                print(f"OK  {rel} passes canonical validation (schema + semantics + templating)")
+                render.validate_config(cfg, project_root=ROOT)
+                print(f"OK  {rel} passes canonical validation (schema + semantics + templating + V-S06)")
             except render.RenderError as exc:
                 fail(f"{rel}: canonical validation failed: {exc}")
 

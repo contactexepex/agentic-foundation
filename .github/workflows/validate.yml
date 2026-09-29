@@ -75,7 +75,6 @@ jobs:
           /tmp/stagr-ci-venv/bin/pip install --quiet dist/stagr-*.whl
           /tmp/stagr-ci-venv/bin/stagr --help >/dev/null
           proj="$(mktemp -d)"
-          mkdir -p "$proj/.agentic"
-          cp .agentic/config.yml "$proj/.agentic/config.yml"
+          cp -r .agentic "$proj/.agentic"
           ( cd "$proj" && /tmp/stagr-ci-venv/bin/stagr doctor >/dev/null && /tmp/stagr-ci-venv/bin/stagr plan >/dev/null )
           echo "stagr wheel builds and runs from an isolated install."
