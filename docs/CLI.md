@@ -176,10 +176,11 @@ writes `stage-<stage id>.yml`; it also writes `routing.yml` and `governance.yml`
 gives the same files: only files whose content changed are written, and each file is replaced
 atomically.
 
-`apply` never touches files it did not generate. A `stage-*.yml` file that this config no longer
-renders (for example after you removed a stage) is kept and reported; pass `--prune` to delete
-those stale stage workflows. Hand-written workflows such as `ci.yml` are never deleted, even with
-`--prune`.
+`apply` never touches files it did not generate. A file counts as generated only if it is named
+`stage-*.yml` **and** its first line is the one Stagr writes (`name: "Stagr stage: <id>"`). Such a
+file that this config no longer renders (for example after you removed a stage) is kept and reported;
+pass `--prune` to delete those stale stage workflows. Anything else is never deleted, even with
+`--prune`: hand-written workflows such as `ci.yml`, and also a hand-written `stage-deploy.yml`.
 
 `apply` and `plan` need the Stagr GitHub App that publishes Stagr's Check Runs. Set its numeric ID
 in the config (the ID is public, not a secret). The private key lives in a repository secret; only
@@ -227,7 +228,8 @@ stagr help init     # detail for one command (also: `stagr init help`)
 - **All or nothing.** `plan` and `apply` validate and render everything before the first file is
   written, so an error in any stage leaves your workflows untouched.
 - **Non-destructive by default.** `apply` adds and updates only the files it generates; it deletes
-  only stale `stage-*.yml` files, and only with `--prune`. It refuses to replace a symlink or a
+  only stale Stagr-generated `stage-*.yml` files (first line `name: "Stagr stage: ..."`), and only
+  with `--prune`. It refuses to replace a symlink or a
   directory with a workflow file.
 
 ## Build the package (maintainers)
