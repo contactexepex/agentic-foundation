@@ -194,13 +194,14 @@ To conform to the architecture:
 This is how the generated `stage-<id>.yml` implements the reconciliation model in
 `06-runtime-boundary.md`.
 
-- **Jobs.** One file per stage. `execute` runs on the stage's declared triggers only.
-  `reconcile` runs on `issue_comment` events for a pull request, and only when the comment
-  author is a declared evidence producer. `sweep` runs on a schedule (every 5 minutes) and runs
-  the same routine for every open pull request. `reconcile` and `sweep` exist only for plans that
-  declare evidence. Each job has an explicit `github.event_name` condition, so a wakeup never
-  re-runs the backend, and `synchronize` is never a wakeup. `check_suite` wakeups are not
-  emitted in V1: they serve check-based evidence, which V1 rejects (see below).
+- **Jobs.** One file per stage. `execute` runs on the stage's declared triggers and, only for a
+  stage that declares dependencies, on the `check_run` / `check_suite` wake-ups described under
+  "Dependency wake-ups" below. `reconcile` runs on `issue_comment` events for a pull request, and
+  only when the comment author is a declared evidence producer. `sweep` runs on a schedule (every 5
+  minutes) and runs the same routine for every open pull request. `reconcile` and `sweep` exist
+  only for plans that declare evidence. Each job has an explicit `github.event_name` condition, so
+  a wakeup never re-runs the backend, and `synchronize` is never a wakeup. `check_suite` is not
+  used to observe evidence in V1: that serves check-based evidence, which V1 rejects (see below).
 - **State is observed, not remembered.** Every run re-reads the pull request, its comments, its
   review threads and the stage's Check Run for the current head. Missed, repeated or reordered
   events therefore cannot produce a wrong signal; the sweep is only a backstop.
@@ -246,8 +247,75 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   must be non-empty text and the plan must declare a resolved `TRUSTED_COMMENTER_TOKEN` secret.
 - **Credentials.** Only the invoke step holds the backend secret. It reaches the runtime as
   `TRUSTED_COMMENTER_TOKEN`, and the runtime hands it to `gh` as `GH_TOKEN` for that step only.
-  The App installation token is never present in the invoke step; `reconcile` and `sweep` hold
-  only the App token and `permissions: {}`.
+  The App installation token is never present in the invoke step; the eligibility step,
+  `reconcile` and `sweep` hold only the App token (`reconcile` and `sweep` with
+  `permissions: {}`).
+- **Eligibility.** The first step after the token is "Check eligibility". It runs the runtime in
+  `eligibility` mode and writes `proceed=true` or `proceed=false` to the step output; the invoke
+  step (and the placeholder steps of other invocation kinds) run only when it is `true`, and a
+  failed eligibility step also stops them. The same eligibility code runs in `publish`,
+  `reconcile` and `sweep`, so no mode can act on a pull request another mode refused. In order, the
+  first failing check decides: (1) the pull request is open, not a draft, written by a trusted
+  role, not a fork the fork policy refuses (`ForkPolicy.DENY`, or a privileged stage), and the
+  event's head is still the pull request's current head; (2) route applicability; (3) for a
+  wake-up, the stage's own signal is not already final; (4) dependencies. An ineligible run
+  invokes nothing and writes no signal. The "Publish result signal" step still runs and repeats
+  the same checks, so an ineligible run publishes nothing. The invoke step keeps its own
+  pull-request checks (it has no App token, so it cannot read Check Runs); route and dependencies
+  are decided once by the eligibility step just before it.
+- **Route applicability.** When `RoutingPolicy.fast_path` is configured, the rendered
+  configuration carries the stage ids of the FAST and NORMAL routes, and the runtime reads the
+  `stagr/route-classification` Check Run for the current head. It is trusted only if the Stagr
+  App wrote it, it is bound to the head, it is completed, and its title is exactly
+  `RouteClassification=FAST` or `RouteClassification=NORMAL`; two Stagr runs are an error, and
+  a run from another app is ignored. A stage that is not listed for the route does not run. The
+  routing workflow starts at the same moment as the stage workflow, so a classification that is
+  still missing is waited for (up to 3 minutes, only in the eligibility step); after that the stage
+  fails closed and starts on its next execute run.
+- **Dependencies.** For each stage in `NormalizedStage.dependencies` the runtime reads that
+  stage's Check Run (`stagr/stage/<id>`) for the current head. It counts only if it is the single
+  Check Run of that name written by the Stagr App, and the JSON in `output.summary` has
+  `schemaVersion` 1 and states the same stage id and head SHA. `state` and `conclusion` come from
+  that payload, never from the native Check Run fields. The stage starts only when every
+  dependency is `completed` + `pass`. A dependency that is missing, unreadable, for another head,
+  running or blocked means "not yet": nothing is invoked and nothing is written. A dependency
+  that is `failed` makes the stage `failed` without invoking the backend (failure propagation):
+  the execute job, which is the only creator of the Check Run, publishes it. Two Stagr runs for
+  one dependency are an error and nothing is written.
+- **Dependency wake-ups.** A stage with dependencies also subscribes to `check_run: completed`
+  and `check_suite: completed`, so it starts when the upstream signal first passes, without a new
+  push. These events fire for every check in the repository, so the `execute` job's `if:` lets
+  through only a `check_run` written by the Stagr App for one of the upstream stage Check Runs,
+  or a `check_suite` written by the Stagr App, and only when the payload names a pull request of
+  this repository. The stage's own Check Run (`stagr/stage/<its id>`) is not upstream, so writing
+  its own signal cannot wake it through `check_run`. A Stagr `check_suite` does follow every Stagr
+  write, but a wake-up that changes nothing writes nothing, so it ends there. A wake-up run
+  differs from a pull request run in one way: a stage whose own signal is already `pass` or
+  `failed` is left alone. `failed` is terminal for wake-ups and the sweep; only a re-run of the
+  execute job (a `pull_request_target` event or a manual re-run) retries, otherwise unrelated
+  Check Run events could re-run a failed paid backend in a loop. The pull request number and head
+  come from the event payload (`pull_requests[0]`, `head_sha`) and are checked against the API
+  like any other event, so a wake-up about a superseded head does nothing.
+- **Concurrency of wake-ups.** A relevant wake-up uses the same concurrency group as the pull
+  request's other events (`stagr-<id>-<pull request number>`), so the execute job stays the only,
+  serialized creator of the Check Run. An irrelevant `check_run` / `check_suite` event gets a group
+  of its own (the run id): with `cancel-in-progress: false` GitHub keeps one pending run per group
+  and replaces it with the next one, so an unrelated event in the shared group could push out a
+  real wake-up. Two relevant events can still replace one another; that is harmless because every
+  run reads the current state instead of trusting its event. Every check in the repository still
+  starts a run of each dependent stage's workflow, which is skipped by the `if:` conditions.
+- **Known limitation: the sweep cannot start a dependent stage.** The sweep re-reads the upstream
+  signals of every open pull request, so it sees an upstream `blocked` -> `pass` flip (which may
+  raise no `check_run` event). It uses them to complete an existing signal, to fail it when an
+  upstream failed, and to leave it alone while an upstream has not passed. It cannot start a stage
+  that has not started, because starting needs the backend secret and creating the Check Run,
+  and the sweep holds neither. Such a stage starts the next time its execute job runs: a wake-up
+  event of an upstream signal, a reopen, `ready_for_review`, or a manual re-run of the workflow. The
+  sweep logs "dependencies have passed but the stage has not started" for it.
+- **Known limitation: fork pull requests and wake-ups.** The Check Run payload names no pull
+  request for a fork, so a fork pull request (allowed only for a non-privileged stage under
+  `ForkPolicy.ALLOW_UNPRIVILEGED`) is not woken by upstream signals. Its dependent stage starts
+  only if the upstream had already passed when a pull request event or a manual re-run arrived.
 - **Known limitation: the sweep cannot re-invoke.** The sweep job must not hold the backend
   secret, so it never posts an invocation. If a backend drops an invocation and the lease expires,
   the pull request stays `running` until the `execute` job next runs for that same head (a
