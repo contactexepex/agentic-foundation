@@ -1,10 +1,34 @@
-"""Render-pipeline error types.
+"""Neutral-core and render-pipeline error types.
 
-Errors raised during the Phase 1 rendering loop. These are distinct from
-normalization-time errors (ConfigError, StaticValidationError in models.py)
-because they occur after the normalized stage graph has been validated.
+``ConfigVersionError`` is raised by ``parse_config`` (V-S02) when the version
+field in a config file is not the supported integer 2.
+
+``SecretAliasResolutionError`` is raised during the Phase 1 rendering loop. It
+is distinct from normalization-time errors (``ConfigError``,
+``StaticValidationError`` in models.py) because it occurs after the normalized
+stage graph has been validated.
 """
 from __future__ import annotations
+
+
+class ConfigVersionError(ValueError):
+    """Raised when the config file's ``version`` field is not the supported value.
+
+    V-S02: the only supported version is ``2`` (integer). Any other value —
+    including a string ``"2"``, an integer ``1``, or a missing ``version`` key
+    — causes this error to be raised by ``parse_config``.
+
+    ``found_version`` carries the actual value read from the file (or ``None``
+    when the key is absent), so callers and test assertions can inspect it
+    without parsing the error message.
+    """
+
+    def __init__(self, found_version: object) -> None:
+        self.found_version = found_version
+        super().__init__(
+            f"unsupported config version {found_version!r}; "
+            "the only supported version is 2 (integer)"
+        )
 
 
 class SecretAliasResolutionError(Exception):

@@ -55,18 +55,6 @@ from neutral_core_tests.test_normalize import (
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
 )
-from neutral_core_tests.test_dag import (
-    test_dag_linear_chain_passes,
-    test_dag_cycle_raises_v_s04,
-    test_dag_unknown_dep_raises_v_s05,
-    test_dag_disabled_dep_raises_v_s05,
-    test_dag_no_deps_passes,
-    test_dag_does_not_mutate_input,
-    test_dag_parallel_stages_pass,
-    test_dag_empty_active_stages_passes,
-    test_dag_direct_two_stage_cycle_raises_v_s04,
-    test_dag_cycle_error_excludes_downstream_dependents,
-)
 from neutral_core_tests.test_dag_validator import DAG_VALIDATOR_TESTS
 from neutral_core_tests.test_skill_validator import (
     test_v_s06_stage_with_no_skill_raises_no_error,
@@ -194,6 +182,9 @@ from neutral_core_tests.test_platform_renderer import (
 )
 from neutral_core_tests.phase1_render_loop_tests import PHASE1_RENDER_LOOP_TESTS
 from neutral_core_tests.github_platform_renderer_tests import GITHUB_PLATFORM_RENDERER_TESTS
+from neutral_core_tests.test_config_parser import CONFIG_PARSER_TESTS
+from neutral_core_tests.test_static_validator import STATIC_VALIDATOR_TESTS
+
 
 _TESTS = [
     test_enum_string_values,
@@ -227,16 +218,6 @@ _TESTS = [
     test_expand_profile_defaults_standard_includes_all_profile_stages,
     test_expand_profile_defaults_nested_lists_are_not_shared,
     test_expand_profile_defaults_operator_depends_on_survives_expansion,
-    test_dag_linear_chain_passes,
-    test_dag_cycle_raises_v_s04,
-    test_dag_unknown_dep_raises_v_s05,
-    test_dag_disabled_dep_raises_v_s05,
-    test_dag_no_deps_passes,
-    test_dag_does_not_mutate_input,
-    test_dag_parallel_stages_pass,
-    test_dag_empty_active_stages_passes,
-    test_dag_direct_two_stage_cycle_raises_v_s04,
-    test_dag_cycle_error_excludes_downstream_dependents,
     *DAG_VALIDATOR_TESTS,
     test_v_s06_stage_with_no_skill_raises_no_error,
     test_v_s06_missing_skill_file_raises_error_with_code,
@@ -340,6 +321,8 @@ _TESTS = [
     test_platform_renderer_dry_run_render_governance_raises_value_error,
     *PHASE1_RENDER_LOOP_TESTS,
     *GITHUB_PLATFORM_RENDERER_TESTS,
+    *CONFIG_PARSER_TESTS,
+    *STATIC_VALIDATOR_TESTS,
 ]
 
 if __name__ == "__main__":

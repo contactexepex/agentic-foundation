@@ -31,12 +31,13 @@ _BASE = {
          "triggers": ["pr_opened", "pr_updated"]},
     ],
 }
-# An implement-only graph (no codex review required), so the fast path may be ON — used for glob cases.
+# An implement-only graph without auto_merge, used for glob/injection/build-command tests.
+# V-S10 forbids auto_merge without at least one BLOCKING stage, so auto_merge is absent here;
+# tests that need auto-merge.yml use _BASE (blocking Codex review+security graph).
 _IMPL_BASE = {
     "version": 2, "profile": "custom",
     "platform": {"type": "github", "default_branch": "main"},
     "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c"}}},
-    "modules": {"auto_merge": True},
     "stages": [{"id": "implement", "type": "implement", "backend": {"name": "claude-code-action"}}],
 }
 
@@ -122,7 +123,7 @@ def test_auto_merge_config_hardening() -> None:
                       f"protected_paths: {bad!r} rejected at front door")
     # Protected paths support ONLY exact paths and 'dir/**' prefixes (matched deterministically); general
     # globs are rejected because bash cannot reliably match '**' (a '**/*.yml' would miss a root-level file).
-    ok = render.render_all(_with(_IMPL_BASE, merge={"protected_paths": ["config/**", "infra/main.tf"]}), "github")["auto-merge.yml"]
+    ok = render.render_all(_with(_BASE, merge={"protected_paths": ["config/**", "infra/main.tf"]}), "github")["auto-merge.yml"]
     check('"config/**"' in ok and '"infra/main.tf"' in ok, "protected_paths: dir/** prefix + exact path render")
     for bad in ("**/*.yml", "src/*", "a/**/b", "?.yml"):
         cfg = _with(_IMPL_BASE, merge={"protected_paths": [bad]})
