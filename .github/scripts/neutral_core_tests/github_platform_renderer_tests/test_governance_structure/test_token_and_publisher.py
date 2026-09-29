@@ -1,9 +1,6 @@
 """Tests for governance workflow App token acquisition and publisher identity (issue #196)."""
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 from neutral_core_tests.github_platform_renderer_tests.helpers import (
     TEST_PUBLISHER_APP_ID,
     TEST_PUBLISHER_PRIVATE_KEY_SECRET,
@@ -19,24 +16,19 @@ from neutral_core_tests.github_platform_renderer_tests.test_governance_structure
 )
 
 
-def test_governance_file_written_at_correct_path() -> None:
-    """render_governance writes governance.yml at .github/workflows/governance.yml."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        renderer = build_renderer(output_dir=output_dir)
-        stage = build_stage()
-        context = build_render_context(stage)
-        spec = StageResultSpec(
-            stage_id=stage.id,
-            signal_kind=StageResultSignalKind.CHECK_RUN,
-            signal_selector="stagr/stage/review",
-            provenance=StageResultProvenance(publisher_identity=TEST_PUBLISHER_APP_ID),
-        )
-        renderer.render_governance((spec,), context)
-        expected_path = output_dir / ".github" / "workflows" / "governance.yml"
-        assert expected_path.exists(), (
-            f"Governance workflow must be written at {expected_path}"
-        )
+def test_governance_artifact_has_correct_path() -> None:
+    """render_governance returns the artifact at .github/workflows/governance.yml."""
+    stage = build_stage()
+    spec = StageResultSpec(
+        stage_id=stage.id,
+        signal_kind=StageResultSignalKind.CHECK_RUN,
+        signal_selector="stagr/stage/review",
+        provenance=StageResultProvenance(publisher_identity=TEST_PUBLISHER_APP_ID),
+    )
+    governance_artifact = build_renderer().render_governance((spec,), build_render_context(stage))
+    assert governance_artifact.path == ".github/workflows/governance.yml", (
+        f"unexpected governance artifact path {governance_artifact.path!r}"
+    )
 
 
 def test_governance_workflow_references_private_key_secret() -> None:

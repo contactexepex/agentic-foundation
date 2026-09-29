@@ -271,6 +271,43 @@ class StageResultSpec:
 
 
 @dataclass(frozen=True)
+class RenderedArtifact:
+    """One generated file: where it belongs in the repository and what it contains.
+
+    A PlatformRenderer returns artifacts and never writes them; the caller decides
+    whether to list them (``stagr plan``) or write them (``stagr apply``).
+    ``path`` is a POSIX path relative to the repository root, for example
+    ``.github/workflows/stage-review.yml``.
+    """
+
+    path: str
+    content: str
+
+    def __post_init__(self) -> None:
+        path_segments = self.path.split("/")
+        is_unsafe_path = (
+            not self.path
+            or "\\" in self.path
+            or "\0" in self.path
+            or self.path.startswith("/")
+            or any(segment in ("", ".", "..") for segment in path_segments)
+        )
+        if is_unsafe_path:
+            raise ValueError(
+                f"artifact path {self.path!r} must be a relative POSIX path "
+                f"without empty, '.' or '..' segments"
+            )
+
+
+@dataclass(frozen=True)
+class StageRender:
+    """Phase 1 output for one stage: its result declaration and its execution artifact."""
+
+    result_spec: StageResultSpec
+    artifact: RenderedArtifact
+
+
+@dataclass(frozen=True)
 class StageResultSignal:
     """Run-time value emitted by a stage execution artifact.
 

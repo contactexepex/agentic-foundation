@@ -5,9 +5,6 @@ backend invocation step, and security invariant for privileged stages.
 """
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
 from neutral_core_tests.github_platform_renderer_tests.helpers import (
     TEST_PUBLISHER_APP_ID,
     TEST_PUBLISHER_PRIVATE_KEY_SECRET,
@@ -25,20 +22,11 @@ def _render_to_string(
     triggers: tuple[StageTrigger, ...] = (StageTrigger.PR_OPENED, StageTrigger.PR_UPDATED),
     required_secrets: tuple[SecretRef, ...] = (),
 ) -> str:
-    """Render a stage in dry-run mode and return the generated YAML from disk.
-
-    Uses a real temporary directory so the file is actually written, then reads
-    it back for inspection.
-    """
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        renderer = build_renderer(output_dir=output_dir)
-        stage = build_stage(stage_id=stage_id, triggers=triggers)
-        plan = build_execution_plan(stage_id=stage_id, required_secrets=required_secrets)
-        context = build_render_context(stage)
-        renderer.render_stage(plan, stage, context)
-        workflow_path = output_dir / ".github" / "workflows" / f"stage-{stage_id}.yml"
-        return workflow_path.read_text(encoding="utf-8")
+    """Render a stage and return the generated workflow YAML."""
+    stage = build_stage(stage_id=stage_id, triggers=triggers)
+    plan = build_execution_plan(stage_id=stage_id, required_secrets=required_secrets)
+    context = build_render_context(stage)
+    return build_renderer().render_stage(plan, stage, context).artifact.content
 
 
 # ------------------------------------------------------------------
@@ -240,20 +228,15 @@ def test_result_signaling_step_uses_app_token() -> None:
 # Workflow file naming
 # ------------------------------------------------------------------
 
-def test_workflow_file_written_with_correct_name() -> None:
-    """Workflow file is written as .github/workflows/stage-<id>.yml inside output_dir."""
+def test_stage_artifact_has_correct_path() -> None:
+    """The stage artifact path is .github/workflows/stage-<id>.yml."""
     stage_id = "security"
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        renderer = build_renderer(output_dir=output_dir)
-        stage = build_stage(stage_id=stage_id)
-        plan = build_execution_plan(stage_id=stage_id)
-        context = build_render_context(stage)
-        renderer.render_stage(plan, stage, context)
-        expected_file = output_dir / ".github" / "workflows" / f"stage-{stage_id}.yml"
-        assert expected_file.exists(), (
-            f"Workflow file must be written at {expected_file}"
-        )
+    stage = build_stage(stage_id=stage_id)
+    plan = build_execution_plan(stage_id=stage_id)
+    stage_render = build_renderer().render_stage(plan, stage, build_render_context(stage))
+    assert stage_render.artifact.path == f".github/workflows/stage-{stage_id}.yml", (
+        f"unexpected stage artifact path {stage_render.artifact.path!r}"
+    )
 
 
 def test_backend_invocation_step_env_is_plan_driven() -> None:

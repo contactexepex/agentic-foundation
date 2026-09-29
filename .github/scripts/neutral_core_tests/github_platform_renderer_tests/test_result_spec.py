@@ -1,13 +1,13 @@
-"""Tests for GitHubPlatformRenderer StageResultSpec, Protocol conformance, dry-run (issue #194).
+"""Tests for GitHubPlatformRenderer returned artifacts, StageResultSpec and Protocol conformance (issue #194).
 
 Covers: StageResultSpec fields (signal_kind=CHECK_RUN, provenance.publisher_identity),
-dry-run mode (no files written but StageResultSpec returned), Protocol conformance,
-and Phase 2 dry-run raises.
+the artifacts every render method returns (path and content), that the renderer writes no
+files, and Protocol conformance.
 """
 from __future__ import annotations
 
+import os
 import tempfile
-from pathlib import Path
 
 from neutral_core_tests.github_platform_renderer_tests.helpers import (
     TEST_PUBLISHER_APP_ID,
@@ -16,35 +16,48 @@ from neutral_core_tests.github_platform_renderer_tests.helpers import (
     build_renderer,
     build_stage,
 )
-from stagr.core.enums import StageTrigger
-from stagr.core.models import StageResultSpec
+from stagr.core.enums import StageResultSignalKind, StageTrigger
+from stagr.core.models import (
+    RenderedArtifact,
+    StageRender,
+    StageResultProvenance,
+    StageResultSpec,
+)
 
 
-# ------------------------------------------------------------------
-# StageResultSpec return value tests
-# ------------------------------------------------------------------
+def _render_stage(stage_id: str = "review"):
+    stage = build_stage(stage_id=stage_id)
+    plan = build_execution_plan(stage_id=stage_id)
+    return build_renderer().render_stage(plan, stage, build_render_context(stage))
 
-def test_render_stage_returns_stage_result_spec() -> None:
-    """render_stage returns a StageResultSpec instance."""
-    renderer = build_renderer(output_dir=None)
-    stage = build_stage()
-    plan = build_execution_plan()
-    context = build_render_context(stage)
-    result = renderer.render_stage(plan, stage, context)
-    assert isinstance(result, StageResultSpec), (
-        f"render_stage must return StageResultSpec; got {type(result)!r}"
+
+def _build_result_spec(stage_id: str) -> StageResultSpec:
+    return StageResultSpec(
+        stage_id=stage_id,
+        signal_kind=StageResultSignalKind.CHECK_RUN,
+        signal_selector=f"stagr/stage/{stage_id}",
+        provenance=StageResultProvenance(publisher_identity=TEST_PUBLISHER_APP_ID),
     )
+
+
+# ------------------------------------------------------------------
+# Stage render (StageResultSpec + artifact)
+# ------------------------------------------------------------------
+
+def test_render_stage_returns_stage_render() -> None:
+    """render_stage returns a StageRender holding a StageResultSpec and a RenderedArtifact."""
+    stage_render = _render_stage()
+    assert isinstance(stage_render, StageRender), (
+        f"render_stage must return StageRender; got {type(stage_render)!r}"
+    )
+    assert isinstance(stage_render.result_spec, StageResultSpec)
+    assert isinstance(stage_render.artifact, RenderedArtifact)
+    assert stage_render.artifact.content.strip(), "stage artifact must have content"
 
 
 def test_stage_result_spec_signal_kind_is_check_run() -> None:
     """StageResultSpec.signal_kind equals StageResultSignalKind.CHECK_RUN."""
-    from stagr.core.enums import StageResultSignalKind
-
-    renderer = build_renderer(output_dir=None)
-    stage = build_stage()
-    plan = build_execution_plan()
-    context = build_render_context(stage)
-    result = renderer.render_stage(plan, stage, context)
+    result = _render_stage().result_spec
     assert result.signal_kind is StageResultSignalKind.CHECK_RUN, (
         f"signal_kind must be CHECK_RUN; got {result.signal_kind!r}"
     )
@@ -52,11 +65,7 @@ def test_stage_result_spec_signal_kind_is_check_run() -> None:
 
 def test_stage_result_spec_provenance_publisher_identity_equals_app_id() -> None:
     """StageResultSpec.provenance.publisher_identity equals the configured App ID."""
-    renderer = build_renderer(output_dir=None)
-    stage = build_stage()
-    plan = build_execution_plan()
-    context = build_render_context(stage)
-    result = renderer.render_stage(plan, stage, context)
+    result = _render_stage().result_spec
     assert result.provenance.publisher_identity == TEST_PUBLISHER_APP_ID, (
         f"provenance.publisher_identity must be '{TEST_PUBLISHER_APP_ID}'; "
         f"got '{result.provenance.publisher_identity}'"
@@ -65,148 +74,60 @@ def test_stage_result_spec_provenance_publisher_identity_equals_app_id() -> None
 
 def test_stage_result_spec_signal_selector_contains_stage_id() -> None:
     """StageResultSpec.signal_selector encodes the stage id in the Check Run name."""
-    stage_id = "security"
-    renderer = build_renderer(output_dir=None)
-    stage = build_stage(stage_id=stage_id)
-    plan = build_execution_plan(stage_id=stage_id)
-    context = build_render_context(stage)
-    result = renderer.render_stage(plan, stage, context)
-    assert stage_id in result.signal_selector, (
-        f"signal_selector '{result.signal_selector}' must contain stage id '{stage_id}'"
+    result = _render_stage(stage_id="security").result_spec
+    assert "security" in result.signal_selector, (
+        f"signal_selector '{result.signal_selector}' must contain stage id 'security'"
     )
 
 
 def test_stage_result_spec_stage_id_matches_stage() -> None:
     """StageResultSpec.stage_id matches the rendered stage's id."""
-    stage_id = "review"
-    renderer = build_renderer(output_dir=None)
-    stage = build_stage(stage_id=stage_id)
-    plan = build_execution_plan(stage_id=stage_id)
-    context = build_render_context(stage)
-    result = renderer.render_stage(plan, stage, context)
-    assert result.stage_id == stage_id, (
-        f"result.stage_id must be '{stage_id}'; got '{result.stage_id}'"
-    )
+    result = _render_stage(stage_id="review").result_spec
+    assert result.stage_id == "review", f"result.stage_id must be 'review'; got '{result.stage_id}'"
 
 
 # ------------------------------------------------------------------
-# Dry-run mode tests
+# Phase 2 artifacts
 # ------------------------------------------------------------------
 
-def test_dry_run_render_stage_returns_stage_result_spec() -> None:
-    """render_stage returns StageResultSpec in dry-run mode (output_dir=None)."""
-    renderer = build_renderer(output_dir=None)
+def test_render_routing_returns_routing_artifact() -> None:
+    """render_routing returns the routing workflow at .github/workflows/routing.yml."""
     stage = build_stage()
-    plan = build_execution_plan()
-    context = build_render_context(stage)
-    result = renderer.render_stage(plan, stage, context)
-    assert isinstance(result, StageResultSpec), (
-        "render_stage must return StageResultSpec in dry-run mode"
+    routing_artifact = build_renderer().render_routing(build_render_context(stage))
+    assert isinstance(routing_artifact, RenderedArtifact), f"got {type(routing_artifact)!r}"
+    assert routing_artifact.path == ".github/workflows/routing.yml", routing_artifact.path
+    assert routing_artifact.content.strip(), "routing artifact must have content"
+
+
+def test_render_governance_returns_governance_artifact() -> None:
+    """render_governance returns a non-empty artifact (path is asserted in the publisher tests)."""
+    stage = build_stage()
+    governance_artifact = build_renderer().render_governance(
+        (_build_result_spec(stage.id),), build_render_context(stage)
     )
+    assert isinstance(governance_artifact, RenderedArtifact), f"got {type(governance_artifact)!r}"
+    assert governance_artifact.content.strip(), "governance artifact must have content"
 
 
-def test_dry_run_produces_no_files() -> None:
-    """render_stage in dry-run mode writes no files."""
-    renderer = build_renderer(output_dir=None)
-    stage = build_stage()
-    plan = build_execution_plan()
-    context = build_render_context(stage)
-    # No exception must be raised, but no files should exist anywhere.
-    renderer.render_stage(plan, stage, context)
-    # No assert on filesystem since output_dir is None (no disk target).
-    # The positive control (non-dry-run) is covered by test_workflow_structure.py.
-
-
-def test_dry_run_produces_no_files_positive_control() -> None:
-    """Non-dry-run mode writes a file; confirms the dry-run absence is not vacuous."""
-    stage = build_stage()
-    plan = build_execution_plan()
-    context = build_render_context(stage)
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        live_renderer = build_renderer(output_dir=output_dir)
-        live_renderer.render_stage(plan, stage, context)
-        written_files = list(output_dir.iterdir())
-        assert written_files, (
-            "Positive control: non-dry-run renderer must write at least one file"
-        )
-
-
-def test_dry_run_render_routing_raises_value_error() -> None:
-    """render_routing raises ValueError in dry-run mode (output_dir=None)."""
-    renderer = build_renderer(output_dir=None)
+def test_renderer_methods_write_no_files() -> None:
+    """All three render methods leave the working directory empty; artifacts are only returned."""
     stage = build_stage()
     context = build_render_context(stage)
-    try:
-        renderer.render_routing(context)
-        assert False, "render_routing must raise ValueError in dry-run mode"  # noqa: B011
-    except ValueError:
-        pass  # expected
-
-
-def test_live_mode_render_routing_writes_workflow_file() -> None:
-    """render_routing writes a routing.yml workflow file in live mode (output_dir set)."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        renderer = build_renderer(output_dir=output_dir)
-        stage = build_stage()
-        context = build_render_context(stage)
-        renderer.render_routing(context)
-        routing_workflow_path = output_dir / ".github" / "workflows" / "routing.yml"
-        assert routing_workflow_path.exists(), (
-            f"render_routing must write routing.yml at {routing_workflow_path}"
-        )
-        routing_yaml_content = routing_workflow_path.read_text(encoding="utf-8")
-        assert routing_yaml_content.strip(), (
-            "render_routing must write non-empty routing.yml content"
-        )
-
-
-def test_dry_run_render_governance_raises_value_error() -> None:
-    """render_governance raises ValueError in dry-run mode (output_dir=None)."""
-    from stagr.core.enums import StageResultSignalKind
-    from stagr.core.models import StageResultProvenance
-
-    renderer = build_renderer(output_dir=None)
-    stage = build_stage()
-    context = build_render_context(stage)
-    spec = StageResultSpec(
-        stage_id=stage.id,
-        signal_kind=StageResultSignalKind.CHECK_RUN,
-        signal_selector="stagr/stage/review",
-        provenance=StageResultProvenance(publisher_identity="99001"),
+    renderer = build_renderer()
+    original_directory = os.getcwd()
+    with tempfile.TemporaryDirectory() as empty_directory:
+        os.chdir(empty_directory)
+        try:
+            stage_render = renderer.render_stage(build_execution_plan(), stage, context)
+            routing_artifact = renderer.render_routing(context)
+            governance_artifact = renderer.render_governance((stage_render.result_spec,), context)
+            written_entries = os.listdir(empty_directory)
+        finally:
+            os.chdir(original_directory)
+    assert stage_render.artifact.content and routing_artifact.content and governance_artifact.content, (
+        "positive control: every method must have returned content"
     )
-    try:
-        renderer.render_governance((spec,), context)
-        assert False, "render_governance must raise ValueError in dry-run mode"  # noqa: B011
-    except ValueError:
-        pass  # expected
-
-
-def test_live_mode_render_governance_writes_governance_workflow_file() -> None:
-    """render_governance writes governance.yml in live mode (output_dir set)."""
-    from stagr.core.enums import StageResultSignalKind
-    from stagr.core.models import StageResultProvenance
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        renderer = build_renderer(output_dir=output_dir)
-        stage = build_stage()
-        context = build_render_context(stage)
-        spec = StageResultSpec(
-            stage_id=stage.id,
-            signal_kind=StageResultSignalKind.CHECK_RUN,
-            signal_selector="stagr/stage/review",
-            provenance=StageResultProvenance(publisher_identity="99001"),
-        )
-        # Must not raise — render_governance is now implemented.
-        renderer.render_governance((spec,), context)
-        governance_file = output_dir / ".github" / "workflows" / "governance.yml"
-        assert governance_file.exists(), (
-            "render_governance must write governance.yml at "
-            ".github/workflows/governance.yml inside output_dir"
-        )
+    assert written_entries == [], f"renderer wrote to the working directory: {written_entries}"
 
 
 # ------------------------------------------------------------------
@@ -219,7 +140,6 @@ def test_github_platform_renderer_protocol_conformance() -> None:
     from stagr.platforms.github.renderer import GitHubPlatformRenderer
 
     renderer = GitHubPlatformRenderer(
-        output_dir=None,
         publisher_app_id="99001",
         publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
     )
@@ -237,15 +157,7 @@ def test_pr_opened_and_pr_updated_combine_into_single_pull_request_target_block(
     """PR_OPENED + PR_UPDATED produce one pull_request_target block with all events."""
     stage = build_stage(triggers=(StageTrigger.PR_OPENED, StageTrigger.PR_UPDATED))
     plan = build_execution_plan()
-    context = build_render_context(stage)
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        renderer = build_renderer(output_dir=output_dir)
-        renderer.render_stage(plan, stage, context)
-        yaml_content = (
-            output_dir / ".github" / "workflows" / "stage-review.yml"
-        ).read_text(encoding="utf-8")
+    yaml_content = build_renderer().render_stage(plan, stage, build_render_context(stage)).artifact.content
 
     # Should appear exactly once, not twice.
     assert yaml_content.count("pull_request_target:") == 1, (
@@ -259,15 +171,7 @@ def test_manual_trigger_produces_workflow_dispatch_only() -> None:
     """MANUAL trigger produces workflow_dispatch without pull_request_target."""
     stage = build_stage(triggers=(StageTrigger.MANUAL,))
     plan = build_execution_plan()
-    context = build_render_context(stage)
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        output_dir = Path(temp_dir)
-        renderer = build_renderer(output_dir=output_dir)
-        renderer.render_stage(plan, stage, context)
-        yaml_content = (
-            output_dir / ".github" / "workflows" / "stage-review.yml"
-        ).read_text(encoding="utf-8")
+    yaml_content = build_renderer().render_stage(plan, stage, build_render_context(stage)).artifact.content
 
     assert "workflow_dispatch" in yaml_content
     assert "pull_request_target" not in yaml_content

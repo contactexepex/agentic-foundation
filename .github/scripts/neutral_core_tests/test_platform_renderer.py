@@ -1,13 +1,9 @@
 """Tests for the PlatformRenderer Protocol interface (issue #192).
 
-Covers: Protocol conformance, neutral-type-only interface, dry-run mode
-(output_dir=None produces no files, render_stage returns StageResultSpec,
-render_routing and render_governance raise ValueError in dry-run mode).
+Covers: Protocol conformance, neutral-type-only interface, and the returned-artifact
+contract (every render method returns RenderedArtifact values; none writes files).
 """
 from __future__ import annotations
-
-import tempfile
-from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -105,50 +101,37 @@ def _build_minimal_stage_result_spec():
 
 
 class _StubPlatformRenderer:
-    """Minimal PlatformRenderer implementation for conformance and dry-run testing.
+    """Minimal PlatformRenderer implementation for conformance testing.
 
-    Accepts output_dir: Path | None. When None (dry-run), render_stage returns
-    a StageResultSpec without writing files; render_routing and render_governance
-    raise ValueError. All writes are recorded in written_paths for test inspection.
+    Returns artifacts and never touches the file system.
     """
-
-    def __init__(self, output_dir: Path | None) -> None:
-        self._output_dir = output_dir
-        self.written_paths: list[Path] = []
 
     def render_stage(
         self,
         plan: "ExecutionPlan",  # noqa: F821
         stage: "NormalizedStage",  # noqa: F821
         render_context: "RenderContext",  # noqa: F821
-    ) -> "StageResultSpec":  # noqa: F821
-        if self._output_dir is not None:
-            artifact_path = self._output_dir / f"{stage.id}.yml"
-            artifact_path.write_text("# stub artifact\n")
-            self.written_paths.append(artifact_path)
-        return _build_minimal_stage_result_spec()
+    ) -> "StageRender":  # noqa: F821
+        from stagr.core.models import RenderedArtifact, StageRender
 
-    def render_routing(self, render_context: "RenderContext") -> None:  # noqa: F821
-        if self._output_dir is None:
-            raise ValueError(
-                "render_routing cannot be called in dry-run mode (output_dir is None)"
-            )
-        routing_path = self._output_dir / "routing.yml"
-        routing_path.write_text("# stub routing\n")
-        self.written_paths.append(routing_path)
+        return StageRender(
+            result_spec=_build_minimal_stage_result_spec(),
+            artifact=RenderedArtifact(path=f"stages/{stage.id}.yml", content="# stub artifact\n"),
+        )
+
+    def render_routing(self, render_context: "RenderContext") -> "RenderedArtifact":  # noqa: F821
+        from stagr.core.models import RenderedArtifact
+
+        return RenderedArtifact(path="routing.yml", content="# stub routing\n")
 
     def render_governance(
         self,
         result_specs: "tuple[StageResultSpec, ...]",  # noqa: F821
         render_context: "RenderContext",  # noqa: F821
-    ) -> None:
-        if self._output_dir is None:
-            raise ValueError(
-                "render_governance cannot be called in dry-run mode (output_dir is None)"
-            )
-        governance_path = self._output_dir / "governance.yml"
-        governance_path.write_text("# stub governance\n")
-        self.written_paths.append(governance_path)
+    ) -> "RenderedArtifact":  # noqa: F821
+        from stagr.core.models import RenderedArtifact
+
+        return RenderedArtifact(path="governance.yml", content="# stub governance\n")
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +142,7 @@ def test_platform_renderer_protocol_conformance() -> None:
     """A minimal stub satisfies the PlatformRenderer Protocol (runtime isinstance check)."""
     from stagr.core.platform_renderer import PlatformRenderer
 
-    stub = _StubPlatformRenderer(output_dir=None)
+    stub = _StubPlatformRenderer()
 
     assert isinstance(stub, PlatformRenderer), (
         f"_StubPlatformRenderer must be recognised as a PlatformRenderer by isinstance(); "
@@ -175,7 +158,7 @@ def test_platform_renderer_interface_uses_only_neutral_types() -> None:
     (e.g. a GitHub workflow type) would fail this test.
 
     Approved annotations: ExecutionPlan, NormalizedStage, RenderContext,
-    StageResultSpec, NoneType, and tuple[<neutral>, ...].
+    StageResultSpec, StageRender, RenderedArtifact, and tuple[<neutral>, ...].
     """
     import typing
 
@@ -184,15 +167,17 @@ def test_platform_renderer_interface_uses_only_neutral_types() -> None:
         ExecutionPlan,
         NormalizedStage,
         RenderContext,
+        RenderedArtifact,
+        StageRender,
         StageResultSpec,
     )
 
-    neutral_types = frozenset({ExecutionPlan, NormalizedStage, RenderContext, StageResultSpec})
+    neutral_types = frozenset(
+        {ExecutionPlan, NormalizedStage, RenderContext, StageResultSpec, StageRender, RenderedArtifact}
+    )
 
     def _is_neutral(annotation: object) -> bool:
-        """Return True if annotation is composed only of neutral types or NoneType/tuple."""
-        if annotation is type(None):
-            return True
+        """Return True if annotation is composed only of neutral types or tuple."""
         if annotation in neutral_types:
             return True
         origin = typing.get_origin(annotation)
@@ -217,102 +202,44 @@ def test_platform_renderer_interface_uses_only_neutral_types() -> None:
             )
 
 
-def test_platform_renderer_dry_run_render_stage_returns_spec() -> None:
-    """render_stage returns a StageResultSpec in dry-run mode (output_dir=None)."""
-    from stagr.core.models import StageResultSpec
+def test_platform_renderer_methods_return_artifacts() -> None:
+    """render_stage, render_routing and render_governance each return their artifact."""
+    from stagr.core.models import RenderedArtifact, StageRender
 
-    stub = _StubPlatformRenderer(output_dir=None)
-    plan = _build_minimal_execution_plan()
-    stage = _build_minimal_normalized_stage()
+    stub = _StubPlatformRenderer()
     render_context = _build_minimal_render_context()
 
-    result = stub.render_stage(plan, stage, render_context)
-
-    assert isinstance(result, StageResultSpec), (
-        f"render_stage must return a StageResultSpec in dry-run mode; "
-        f"got {type(result)!r}"
+    stage_render = stub.render_stage(
+        _build_minimal_execution_plan(), _build_minimal_normalized_stage(), render_context
     )
+    routing_artifact = stub.render_routing(render_context)
+    governance_artifact = stub.render_governance((_build_minimal_stage_result_spec(),), render_context)
+
+    assert isinstance(stage_render, StageRender), f"got {type(stage_render)!r}"
+    assert isinstance(stage_render.artifact, RenderedArtifact)
+    assert isinstance(routing_artifact, RenderedArtifact), f"got {type(routing_artifact)!r}"
+    assert isinstance(governance_artifact, RenderedArtifact), f"got {type(governance_artifact)!r}"
 
 
-def test_platform_renderer_dry_run_produces_no_files() -> None:
-    """A concrete renderer with output_dir=None writes no files during render_stage.
+def test_rendered_artifact_accepts_repository_relative_posix_path() -> None:
+    """A normal workflow path is accepted unchanged."""
+    from stagr.core.models import RenderedArtifact
 
-    Uses a positive control to confirm the same stub DOES write when given a real
-    output_dir, making the dry-run assertion non-vacuous.
-    """
-    plan = _build_minimal_execution_plan()
-    stage = _build_minimal_normalized_stage()
-    render_context = _build_minimal_render_context()
+    artifact = RenderedArtifact(path=".github/workflows/stage-review.yml", content="name: x\n")
 
-    with tempfile.TemporaryDirectory() as temp_directory:
-        output_dir = Path(temp_directory)
-
-        # Positive control: the stub writes when output_dir is a real path.
-        live_stub = _StubPlatformRenderer(output_dir=output_dir)
-        live_stub.render_stage(plan, stage, render_context)
-        assert live_stub.written_paths, (
-            "positive control: live stub must record at least one write"
-        )
-        assert list(output_dir.iterdir()), (
-            "positive control: output_dir must contain written files"
-        )
-
-    # Dry-run: output_dir=None — the stub must not record any writes.
-    dry_run_stub = _StubPlatformRenderer(output_dir=None)
-    dry_run_stub.render_stage(plan, stage, render_context)
-
-    assert not dry_run_stub.written_paths, (
-        f"render_stage in dry-run mode must not write any files; "
-        f"recorded writes: {dry_run_stub.written_paths}"
-    )
+    assert artifact.path == ".github/workflows/stage-review.yml"
+    assert artifact.content == "name: x\n"
 
 
-def test_platform_renderer_non_dry_run_render_stage_writes_file() -> None:
-    """A concrete renderer with a real output_dir writes a file during render_stage."""
-    from stagr.core.models import StageResultSpec
+def test_rendered_artifact_rejects_unsafe_paths() -> None:
+    """Empty, absolute, backslash, NUL, '.', '..' and empty-segment paths are rejected."""
+    from stagr.core.models import RenderedArtifact
 
-    plan = _build_minimal_execution_plan()
-    stage = _build_minimal_normalized_stage()
-    render_context = _build_minimal_render_context()
-
-    with tempfile.TemporaryDirectory() as temp_directory:
-        output_dir = Path(temp_directory)
-        stub = _StubPlatformRenderer(output_dir=output_dir)
-
-        result = stub.render_stage(plan, stage, render_context)
-
-        assert isinstance(result, StageResultSpec), (
-            f"render_stage must return StageResultSpec; got {type(result)!r}"
-        )
-        assert list(output_dir.iterdir()), (
-            "render_stage with a real output_dir must write at least one file"
-        )
-
-
-def test_platform_renderer_dry_run_render_routing_raises_value_error() -> None:
-    """render_routing raises ValueError when called in dry-run mode (output_dir=None)."""
-    stub = _StubPlatformRenderer(output_dir=None)
-    render_context = _build_minimal_render_context()
-
-    try:
-        stub.render_routing(render_context)
-        assert False, (  # noqa: B011
-            "render_routing must raise ValueError when output_dir is None (dry-run mode)"
-        )
-    except ValueError:
-        pass  # expected
-
-
-def test_platform_renderer_dry_run_render_governance_raises_value_error() -> None:
-    """render_governance raises ValueError when called in dry-run mode (output_dir=None)."""
-    stub = _StubPlatformRenderer(output_dir=None)
-    render_context = _build_minimal_render_context()
-    result_spec = _build_minimal_stage_result_spec()
-
-    try:
-        stub.render_governance((result_spec,), render_context)
-        assert False, (  # noqa: B011
-            "render_governance must raise ValueError when output_dir is None (dry-run mode)"
-        )
-    except ValueError:
-        pass  # expected
+    unsafe_paths = ("", "/etc/passwd", "../outside.yml", "a/../b.yml", "./a.yml", "a/./b.yml",
+                    "a//b.yml", "a\\b.yml", "a/b\0.yml", "dir/")
+    for unsafe_path in unsafe_paths:
+        try:
+            RenderedArtifact(path=unsafe_path, content="")
+        except ValueError:
+            continue
+        assert False, f"RenderedArtifact must reject path {unsafe_path!r}"  # noqa: B011

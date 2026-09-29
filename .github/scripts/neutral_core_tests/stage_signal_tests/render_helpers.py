@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import dataclasses
-import tempfile
-from pathlib import Path
 from typing import Any
 
 import yaml
@@ -34,11 +32,8 @@ def build_codex_plan(stage_kind: StageKind = StageKind.REVIEW) -> tuple[Executio
 def render_workflow_text(
     plan: ExecutionPlan, stage: NormalizedStage, render_context: Any = None
 ) -> str:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        renderer = build_renderer(output_dir=Path(temp_dir))
-        renderer.render_stage(plan, stage, render_context or build_render_context(stage))
-        workflow_path = Path(temp_dir) / ".github" / "workflows" / f"stage-{stage.id}.yml"
-        return workflow_path.read_text(encoding="utf-8")
+    stage_render = build_renderer().render_stage(plan, stage, render_context or build_render_context(stage))
+    return stage_render.artifact.content
 
 
 def parse_workflow(workflow_text: str) -> dict[str, Any]:
