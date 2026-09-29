@@ -60,6 +60,7 @@ def build_config_document(**overrides: Any) -> dict[str, Any]:
         "privilegedStage": True,
         "evidence": [review_evidence_rule()],
         "gate": no_open_threads_gate(),
+        "invocation": {"kind": "pr_comment", "body": "@codex review", "leaseMinutes": 30},
     }
     document.update(overrides)
     return document
@@ -75,10 +76,12 @@ def build_pull_request(
     author_association: str = "OWNER",
     state: str = "open",
     is_fork: bool = False,
+    is_draft: bool = False,
 ) -> dict[str, Any]:
     return {
         "number": number,
         "state": state,
+        "draft": is_draft,
         "author_association": author_association,
         "head": {"sha": head_sha, "repo": {"id": 900 + number if is_fork else BASE_REPOSITORY_ID}},
         "base": {"repo": {"id": BASE_REPOSITORY_ID}},

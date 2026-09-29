@@ -4,15 +4,20 @@ Builds the text of ``.github/workflows/stage-<id>.yml``. One workflow file per s
 three jobs, each guarded by an explicit ``github.event_name`` condition so that a wakeup can never
 re-run a backend and an invocation trigger can never run the sweep:
 
-- ``execute``   declared triggers (PR events, manual, issue label). Steps 2-4 are stubs owned by
-                #207 (eligibility) and #205 (idempotency, invocation); step 5 publishes the result
-                signal through the shared runtime (#206) and is the ONLY place a Check Run is created.
+- ``execute``   declared triggers (PR events, manual, issue label). The eligibility step is a stub
+                owned by #207. For a ``PR_COMMENT`` backend one step (#205) checks the completion
+                guard and the in-flight lease and posts the invocation, holding only the backend
+                secret; other invocation kinds keep placeholder steps. The last step publishes the
+                result signal through the shared runtime (#206) and is the ONLY place a Check Run
+                is created.
 - ``reconcile`` ``issue_comment`` wakeup for a pull request, only when the comment author is a
                 declared evidence producer. Updates an existing Check Run in place.
 - ``sweep``     scheduled backstop over every open pull request. Updates in place.
 
 ``reconcile`` and ``sweep`` exist only for plans that declare asynchronous evidence; a plan that
-completes inside the execute job has nothing to observe later.
+completes inside the execute job has nothing to observe later. Neither holds the backend secret, so
+neither can post an invocation: an expired in-flight lease is recovered the next time ``execute``
+runs (see design-docs/08-github-codex-mapping.md).
 
 All per-stage data reaches the runtime as one JSON document in the workflow ``env`` (see
 ``stage_signal_config``); the runtime source is embedded once and run with ``python3 -c``.
@@ -96,7 +101,7 @@ def build_stage_workflow_yaml(
 ) -> str:
     """Return the complete GitHub Actions workflow YAML string for the stage."""
     token_step = _build_token_acquisition_step(publisher_app_id, private_key_secret_name)
-    jobs = [_build_execute_job(plan, stage, token_step)]
+    jobs = [_build_execute_job(plan, stage, signal_config, token_step)]
     if signal_config.has_asynchronous_evidence:
         jobs.append(_build_reconcile_job(signal_config, token_step))
         jobs.append(_build_sweep_job(token_step))
@@ -166,7 +171,12 @@ def _declared_event_names(stage: NormalizedStage) -> list[str]:
     return [name for name in ("pull_request_target", "workflow_dispatch", "issues") if name in declared]
 
 
-def _build_execute_job(plan: ExecutionPlan, stage: NormalizedStage, token_step: str) -> str:
+def _build_execute_job(
+    plan: ExecutionPlan,
+    stage: NormalizedStage,
+    signal_config: StageSignalConfig,
+    token_step: str,
+) -> str:
     event_conditions = [f"github.event_name == '{name}'" for name in _declared_event_names(stage)]
     execute_condition = " || ".join(event_conditions) or "false"
     return (
@@ -182,12 +192,7 @@ def _build_execute_job(plan: ExecutionPlan, stage: NormalizedStage, token_step: 
         "      - name: Check eligibility (stub)\n"
         "        run: echo 'Eligibility check placeholder (spec:#207)'\n"
         "\n"
-        "      - name: Check idempotency (stub)\n"
-        "        run: echo 'Idempotency guard placeholder (spec:#205)'\n"
-        "\n"
-        "      - name: Invoke backend (stub)\n"
-        "        run: echo 'Backend invocation placeholder (spec:#205)'\n"
-        f"{_build_backend_env_section(plan)}"
+        f"{_build_invocation_steps(plan, signal_config)}"
         "\n"
         "      - name: Publish result signal\n"
         '        if: "${{ !cancelled() }}"\n'
@@ -201,15 +206,45 @@ def _build_execute_job(plan: ExecutionPlan, stage: NormalizedStage, token_step: 
     )
 
 
-def _build_backend_env_section(plan: ExecutionPlan) -> str:
+def _build_invocation_steps(plan: ExecutionPlan, signal_config: StageSignalConfig) -> str:
+    """Return the step(s) that ask the backend to run.
+
+    A ``PR_COMMENT`` backend gets the real ``invoke`` step (#205): one process checks the
+    completion guard and the in-flight lease, then posts the comment, so a skipped invocation is
+    simply a step that exits successfully and the publish step still runs. Other invocation kinds
+    are not implemented by this renderer yet and keep the placeholder steps.
+    """
+    if not signal_config.posts_pull_request_comment_invocation:
+        return (
+            "      - name: Check idempotency (stub)\n"
+            "        run: echo 'Idempotency guard placeholder (only PR_COMMENT backends are guarded)'\n"
+            "\n"
+            "      - name: Invoke backend (stub)\n"
+            "        run: echo 'Backend invocation placeholder (only PR_COMMENT backends are invoked)'\n"
+            f"{_build_backend_env_section(plan, ())}"
+        )
+    invoke_environment_lines = (
+        "          STAGR_MODE: invoke\n",
+        '          STAGR_PULL_NUMBER: "${{ github.event.pull_request.number }}"\n',
+        '          STAGR_EVENT_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"\n',
+    )
+    return (
+        "      - name: Invoke backend (idempotent)\n"
+        f"{_build_backend_env_section(plan, invoke_environment_lines)}"
+        f"        run: {_RUN_RUNTIME_COMMAND}\n"
+    )
+
+
+def _build_backend_env_section(plan: ExecutionPlan, leading_lines: tuple[str, ...]) -> str:
     """Return the YAML env block for the backend invocation step.
 
-    Emits one line per resolved SecretRef, mapping alias -> secrets.<env_name>. Returns an empty
-    string when the plan has no required secrets. The App token is never part of this block.
+    Emits ``leading_lines`` (already indented) and then one line per resolved SecretRef, mapping
+    alias -> secrets.<env_name>. Returns an empty string when there is nothing to emit. The App
+    token is never part of this block.
     """
-    if not plan.required_secrets:
+    if not plan.required_secrets and not leading_lines:
         return ""
-    lines = ["        env:\n"]
+    lines = ["        env:\n", *leading_lines]
     for secret_ref in plan.required_secrets:
         secret_expression = f"${{{{ secrets.{secret_ref.env_name} }}}}"
         lines.append(f'          {secret_ref.alias}: "{secret_expression}"\n')

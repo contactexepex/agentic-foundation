@@ -24,18 +24,20 @@ which is crucial for trusted execution. This renderer enforces the invariant at 
 time so a misconfiguration is caught before deployment.
 
 Token isolation (stage workflows): the Stagr GitHub App installation token (acquired
-in step 1 and used in step 5 for Check Run creation) is NEVER passed to the backend
-invocation step (step 4). The backend step receives only the secrets declared in
+in step 1 and used in step 4 for Check Run creation) is NEVER passed to the backend
+invocation step (step 3). The backend step receives only the secrets declared in
 ExecutionPlan.required_secrets (resolved alias → env_name pairs). Mixing the App token
 with backend invocation calls would grant the backend write access to platform
 primitives (Check Runs) it must not control.
 
-Stage workflow structure (see stage_workflow.py; steps 2-4 are stubs awaiting later issues):
+Stage workflow structure (see stage_workflow.py; step 2 is a stub awaiting a later issue):
   execute job    1. App token acquisition   — always emitted
                  2. Eligibility check       — stub (spec: #207)
-                 3. Idempotency guard       — stub (spec: #205)
-                 4. Backend invocation      — stub (spec: #205); uses TRUSTED_COMMENTER_TOKEN
-                 5. Result signaling        — Check Run carrying the StageResultSignal (spec: #206);
+                 3. Idempotency guard and   — PR_COMMENT backends (spec: #205): one step checks the
+                    backend invocation        completion guard and the in-flight lease, then posts
+                                              the comment; holds only the TRUSTED_COMMENTER_TOKEN
+                                              secret. Other invocation kinds keep placeholder steps.
+                 4. Result signaling        — Check Run carrying the StageResultSignal (spec: #206);
                                               the only step that creates the Check Run
   reconcile job  issue_comment wakeup; updates the Check Run in place (spec: #206)
   sweep job      scheduled backstop over open pull requests (spec: #206)

@@ -1,4 +1,4 @@
-"""Stage result signal runtime for Stagr-generated GitHub stage workflows (issue #206).
+"""Stage runtime for Stagr-generated GitHub stage workflows (issues #206 and #205).
 
 This file is embedded verbatim into every generated ``stage-<id>.yml`` workflow and run on the
 GitHub Actions runner as ``python3 -c "$STAGR_RUNTIME_SCRIPT"``. It uses the standard library only
@@ -12,11 +12,23 @@ its comments, its review threads and the existing Check Run, and derives the des
 missed, duplicated or reordered events are harmless and the scheduled sweep is a pure backstop.
 
 Modes (``STAGR_MODE``):
+- ``invoke``    execute job, before ``publish``. Posts the backend invocation comment at most once per
+                (stage, head): skipped when completion evidence already exists for the head, or when a
+                still-unexpired in-flight marker written by the trusted posting account exists.
+                Runs ONLY with the backend credential (``TRUSTED_COMMENTER_TOKEN``), never the App token.
 - ``publish``   execute job, after the backend was invoked. The ONLY mode that creates the Check Run
                 (it runs inside the per-stage, per-pull-request concurrency group, so two creators
                 can never race into the duplicate Check Runs that governance rejects).
 - ``reconcile`` ``issue_comment`` wakeup for one pull request. Updates an existing Check Run only.
 - ``sweep``     scheduled: runs the same routine for every open pull request. Updates only.
+
+Invocation write policy (``invoke``): the only write is one issue comment carrying the lease marker
+``<!-- stagr:stage:<stageId>:<headSha>:expires:<UTC ISO8601> -->``. A marker counts only when its
+comment was written by the account that owns the invoke token (identity, id and type are read from
+``GET /user`` at run time) with a trusted ``author_association``: comments on a public repository are
+attacker-controlled, and a forged far-future marker must not be able to suppress an invocation.
+``sweep`` and ``reconcile`` never invoke (they do not hold that credential), so an expired lease is
+recovered the next time ``invoke`` runs (push, reopen, ready_for_review), not by the sweep.
 
 Write policy: ``completed`` + ``pass`` and ``failed`` are terminal for wakeups and the sweep
 (design-doc 06); a re-run of the execute job (``publish``) may replace ``failed`` with a fresh
@@ -32,11 +44,13 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping, Protocol
 from urllib.parse import quote
 
 SIGNAL_SCHEMA_VERSION = 1
 
+MODE_INVOKE = "invoke"
 MODE_PUBLISH = "publish"
 MODE_RECONCILE = "reconcile"
 MODE_SWEEP = "sweep"
@@ -45,6 +59,7 @@ ACTION_SKIPPED = "skipped"
 ACTION_UNCHANGED = "unchanged"
 ACTION_CREATED = "created"
 ACTION_UPDATED = "updated"
+ACTION_INVOKED = "invoked"
 
 STATE_PENDING = "pending"
 STATE_RUNNING = "running"
@@ -81,6 +96,13 @@ GATE_KIND_EXPLICIT_PASS_MARKER = "explicit_pass_marker"
 GATE_KIND_NO_OPEN_THREADS = "no_open_threads"
 
 JOB_STATUS_FAILURE = "failure"
+
+INVOCATION_KIND_PR_COMMENT = "pr_comment"
+TRUSTED_COMMENTER_TOKEN_VARIABLE = "TRUSTED_COMMENTER_TOKEN"
+DEFAULT_LEASE_MINUTES = 30
+MAX_LEASE_MINUTES = 24 * 60
+LEASE_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+LEASE_TIMESTAMP_PATTERN = r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"
 
 REVIEW_THREADS_QUERY = (
     "query($owner:String!,$repo:String!,$number:Int!,$cursor:String){"
@@ -127,6 +149,15 @@ class GateRule:
 
 
 @dataclass(frozen=True)
+class InvocationRule:
+    """How ``invoke`` mode asks the backend to run: one PR comment, guarded by a lease."""
+
+    kind: str
+    body: str
+    lease_minutes: int
+
+
+@dataclass(frozen=True)
 class StageRuntimeConfig:
     stage_id: str
     check_run_name: str
@@ -136,6 +167,7 @@ class StageRuntimeConfig:
     privileged_stage: bool
     evidence_rules: tuple[EvidenceRule, ...]
     gate_rule: GateRule
+    invocation_rule: InvocationRule | None = None
 
     @classmethod
     def from_json_text(cls, config_text: str) -> "StageRuntimeConfig":
@@ -165,11 +197,22 @@ class StageRuntimeConfig:
                     created_by=gate_document["createdBy"],
                     head_sha_bound=bool(gate_document["headShaBound"]),
                 ),
+                invocation_rule=cls._parse_invocation_rule(document.get("invocation")),
             )
         except (ValueError, KeyError, TypeError, AttributeError) as error:
             raise RuntimeConfigError(f"Invalid STAGR_STAGE_CONFIG: {error!r}") from error
         config.reject_unsupported_rules()
         return config
+
+    @staticmethod
+    def _parse_invocation_rule(invocation_document: Mapping[str, Any] | None) -> InvocationRule | None:
+        if invocation_document is None:
+            return None
+        return InvocationRule(
+            kind=invocation_document["kind"],
+            body=invocation_document["body"],
+            lease_minutes=invocation_document["leaseMinutes"],
+        )
 
     def reject_unsupported_rules(self) -> None:
         """Fail closed on any rule this runtime cannot evaluate exactly (never a weaker check)."""
@@ -201,6 +244,22 @@ class StageRuntimeConfig:
             gate.selector and self.evidence_rules
         ):
             raise RuntimeConfigError("EXPLICIT_PASS_MARKER requires a selector and evidence")
+        self._reject_unsupported_invocation_rule()
+
+    def _reject_unsupported_invocation_rule(self) -> None:
+        rule = self.invocation_rule
+        if rule is None:
+            return
+        if rule.kind != INVOCATION_KIND_PR_COMMENT:
+            raise RuntimeConfigError(f"Unsupported invocation kind: {rule.kind!r}")
+        if not isinstance(rule.body, str) or not rule.body.strip():
+            raise RuntimeConfigError("A pr_comment invocation needs a non-empty body")
+        is_integer = isinstance(rule.lease_minutes, int) and not isinstance(rule.lease_minutes, bool)
+        if not is_integer or not 1 <= rule.lease_minutes <= MAX_LEASE_MINUTES:
+            raise RuntimeConfigError(
+                f"leaseMinutes must be an integer from 1 to {MAX_LEASE_MINUTES}: "
+                f"{rule.lease_minutes!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -274,10 +333,14 @@ class GitHubCliApi:
         run_process: Callable[..., Any] = subprocess.run,
         sleep: Callable[[float], None] = time.sleep,
         retry_delay_seconds: float = 1.0,
+        process_environment: Mapping[str, str] | None = None,
     ) -> None:
         self._run_process = run_process
         self._sleep = sleep
         self._retry_delay_seconds = retry_delay_seconds
+        self._extra_process_options: dict[str, Any] = (
+            {} if process_environment is None else {"env": dict(process_environment)}
+        )
 
     def get_object(self, path: str) -> dict[str, Any]:
         return self._parse_json(self._run(["api", path], attempts=self.READ_ATTEMPTS))
@@ -328,6 +391,7 @@ class GitHubCliApi:
                 capture_output=True,
                 text=True,
                 check=False,
+                **self._extra_process_options,
             )
             if completed.returncode == 0:
                 return completed.stdout
@@ -685,6 +749,7 @@ class ReconcileResult:
 class PullRequestView:
     number: int
     state: str
+    is_draft: bool
     author_association: str
     head_sha: str
     head_repository_id: int | None
@@ -696,6 +761,7 @@ class PullRequestView:
         return cls(
             number=payload["number"],
             state=payload["state"],
+            is_draft=bool(payload.get("draft", False)),
             author_association=str(payload.get("author_association") or ""),
             head_sha=payload["head"]["sha"],
             head_repository_id=head_repository.get("id"),
@@ -707,6 +773,27 @@ class PullRequestView:
         return self.head_repository_id != self.base_repository_id
 
 
+class PullRequestEligibility:
+    """Which pull requests, and which events about them, may drive this stage."""
+
+    def __init__(self, config: StageRuntimeConfig) -> None:
+        self._config = config
+
+    def ineligible_reason(self, pull: PullRequestView, event_head_sha: str | None) -> str:
+        """Return why ``pull`` may not drive the stage, or an empty string when it may."""
+        if pull.state != "open":
+            return "pull request is not open"
+        if pull.is_draft:
+            return "pull request is a draft"
+        if pull.author_association.upper() not in self._config.trusted_roles:
+            return "pull request author is not a trusted role"
+        if pull.is_fork and (self._config.deny_forks or self._config.privileged_stage):
+            return "fork pull requests may not drive this stage"
+        if event_head_sha and event_head_sha.lower() != pull.head_sha.lower():
+            return "event is stale: head moved since it fired"
+        return ""
+
+
 class StageReconciler:
     def __init__(
         self, config: StageRuntimeConfig, github_api: GitHubApi, repository: str, run_url: str | None
@@ -715,6 +802,7 @@ class StageReconciler:
         self._config = config
         self._github_api = github_api
         self._repository = repository
+        self._eligibility = PullRequestEligibility(config)
         self._check_run_store = CheckRunStore(config, github_api, repository, run_url)
         self._evidence_evaluator = CommentEvidenceEvaluator(config.evidence_rules)
         self._gate_evaluator = GateEvaluator(config.gate_rule, github_api, owner, name)
@@ -726,7 +814,7 @@ class StageReconciler:
             prefetched_pull
             or self._github_api.get_object(f"repos/{self._repository}/pulls/{request.pull_number}")
         )
-        ineligible_reason = self._ineligible_reason(pull, request)
+        ineligible_reason = self._eligibility.ineligible_reason(pull, request.event_head_sha)
         if ineligible_reason:
             return ReconcileResult(ACTION_SKIPPED, ineligible_reason)
         existing = self._check_run_store.find_existing(pull.head_sha)
@@ -748,17 +836,6 @@ class StageReconciler:
             return ReconcileResult(ACTION_SKIPPED, "completion evidence is absent")
         action = self._check_run_store.write_if_changed(existing, pull.head_sha, signal)
         return ReconcileResult(action)
-
-    def _ineligible_reason(self, pull: PullRequestView, request: ReconcileRequest) -> str:
-        if pull.state != "open":
-            return "pull request is not open"
-        if pull.author_association.upper() not in self._config.trusted_roles:
-            return "pull request author is not a trusted role"
-        if pull.is_fork and (self._config.deny_forks or self._config.privileged_stage):
-            return "fork pull requests may not drive this stage"
-        if request.event_head_sha and request.event_head_sha.lower() != pull.head_sha.lower():
-            return "event is stale: head moved since it fired"
-        return ""
 
     def _derive_signal_or_failed(
         self, request: ReconcileRequest, pull: PullRequestView
@@ -816,6 +893,137 @@ class OpenPullRequestSweeper:
 
 
 # ---------------------------------------------------------------------------
+# Backend invocation: "should the backend be asked to run for this head, and has it been?"
+# ---------------------------------------------------------------------------
+
+
+def format_lease_timestamp(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).strftime(LEASE_TIMESTAMP_FORMAT)
+
+
+def format_lease_marker(stage_id: str, head_sha: str, expires_at: datetime) -> str:
+    """Return the in-flight marker for a (stage, head) pair, valid until ``expires_at``."""
+    return (
+        f"<!-- stagr:stage:{stage_id}:{head_sha.lower()}"
+        f":expires:{format_lease_timestamp(expires_at)} -->"
+    )
+
+
+def parse_lease_expiries(body: str, stage_id: str, head_sha: str) -> list[datetime]:
+    """Return the expiry of every well-formed marker for exactly this stage and full head SHA."""
+    marker_pattern = re.compile(
+        "<!-- stagr:stage:" + re.escape(stage_id) + ":" + re.escape(head_sha.lower())
+        + ":expires:(" + LEASE_TIMESTAMP_PATTERN + ") -->"
+    )
+    expiries: list[datetime] = []
+    for marker_match in marker_pattern.finditer(body):
+        try:
+            parsed = datetime.strptime(marker_match.group(1), LEASE_TIMESTAMP_FORMAT)
+        except ValueError:
+            continue  # e.g. month 13: not a real timestamp, so not a marker
+        expiries.append(parsed.replace(tzinfo=timezone.utc))
+    return expiries
+
+
+@dataclass(frozen=True)
+class PostingAccount:
+    """The account that owns the invoke token, i.e. the only author whose markers are believed."""
+
+    account_id: int
+    login: str
+    account_type: str
+
+    @classmethod
+    def from_api(cls, payload: Mapping[str, Any]) -> "PostingAccount":
+        account_id, login, account_type = payload.get("id"), payload.get("login"), payload.get("type")
+        if not isinstance(account_id, int) or not login or not account_type:
+            raise GitHubApiError("GET /user did not return an account with id, login and type")
+        return cls(account_id=account_id, login=str(login), account_type=str(account_type))
+
+    def is_author_of(self, comment: Mapping[str, Any]) -> bool:
+        """Strict match on id, login and type, so a look-alike name or a Bot twin never matches."""
+        author = comment.get("user") or {}
+        return (
+            author.get("id") == self.account_id
+            and str(author.get("login", "")).lower() == self.login.lower()
+            and author.get("type") == self.account_type
+        )
+
+
+class InFlightLeaseGuard:
+    """Finds a still-valid in-flight marker among the comments of a pull request."""
+
+    def __init__(self, config: StageRuntimeConfig, posting_account: PostingAccount) -> None:
+        self._config = config
+        self._posting_account = posting_account
+
+    def has_unexpired_marker(
+        self, issue_comments: list[Mapping[str, Any]], head_sha: str, now: datetime
+    ) -> bool:
+        return any(
+            expires_at > now
+            for comment in issue_comments
+            if self._is_trusted_posting(comment)
+            for expires_at in parse_lease_expiries(
+                comment.get("body") or "", self._config.stage_id, head_sha
+            )
+        )
+
+    def _is_trusted_posting(self, comment: Mapping[str, Any]) -> bool:
+        association = str(comment.get("author_association") or "").upper()
+        return (
+            self._posting_account.is_author_of(comment)
+            and association in self._config.trusted_roles
+        )
+
+
+class BackendInvoker:
+    """Posts the backend invocation comment unless it is already done or already in flight."""
+
+    def __init__(
+        self,
+        config: StageRuntimeConfig,
+        github_api: GitHubApi,
+        repository: str,
+        clock: Callable[[], datetime],
+    ) -> None:
+        self._config = config
+        self._github_api = github_api
+        self._repository = repository
+        self._clock = clock
+        self._eligibility = PullRequestEligibility(config)
+        self._evidence_evaluator = CommentEvidenceEvaluator(config.evidence_rules)
+
+    def invoke_if_needed(self, request: ReconcileRequest) -> ReconcileResult:
+        invocation_rule = self._config.invocation_rule
+        if invocation_rule is None:
+            raise RuntimeConfigError("invoke mode needs an invocation rule in STAGR_STAGE_CONFIG")
+        pull = PullRequestView.from_api(
+            self._github_api.get_object(f"repos/{self._repository}/pulls/{request.pull_number}")
+        )
+        ineligible_reason = self._eligibility.ineligible_reason(pull, request.event_head_sha)
+        if ineligible_reason:
+            return ReconcileResult(ACTION_SKIPPED, ineligible_reason)
+        comments_path = f"repos/{self._repository}/issues/{pull.number}/comments"
+        issue_comments = self._github_api.get_items(f"{comments_path}?per_page=100")
+        if self._config.evidence_rules and self._evidence_evaluator.evaluate(
+            issue_comments, pull.head_sha
+        ).is_present:
+            return ReconcileResult(ACTION_SKIPPED, "completion evidence already exists for this head")
+        posting_account = PostingAccount.from_api(self._github_api.get_object("user"))
+        now = self._clock()
+        lease_guard = InFlightLeaseGuard(self._config, posting_account)
+        if lease_guard.has_unexpired_marker(issue_comments, pull.head_sha, now):
+            return ReconcileResult(ACTION_SKIPPED, "an invocation for this head is still in flight")
+        expires_at = now + timedelta(minutes=invocation_rule.lease_minutes)
+        marker = format_lease_marker(self._config.stage_id, pull.head_sha, expires_at)
+        self._github_api.send_json(
+            "POST", comments_path, {"body": f"{invocation_rule.body}\n\n{marker}"}
+        )
+        return ReconcileResult(ACTION_INVOKED)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -829,20 +1037,43 @@ def build_run_url(environment: Mapping[str, str]) -> str | None:
     return None
 
 
+def read_current_utc_time() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def build_invoke_process_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    """The environment ``gh`` runs with in invoke mode: the backend credential, and only it."""
+    backend_token = environment.get(TRUSTED_COMMENTER_TOKEN_VARIABLE)
+    if not backend_token:
+        raise RuntimeConfigError(f"invoke mode needs {TRUSTED_COMMENTER_TOKEN_VARIABLE}")
+    return {**environment, "GH_TOKEN": backend_token}
+
+
 def main(
-    environment: Mapping[str, str] | None = None, github_api: GitHubApi | None = None
+    environment: Mapping[str, str] | None = None,
+    github_api: GitHubApi | None = None,
+    clock: Callable[[], datetime] = read_current_utc_time,
 ) -> int:
     environment = os.environ if environment is None else environment
-    github_api = github_api or GitHubCliApi()
     try:
         config = StageRuntimeConfig.from_json_text(environment["STAGR_STAGE_CONFIG"])
         mode = environment["STAGR_MODE"]
         repository = environment["GITHUB_REPOSITORY"]
-        reconciler = StageReconciler(config, github_api, repository, build_run_url(environment))
-        if mode == MODE_SWEEP:
-            return 1 if OpenPullRequestSweeper(github_api, repository, reconciler).sweep() else 0
-        if mode not in (MODE_PUBLISH, MODE_RECONCILE):
-            raise RuntimeConfigError(f"Unknown STAGR_MODE {mode!r}")
+        if mode == MODE_INVOKE:
+            github_api = github_api or GitHubCliApi(
+                process_environment=build_invoke_process_environment(environment)
+            )
+            handle_pull_request = BackendInvoker(
+                config, github_api, repository, clock
+            ).invoke_if_needed
+        else:
+            github_api = github_api or GitHubCliApi()
+            reconciler = StageReconciler(config, github_api, repository, build_run_url(environment))
+            if mode == MODE_SWEEP:
+                return 1 if OpenPullRequestSweeper(github_api, repository, reconciler).sweep() else 0
+            if mode not in (MODE_PUBLISH, MODE_RECONCILE):
+                raise RuntimeConfigError(f"Unknown STAGR_MODE {mode!r}")
+            handle_pull_request = reconciler.reconcile_pull_request
         if not environment.get("STAGR_PULL_NUMBER"):
             print(f"Stage {config.stage_id}: no pull request context; no signal published.")
             return 0
@@ -852,7 +1083,7 @@ def main(
             event_head_sha=environment.get("STAGR_EVENT_HEAD_SHA") or None,
             job_status=environment.get("STAGR_JOB_STATUS") or None,
         )
-        result = reconciler.reconcile_pull_request(request)
+        result = handle_pull_request(request)
     except (KeyError, ValueError, GitHubApiError, AmbiguousSignalError) as error:
         print(f"::error::Stage signal runtime failed: {error}")
         return 1

@@ -12,7 +12,11 @@ here, at ``stagr apply`` time, instead of degrading into a weaker check at run t
 - ``FindingScopeSpec.invocation_correlation`` (GitHub V1 has no reliable binding for it);
 - a plan without evidence whose invocation completes asynchronously (``PR_COMMENT`` or
   ``WORKFLOW_DISPATCH``): nothing could ever prove it finished, and reporting PASS after merely
-  posting the request would be a false signal.
+  posting the request would be a false signal;
+- a ``PR_COMMENT`` invocation (issue #205) without a non-empty ``params["body"]``, without the
+  ``TRUSTED_COMMENTER_TOKEN`` secret it must be posted with, or with a ``params["lease_minutes"]``
+  that is not an integer from 1 to ``MAX_LEASE_MINUTES``. The lease defaults to 30 minutes.
+Other invocation kinds are not posted by this runtime yet and carry no ``invocation`` document.
 """
 from __future__ import annotations
 
@@ -29,6 +33,12 @@ from stagr.core.enums import (
     InvocationKind,
 )
 from stagr.core.models import EvidenceSpec, ExecutionPlan, NormalizedStage, RenderContext
+from stagr.platforms.github.runtime.stage_signal_runtime import (
+    DEFAULT_LEASE_MINUTES,
+    INVOCATION_KIND_PR_COMMENT,
+    MAX_LEASE_MINUTES,
+    TRUSTED_COMMENTER_TOKEN_VARIABLE,
+)
 
 # Invocations that run to completion inside the execute job, so the job's own outcome is the proof.
 _SYNCHRONOUS_INVOCATION_KINDS = frozenset({InvocationKind.CI_COMPONENT, InvocationKind.API_CALL})
@@ -49,6 +59,11 @@ class StageSignalConfig:
 
     document: dict[str, Any]
     evidence_producers: tuple[str, ...]
+
+    @property
+    def posts_pull_request_comment_invocation(self) -> bool:
+        """True when the execute job posts the backend request itself (``invoke`` mode)."""
+        return self.document["invocation"] is not None
 
     @property
     def has_asynchronous_evidence(self) -> bool:
@@ -81,6 +96,7 @@ def build_stage_signal_config(
         "privilegedStage": bool(plan.required_secrets),
         "evidence": evidence_documents,
         "gate": gate_document,
+        "invocation": _build_invocation_document(stage, plan),
     }
     if _GITHUB_EXPRESSION_OPENER in json.dumps(document):
         raise ValueError(
@@ -161,6 +177,33 @@ def _build_gate_document(stage: NormalizedStage, plan: ExecutionPlan) -> dict[st
         "createdBy": created_by,
         "headShaBound": head_sha_bound,
     }
+
+
+def _build_invocation_document(stage: NormalizedStage, plan: ExecutionPlan) -> dict[str, Any] | None:
+    invocation = plan.invocation
+    if invocation.kind is not InvocationKind.PR_COMMENT:
+        return None
+    body = invocation.params.get("body")
+    if not isinstance(body, str) or not body.strip():
+        raise ValueError(
+            f"Stage '{stage.id}': a PR_COMMENT invocation needs a non-empty params['body'], the "
+            f"comment that asks the backend to run; got {body!r}."
+        )
+    if not any(secret.alias == TRUSTED_COMMENTER_TOKEN_VARIABLE and secret.env_name
+               for secret in plan.required_secrets):
+        raise ValueError(
+            f"Stage '{stage.id}': a PR_COMMENT invocation is posted with the "
+            f"{TRUSTED_COMMENTER_TOKEN_VARIABLE} secret, but the plan declares no resolved secret "
+            f"with that alias."
+        )
+    lease_minutes = invocation.params.get("lease_minutes", DEFAULT_LEASE_MINUTES)
+    is_integer = isinstance(lease_minutes, int) and not isinstance(lease_minutes, bool)
+    if not is_integer or not 1 <= lease_minutes <= MAX_LEASE_MINUTES:
+        raise ValueError(
+            f"Stage '{stage.id}': invocation params['lease_minutes'] must be an integer from 1 to "
+            f"{MAX_LEASE_MINUTES}; got {lease_minutes!r}."
+        )
+    return {"kind": INVOCATION_KIND_PR_COMMENT, "body": body, "leaseMinutes": lease_minutes}
 
 
 def _reject_unprovable_completion(stage: NormalizedStage, plan: ExecutionPlan) -> None:

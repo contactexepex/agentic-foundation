@@ -124,6 +124,12 @@ def test_deleted_fork_repository_is_treated_as_a_fork() -> None:
     assert build_reconciler(fake).reconcile_pull_request(request(PUBLISH)).action == "skipped"
 
 
+def test_draft_pull_request_publishes_nothing() -> None:
+    fake = build_world(pull_request=build_pull_request(is_draft=True))
+    result = build_reconciler(fake).reconcile_pull_request(request(PUBLISH))
+    assert result.action == "skipped" and "draft" in result.reason and not fake.check_runs
+
+
 def test_closed_pull_request_publishes_nothing() -> None:
     fake = build_world(pull_request=build_pull_request(state="closed"))
     assert build_reconciler(fake).reconcile_pull_request(request(PUBLISH)).action == "skipped"
