@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests._helpers import (
     build_always_pass_plan,
+    build_no_open_threads_plan,
     render_stage_yaml,
 )
 
@@ -30,13 +31,13 @@ def test_reconcile_job_runs_on_issue_comment_and_check_suite() -> None:
 
 
 def test_reconcile_job_exits_when_evidence_absent() -> None:
-    """Reconcile job has a guard that exits without updating the Check Run when evidence is absent."""
-    yaml_content = render_stage_yaml(build_always_pass_plan())
+    """Reconcile job exits without updating the Check Run when declared evidence is absent."""
+    yaml_content = render_stage_yaml(build_no_open_threads_plan())
     reconcile_index = yaml_content.find("reconcile:")
     assert reconcile_index != -1, "Must have reconcile: job"
     reconcile_block = yaml_content[reconcile_index:]
-    assert "exit 0" in reconcile_block or "exit" in reconcile_block, (
-        "Reconcile job must exit early (no-op) when evidence is absent"
+    assert "exit 0" in reconcile_block, (
+        "Reconcile job must exit early (no-op) when declared evidence is absent"
     )
 
 
@@ -54,15 +55,15 @@ def test_reconcile_job_fetches_head_sha_from_pr_api() -> None:
     )
 
 
-def test_reconcile_job_verifies_evidence_app_identity() -> None:
-    """Reconcile job authenticates evidence by checking performed_via_github_app.id."""
-    yaml_content = render_stage_yaml(build_always_pass_plan())
+def test_reconcile_job_detects_evidence_via_declared_selector() -> None:
+    """Reconcile job detects evidence using the declared selector from ExecutionPlan.evidence."""
+    yaml_content = render_stage_yaml(build_no_open_threads_plan())
     reconcile_index = yaml_content.find("reconcile:")
     assert reconcile_index != -1, "Must have reconcile: job"
     reconcile_block = yaml_content[reconcile_index:]
-    assert "performed_via_github_app" in reconcile_block, (
-        "Reconcile job must verify evidence comment identity via performed_via_github_app.id"
+    assert "codex-review:v1" in reconcile_block, (
+        "Reconcile job must use the declared evidence selector prefix to detect evidence"
     )
-    assert "STAGR_APP_ID" in reconcile_block, (
-        "Reconcile job must compare App id against STAGR_APP_ID to authenticate evidence"
+    assert "performed_via_github_app" not in reconcile_block, (
+        "Reconcile job must detect evidence via declared selector, not App identity check"
     )

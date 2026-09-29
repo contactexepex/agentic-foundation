@@ -5,6 +5,7 @@ from stagr.core.enums import AuthorRole, ForkPolicy
 from neutral_core_tests.github_platform_renderer_tests.helpers import build_stage
 from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests._helpers import (
     build_always_pass_plan,
+    build_no_open_threads_plan,
     build_render_context,
     render_stage_yaml,
 )
@@ -77,16 +78,18 @@ def test_sweep_job_skips_fork_prs_when_fork_policy_deny() -> None:
 
 
 def test_sweep_job_checks_evidence_before_gate_eval() -> None:
-    """Sweep job verifies backend evidence (App-authenticated comment) before evaluating gate disposition."""
-    yaml_content = render_stage_yaml(build_always_pass_plan())
+    """Sweep job verifies declared evidence (selector-matched comment) before evaluating gate disposition."""
+    stage = build_stage()
+    render_context = build_render_context(stage)
+    yaml_content = render_stage_yaml(build_no_open_threads_plan(), stage=stage, render_context=render_context)
     sweep_index = yaml_content.find("sweep:")
     assert sweep_index != -1, "Must have sweep: job"
     sweep_block = yaml_content[sweep_index:]
-    assert "performed_via_github_app" in sweep_block, (
-        "Sweep job must verify evidence comment identity via performed_via_github_app.id"
+    assert "codex-review:v1" in sweep_block, (
+        "Sweep job must use the declared evidence selector prefix to detect evidence"
     )
-    assert "stagr-stage-" in sweep_block, (
-        "Sweep job must check evidence comment body for the stage anchor identifier"
+    assert "performed_via_github_app" not in sweep_block, (
+        "Sweep job must detect evidence via declared selector, not App identity check"
     )
 
 

@@ -9,17 +9,16 @@ from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests._h
 
 
 def test_always_pass_result_step_emits_success_conclusion() -> None:
-    """ALWAYS_PASS: Publish step marks Check Run in_progress; reconcile/sweep emit success conclusion."""
+    """ALWAYS_PASS with no evidence: Publish step marks Check Run completed/success inline."""
     yaml_content = render_stage_yaml(build_always_pass_plan())
     publish_index = yaml_content.find("Publish result")
     assert publish_index != -1, "Must have 'Publish result' step"
     publish_block = yaml_content[publish_index:]
-    assert "in_progress" in publish_block, (
-        "ALWAYS_PASS: Publish step must mark Check Run in_progress; "
-        "conclusion is set by reconcile/sweep after evidence verification"
+    assert "status=completed" in publish_block, (
+        "ALWAYS_PASS (no evidence): Publish step must mark Check Run completed inline"
     )
-    assert 'conclusion_native="success"' in publish_block, (
-        "ALWAYS_PASS: reconcile/sweep must emit success conclusion after evidence verification"
+    assert "conclusion=success" in publish_block, (
+        "ALWAYS_PASS (no evidence): Publish step must emit success conclusion inline"
     )
 
 

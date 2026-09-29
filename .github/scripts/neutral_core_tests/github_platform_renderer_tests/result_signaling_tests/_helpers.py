@@ -6,13 +6,17 @@ from pathlib import Path
 
 from stagr.core.enums import (
     AuthorRole,
+    EvidenceKind,
+    EvidenceSuccessCondition,
     ForkPolicy,
     GateDispositionKind,
     InvocationKind,
     MergeMode,
 )
 from stagr.core.models import (
+    CorrelationSpec,
     DiscussionPolicy,
+    EvidenceSpec,
     ExecutionPlan,
     FindingScopeSpec,
     GateDispositionSpec,
@@ -42,6 +46,12 @@ def build_always_pass_plan(stage_id: str = "review") -> ExecutionPlan:
 
 def build_no_open_threads_plan(stage_id: str = "review") -> ExecutionPlan:
     scope = FindingScopeSpec(created_by="codex-bot", head_sha=True)
+    evidence = EvidenceSpec(
+        kind=EvidenceKind.COMMENT_MATCH,
+        selector="codex-review:v1 status=completed",
+        correlation=CorrelationSpec(head_sha=True, sha_field="headSha"),
+        success_condition=EvidenceSuccessCondition.MATCH_FOUND,
+    )
     return ExecutionPlan(
         stage_id=stage_id,
         invocation=Invocation(kind=InvocationKind.PR_COMMENT),
@@ -50,6 +60,7 @@ def build_no_open_threads_plan(stage_id: str = "review") -> ExecutionPlan:
             selector="codex-review",
             scope=scope,
         ),
+        evidence=(evidence,),
     )
 
 
