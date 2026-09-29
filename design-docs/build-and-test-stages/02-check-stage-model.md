@@ -46,7 +46,7 @@ every platform:
 | timed out | `COMPLETED` + `FAILED` | Some platforms report a timeout only as failure or cancelled, so the reason is best effort; the conclusion is not |
 | cancelled | `COMPLETED` + `FAILED` | Reason recorded as cancelled. Never treated as a pass |
 | skipped, neutral, "not run" | Not a pass | **Never** treated as success, even if the platform's own required-check logic would accept it |
-| never reported / not started | `RUNNING` or `PENDING` | Becomes a failure only through a documented timeout policy |
+| never reported / not started | `PENDING` (or `RUNNING` once the trusted eligibility unit has started the work, 06) | Becomes a failure only through a documented timeout policy. The publish unit does not write `RUNNING` for check stages |
 | Stagr could not read or verify the result | `FAILED` state | Infrastructure problem on Stagr's side; see below |
 
 **Today's runtime is fail-open here.** For a stage without review evidence, the current GitHub

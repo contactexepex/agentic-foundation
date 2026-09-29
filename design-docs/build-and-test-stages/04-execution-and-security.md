@@ -10,18 +10,20 @@ still trust the result. The rules here are neutral; the platform mapping is in 0
  EXECUTION PLANE (untrusted)                 PUBLICATION PLANE (trusted)
  ---------------------------                 ---------------------------
  Runs the pull-request code.                 Never runs pull-request code.
- No Stagr credential.                        Holds the Stagr publisher credential.
- No secrets by default.                      Reads the platform's own outcome.
- Read-only repository access.                Writes the head-bound stage result.
- Its only output is an exit status.
+ No Stagr credential.                        Its units (eligibility, publish) hold the
+ No secrets by default.                      Stagr publisher credential.
+ Read-only repository access.                Reads the platform's own outcome.
+ Its only output is an exit status.           Writes the head-bound stage result.
 ```
 
 A managed check stage renders **three units of work**, in this order:
 
-1. **Eligibility** (trusted, cheap). Decides whether this pull request may run this stage at all:
-   trusted author, same repository, pull request open and not a draft, head matches the event.
-   Failing eligibility publishes nothing and starts nothing. On success it creates the stage's
-   `RUNNING` result for the head, only if none exists yet (the lease, see 06), then starts the work.
+1. **Eligibility** (trusted, cheap; holds the publisher credential and, like publish, never checks
+   out or runs pull-request content). Decides whether this pull request may run this stage at all:
+   trusted author, same repository, pull request open and not a draft, head matches the event,
+   route applies, and every dependency has passed. Failing any check publishes nothing and starts
+   nothing. Only after **all** of them pass does it write the stage's `RUNNING` result for the head
+   (the lease, rules in 06), then start the work.
 2. **Work** (untrusted). Checks out the exact head commit, runs the configured commands, ends with
    an exit status. Nothing else leaves this unit.
 3. **Publish** (trusted). Runs even if the work failed or was cancelled. Reads the platform's
@@ -41,7 +43,7 @@ is the renderer's business (05).
 
 | # | Rule |
 |---|---|
-| S1 | The work unit never receives the publisher credential, and the publish unit never checks out or runs pull-request content. |
+| S1 | The work unit never receives the publisher credential. The eligibility and publish units, which hold it, never check out or run pull-request content. |
 | S2 | The result is the **platform-attested outcome** of the work unit. Not an artifact, log line, output variable, file, comment, or status that the executed code could have written. |
 | S3 | The work unit's repository token is read-only and is **not persisted** into the checked-out repository (no stored credentials in the workspace). It cannot create checks, statuses, comments, or contents. |
 | S4 | The stage definition that runs comes from the **trusted base**, not from the pull request, wherever the platform can do so (05, `definition_source`). Where it cannot, protected paths are mandatory (below). |
@@ -60,7 +62,7 @@ is the renderer's business (05).
 
 | # | Threat | Control (rule) | Verified by |
 |---|---|---|---|
-| T1 | PR code steals the publisher credential or repository secrets | Credential only in the publish unit (S1, S5); credential restricted to the default branch (S11) | Rendered-artifact test: no secret reference in work; publish has no checkout |
+| T1 | PR code steals the publisher credential or repository secrets | Credential only in the trusted eligibility and publish units, which never check out or run pull-request content (S1, S5); credential restricted to the default branch (S11) | Rendered-artifact test: no secret or credential reference in the work unit; eligibility and publish have no checkout |
 | T2 | PR code forges a green result (writes a check, status, comment or artifact) | Read-only, non-persisted token (S3); result taken from platform-attested outcome (S2). Note that on GitHub the built-in workflow token can itself create check runs when granted `checks: write`; the work unit is never granted it | Test: work permissions are read-only; publish never reads artifacts |
 | T3 | PR rewrites the workflow or config so its own build passes trivially | Definition from the trusted base where possible (S4); drift check; protected paths (below) | Test: PR-side edit of rendered file does not change what runs; drift is reported |
 | T4 | Another actor creates a result with the same name as an observed stage | `observe.producer` mandatory; match on producer identity, never name; a shared CI identity is not enough on its own (05, provenance); ambiguous results fail closed (02) | Vectors V-O* (07) |

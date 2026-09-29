@@ -78,9 +78,17 @@ Stages that wait need a nudge when their upstream changes. The mechanism exists 
   Only a pull request event (opened, reopened, updated, ready for review) or an explicit re-run
   starts work again. Without this rule, unrelated check chatter would re-run tests and, worse,
   re-trigger paid stages in a loop.
-- The trusted eligibility unit creates `RUNNING` (a lease) before the work starts, and creates it
-  only if none exists for the head, so two concurrent wake-ups cannot both run. The work unit
-  never writes it: it has no credential (04, S1, S3).
+- **The lease.** After all its checks pass (04), the trusted eligibility unit writes `RUNNING`
+  before the work starts. The work unit never writes it: it has no credential (04, S1, S3). Rules:
+  - No result for the head yet: create `RUNNING`.
+  - `RUNNING` or `COMPLETED` already exists and the trigger is a **wake-up**: skip.
+  - The trigger is a pull request event or an explicit re-run and the existing result is
+    `COMPLETED` + `FAILED`, state `FAILED`, or a `RUNNING` older than the stage timeout plus a
+    margin (its runner died): replace it with a fresh `RUNNING`. `COMPLETED` + `PASS` is never
+    replaced (D9).
+  - Eligibility runs in the same serialized per-stage, per-pull-request concurrency group as
+    publish. The check and the write are not atomic on their own; the group is what stops two
+    runs from both creating `RUNNING`.
 
 **Observed stages** have their own wake-up need: the result comes from another system, so the
 trigger is that system's completion event for the named result (filtered by name and producer), and
@@ -164,6 +172,8 @@ the workflow becomes three jobs: `eligibility` (reuses the existing eligibility 
 that runs the configured commands with a read-only, non-persisted token and no secrets, and a
 `publish` job that runs `always()` (not `!cancelled()`), reads the work job's result
 (`needs.<job>.result`) as `WORKFLOW_RESULT` evidence, and writes the Check Run through the
-publisher App. Reconcile and sweep stay update-only. This is a restructuring, including
-re-establishing that only the trusted eligibility and publish jobs write results, plus two runtime changes: the
-dependency rule above (Phase 2) and the inverted, fail-closed outcome mapping (Phase 3, see 02).
+publisher App. Reconcile and sweep stay update-only. This is a restructuring in which only the trusted
+eligibility job (the `RUNNING` lease) and publish job (the final result) write results, both inside
+the serialized group, plus three runtime changes: the dependency rule above (Phase 2), the
+inverted, fail-closed outcome mapping, and the eligibility-written lease with the replace rules
+above (both Phase 3, see 02).

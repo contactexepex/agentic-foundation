@@ -23,8 +23,8 @@ Fast to slow, matching `AGENTS.md`:
 | 1. Schema and config | New keys, exclusions (`run` vs `observe`), bad names rejected, secret values never echoed | `validate_config.py`, `test_cli.py` |
 | 2. Pure mapping tests | Native outcome to `(state, conclusion)`; latest-attempt rule; dependency table | `test_neutral_core_models.py` |
 | 3. Shared conformance vectors | The same input/output cases for the neutral reference *and* every platform runtime | both of the above |
-| 4. Render structure tests | Security rules S1 to S14 hold in the rendered artifact (no secret in the work unit, no checkout in publish, read-only token, pinned, timeout) | `test_render.py` |
-| 5. Behavioural tests with a strict fake platform CLI | End-to-end publish, reconcile, sweep, wake-up, re-run behaviour on the real runtime | existing stage-signal test package |
+| 4. Render structure tests | Security rules S1 to S14 hold in the rendered artifact (no secret or credential in the work unit, no checkout in eligibility or publish, read-only token, pinned, timeout) | `test_render.py` |
+| 5. Behavioural tests with a strict fake platform CLI | End-to-end eligibility (including the `RUNNING` lease under concurrent wake-ups, a stale lease and a re-run after `FAILED`), publish, reconcile, sweep, wake-up, re-run behaviour on the real runtime | existing stage-signal test package |
 | 6. Governance interop | A published check-stage result is accepted or rejected by the merge gate scripts: the generated `governance.yml` (existing interop test) **and** this repository's foundation gate once it consumes Stagr results (08, I10) | existing interop test; new test in I10 |
 | 7. Static workflow lint | Rendered pipeline files pass the platform's own workflow linter (GitHub: `actionlint`) | existing render tests |
 | 8. Mutation checks | Deliberately break the mapping and security assertions; tests must fail | run by the implementer per PR, results in the PR |

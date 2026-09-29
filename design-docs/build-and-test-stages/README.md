@@ -40,7 +40,7 @@ work), stays platform-neutral, and never lets untrusted code touch trusted crede
 - **Managed** — Stagr renders the CI job that runs the work (the *work unit*).
 - **Observed** — the team's own CI already runs the work; Stagr only reads the result.
 - **Execution plane** — where the code under test runs (untrusted, no credentials).
-- **Publication plane** — where the trusted result is written (holds the Stagr credential).
+- **Publication plane** — the trusted units (eligibility and publish) that hold the Stagr credential, never run pull-request code, and write the head-bound results.
 - **Native outcome** — what the CI platform itself reports (success, failure, cancelled, ...).
 - **Producer identity** — who authored a piece of evidence (an app, a service account, a pipeline).
 - **Head** — the newest commit of the pull request. Every result is bound to one head.

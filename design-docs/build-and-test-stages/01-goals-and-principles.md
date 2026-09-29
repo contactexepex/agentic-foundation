@@ -55,7 +55,7 @@ the schema keeps `build:` optional.
 |---|---|---|
 | P1 | **Neutral core, adapters at the edge** | Only a platform renderer knows platform names, events, APIs. The core model never does. |
 | P2 | **Wiring, not work** | Stagr declares and renders; the platform executes. A managed stage is a thin adapter step on the user's runner (Charter section 2). |
-| P3 | **Untrusted code never meets trusted credentials** | The job that runs pull-request code has no Stagr credential and no secrets by default. |
+| P3 | **Untrusted code never meets trusted credentials** | The job that runs pull-request code has no Stagr credential and no secrets by default; the units that hold the credential never run pull-request code. |
 | P4 | **Evidence is observed, never self-reported** | A result counts only if a trusted party read it from the platform. The code under test cannot mark itself green. |
 | P5 | **Fail closed** | Missing, unknown, skipped, cancelled, stale or ambiguous means *not passed*. Only an explicit success passes. |
 | P6 | **Head-bound** | Every result names the exact commit. A result for an older commit never satisfies a newer one. |
