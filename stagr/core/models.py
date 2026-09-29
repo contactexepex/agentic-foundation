@@ -178,6 +178,7 @@ class EvidenceSpec:
     selector: str                              # backend-defined, opaque
     correlation: CorrelationSpec
     success_condition: EvidenceSuccessCondition  # enum: COMPLETED, SUCCESS, MATCH_FOUND
+    github_app_id: int | None = None           # when set, only comments from this App ID count
 
 
 @dataclass(frozen=True)

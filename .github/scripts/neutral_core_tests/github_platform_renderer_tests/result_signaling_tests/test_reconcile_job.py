@@ -56,14 +56,25 @@ def test_reconcile_job_fetches_head_sha_from_pr_api() -> None:
 
 
 def test_reconcile_job_detects_evidence_via_declared_selector() -> None:
-    """Reconcile job detects evidence using the declared selector from ExecutionPlan.evidence."""
+    """Reconcile job uses the full declared selector and app-id filter from ExecutionPlan.evidence."""
     yaml_content = render_stage_yaml(build_no_open_threads_plan())
     reconcile_index = yaml_content.find("reconcile:")
     assert reconcile_index != -1, "Must have reconcile: job"
     reconcile_block = yaml_content[reconcile_index:]
-    assert "codex-review:v1" in reconcile_block, (
-        "Reconcile job must use the declared evidence selector prefix to detect evidence"
+    assert "codex-review:v1 status=completed" in reconcile_block, (
+        "Reconcile job must use the full declared evidence selector (not just the prefix)"
     )
-    assert "performed_via_github_app" not in reconcile_block, (
-        "Reconcile job must detect evidence via declared selector, not App identity check"
+    assert "performed_via_github_app" in reconcile_block, (
+        "Reconcile job must filter evidence comments by App ID when github_app_id is declared"
+    )
+
+
+def test_reconcile_job_skips_non_pr_issue_comment() -> None:
+    """Reconcile job exits early when an issue_comment event is not on a pull request."""
+    yaml_content = render_stage_yaml(build_always_pass_plan())
+    reconcile_index = yaml_content.find("reconcile:")
+    assert reconcile_index != -1, "Must have reconcile: job"
+    reconcile_block = yaml_content[reconcile_index:]
+    assert "issue.pull_request" in reconcile_block, (
+        "Reconcile job must check issue.pull_request and exit early for non-PR issue_comment events"
     )

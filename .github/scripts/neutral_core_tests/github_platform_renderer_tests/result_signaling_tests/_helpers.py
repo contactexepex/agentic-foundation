@@ -51,6 +51,7 @@ def build_no_open_threads_plan(stage_id: str = "review") -> ExecutionPlan:
         selector="codex-review:v1 status=completed",
         correlation=CorrelationSpec(head_sha=True, sha_field="headSha"),
         success_condition=EvidenceSuccessCondition.MATCH_FOUND,
+        github_app_id=12345,
     )
     return ExecutionPlan(
         stage_id=stage_id,

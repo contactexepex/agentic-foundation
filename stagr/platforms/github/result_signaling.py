@@ -253,14 +253,23 @@ def _build_evidence_detection_lines_reconcile(plan: ExecutionPlan) -> str:
     When evidence is declared, fetches comments and exits 0 when none match
     the declared selector and the current head SHA. When no evidence is
     declared, returns an empty string (gate eval proceeds immediately).
+
+    When EvidenceSpec.github_app_id is set, only comments posted by that GitHub
+    App are accepted; this prevents forgery by ordinary commenters.
     """
     if not plan.evidence:
         return ""
     evidence_spec = plan.evidence[0]
-    selector_prefix = evidence_spec.selector.split()[0]
+    full_selector = evidence_spec.selector
+    app_id_filter = ""
+    if evidence_spec.github_app_id is not None:
+        app_id_filter = (
+            f" select(.performed_via_github_app.id | tostring =="
+            f" \\\"{evidence_spec.github_app_id}\\\") |"
+        )
     return (
         f'          evidence=$(gh api "repos/${{GITHUB_REPOSITORY}}/issues/${{pr_number}}/comments" \\\n'
-        f"            --jq \".[] | select(.body | contains(\\\"{selector_prefix}\\\")) |"
+        f"            --jq \".[] |{app_id_filter} select(.body | contains(\\\"{full_selector}\\\")) |"
         f" select(.body | contains(\\\"${{head_sha}}\\\")) | .id\" | head -1)\n"
         f'          if [[ -z "${{evidence}}" ]]; then exit 0; fi\n'
     )
@@ -272,14 +281,23 @@ def _build_evidence_detection_lines_sweep(plan: ExecutionPlan, stage_id: str) ->
     When evidence is declared, fetches comments and continues to the next PR when
     none match the declared selector and HEAD_SHA. When no evidence is declared,
     returns an empty string (gate eval proceeds immediately for each eligible PR).
+
+    When EvidenceSpec.github_app_id is set, only comments posted by that GitHub
+    App are accepted; this prevents forgery by ordinary commenters.
     """
     if not plan.evidence:
         return ""
     evidence_spec = plan.evidence[0]
-    selector_prefix = evidence_spec.selector.split()[0]
+    full_selector = evidence_spec.selector
+    app_id_filter = ""
+    if evidence_spec.github_app_id is not None:
+        app_id_filter = (
+            f" select(.performed_via_github_app.id | tostring =="
+            f" \\\"{evidence_spec.github_app_id}\\\") |"
+        )
     return (
         f'            evidence=$(gh api "repos/${{GITHUB_REPOSITORY}}/issues/${{pr_number}}/comments" \\\n'
-        f"              --jq \".[] | select(.body | contains(\\\"{selector_prefix}\\\")) |"
+        f"              --jq \".[] |{app_id_filter} select(.body | contains(\\\"{full_selector}\\\")) |"
         f" select(.body | contains(\\\"${{HEAD_SHA}}\\\")) | .id\" | head -1)\n"
         f'            if [[ -z "${{evidence}}" ]]; then continue; fi\n'
     )
@@ -305,7 +323,7 @@ def _build_no_open_threads_gate_eval_reconcile(plan: ExecutionPlan) -> str:
             "comments(first:1){nodes{author{login},"
             "pullRequestReview{commit{oid}}}}}}}}}' \\\n"
         )
-        head_sha_jq_arg = '            --arg head_sha "${head_sha}" \\\n'
+        jq_head_sha_arg = ' --arg head_sha "${head_sha}"'
         head_sha_jq_filter = (
             "\n             | select(.comments.nodes[0].pullRequestReview.commit.oid == $head_sha)"
         )
@@ -318,7 +336,7 @@ def _build_no_open_threads_gate_eval_reconcile(plan: ExecutionPlan) -> str:
             "{reviewThreads(first:100){nodes{isResolved,"
             "comments(first:1){nodes{author{login}}}}}}}}"  "' \\\n"
         )
-        head_sha_jq_arg = ""
+        jq_head_sha_arg = ""
         head_sha_jq_filter = ""
 
     return (
@@ -327,8 +345,7 @@ def _build_no_open_threads_gate_eval_reconcile(plan: ExecutionPlan) -> str:
         + f'            -f owner="${{GITHUB_REPOSITORY_OWNER}}" \\\n'
         + f'            -f repo="${{GITHUB_REPOSITORY#*/}}" \\\n'
         + f'            -F pr="${{pr_number}}" \\\n'
-        + head_sha_jq_arg
-        + f"            | jq --arg author \"{created_by}\" \\\n"
+        + f"            | jq --arg author \"{created_by}\"{jq_head_sha_arg} \\\n"
         + "            '[.data.repository.pullRequest.reviewThreads.nodes[]\n"
         + "             | select(.isResolved == false)\n"
         + "             | select($author == \"\" or\n"
@@ -365,7 +382,7 @@ def _build_no_open_threads_gate_eval_sweep(plan: ExecutionPlan) -> str:
             "comments(first:1){nodes{author{login},"
             "pullRequestReview{commit{oid}}}}}}}}}' \\\n"
         )
-        head_sha_jq_arg = '            --arg head_sha "${HEAD_SHA}" \\\n'
+        jq_head_sha_arg = ' --arg head_sha "${HEAD_SHA}"'
         head_sha_jq_filter = (
             "\n             | select(.comments.nodes[0].pullRequestReview.commit.oid == $head_sha)"
         )
@@ -378,7 +395,7 @@ def _build_no_open_threads_gate_eval_sweep(plan: ExecutionPlan) -> str:
             "{reviewThreads(first:100){nodes{isResolved,"
             "comments(first:1){nodes{author{login}}}}}}}}"  "' \\\n"
         )
-        head_sha_jq_arg = ""
+        jq_head_sha_arg = ""
         head_sha_jq_filter = ""
 
     return (
@@ -387,8 +404,7 @@ def _build_no_open_threads_gate_eval_sweep(plan: ExecutionPlan) -> str:
         + f'            -f owner="${{GITHUB_REPOSITORY_OWNER}}" \\\n'
         + f'            -f repo="${{GITHUB_REPOSITORY#*/}}" \\\n'
         + f'            -F pr="${{pr_number}}" \\\n'
-        + head_sha_jq_arg
-        + f"            | jq --arg author \"{findings_author}\" \\\n"
+        + f"            | jq --arg author \"{findings_author}\"{jq_head_sha_arg} \\\n"
         + "            '[.data.repository.pullRequest.reviewThreads.nodes[]\n"
         + "             | select(.isResolved == false)\n"
         + "             | select($author == \"\" or\n"
@@ -433,6 +449,10 @@ def _build_reconcile_step(
         f'          STAGE_ID: "{stage_id}"\n'
         f"        run: |\n"
         f"          set -euo pipefail\n"
+        f'          if [[ "${{GITHUB_EVENT_NAME}}" == "issue_comment" ]]; then\n'
+        f'            is_pr=$(jq -r \'.issue.pull_request != null\' "${{GITHUB_EVENT_PATH}}")\n'
+        f'            if [[ "${{is_pr}}" != "true" ]]; then exit 0; fi\n'
+        f"          fi\n"
         f"          # Resolve PR number from the event\n"
         f'          if [[ "${{GITHUB_EVENT_NAME}}" == "issue_comment" ]]; then\n'
         f'            pr_number=$(jq -r .issue.number "${{GITHUB_EVENT_PATH}}")\n'

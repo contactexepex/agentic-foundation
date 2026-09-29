@@ -29,6 +29,7 @@ from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.te
     test_reconcile_job_exits_when_evidence_absent,
     test_reconcile_job_fetches_head_sha_from_pr_api,
     test_reconcile_job_detects_evidence_via_declared_selector,
+    test_reconcile_job_skips_non_pr_issue_comment,
 )
 from neutral_core_tests.github_platform_renderer_tests.result_signaling_tests.test_sweep_job import (
     test_sweep_job_exists_in_generated_workflow,
@@ -64,6 +65,7 @@ RESULT_SIGNALING_TESTS = [
     test_reconcile_job_exits_when_evidence_absent,
     test_reconcile_job_fetches_head_sha_from_pr_api,
     test_reconcile_job_detects_evidence_via_declared_selector,
+    test_reconcile_job_skips_non_pr_issue_comment,
     test_sweep_job_exists_in_generated_workflow,
     test_sweep_job_runs_on_schedule_only,
     test_sweep_job_enumerates_open_prs,
@@ -98,6 +100,7 @@ __all__ = [
     "test_reconcile_job_exits_when_evidence_absent",
     "test_reconcile_job_fetches_head_sha_from_pr_api",
     "test_reconcile_job_detects_evidence_via_declared_selector",
+    "test_reconcile_job_skips_non_pr_issue_comment",
     "test_sweep_job_exists_in_generated_workflow",
     "test_sweep_job_runs_on_schedule_only",
     "test_sweep_job_enumerates_open_prs",
