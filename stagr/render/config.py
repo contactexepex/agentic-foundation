@@ -9,7 +9,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from .constants import PROVIDER_ANTHROPIC, RENAMED_ANTHROPIC_PROVIDER, SCHEMA_PATH
+from .constants import BACKEND_GENERIC, PROVIDER_ANTHROPIC, PROVIDER_TOOL, RENAMED_ANTHROPIC_PROVIDER, SCHEMA_PATH
 from .errors import RenderError
 from .lanes import _ensure_auto_merge_coherent, _ensure_supported_review_graph
 from .stages import expand_stages
@@ -144,8 +144,8 @@ def _warn_dormant_routing_config(cfg: dict[str, Any]) -> None:
     if fast_path_cfg.get("enabled", True):
         return  # fast_path is on (or absent); nothing to warn about
 
-    has_globs = bool(fast_path_cfg.get("globs"))
-    has_stages = bool(fast_path_cfg.get("stages"))
+    has_globs = "globs" in fast_path_cfg
+    has_stages = "stages" in fast_path_cfg
 
     if has_globs or has_stages:
         warnings.warn(
@@ -177,18 +177,21 @@ def _resolve_alias_statically(
     provider_secrets: dict[str, str],
     api_key_secret: str | None,
     platform_token_secret: str | None,
-) -> str | None:
-    """Attempt to resolve a SecretRef alias to an env_name without network calls.
+) -> str:
+    """Resolve a SecretRef alias to an env_name without network calls.
 
-    Applies the V-S12 resolution rules (levels 1, 2a, 2b only — no step-3
-    convention fallback that maps alias to itself):
+    Applies the V-S12 resolution rules, mirroring the runtime resolver in
+    ``stagr.core.render_loop._resolve_secret_aliases``:
 
     1. Explicit mapping in ``providers.<provider>.secrets``.
     2a. ``PROVIDER_API_KEY``: resolved to ``api_key_secret`` or provider default.
     2b. ``TRUSTED_COMMENTER_TOKEN``: resolved to ``platform_token_secret`` or the
         ``REMEDIATION_TOKEN`` default.
+    3. Convention fallback: the alias is itself the platform secret env name (same
+       as step 3 of the runtime resolver — when the secrets block is omitted,
+       aliases ARE the platform secret names).
 
-    Returns the resolved ``env_name`` string, or ``None`` when no rule applies.
+    Always returns a non-None env_name string.
     """
     # 1. Explicit mapping from the operator's provider secrets block.
     explicit_env_name: str | None = provider_secrets.get(alias)
@@ -203,7 +206,7 @@ def _resolve_alias_statically(
     if alias == _TRUSTED_COMMENTER_TOKEN_ALIAS:
         return platform_token_secret or _DEFAULT_TRUSTED_COMMENTER_SECRET
 
-    return None
+    return alias
 
 
 def _validate_secret_alias_resolution(
@@ -214,18 +217,22 @@ def _validate_secret_alias_resolution(
 
     For each active stage in the config, the registered BackendRenderer is invoked
     to obtain its ``ExecutionPlan``.  Each ``SecretRef.alias`` in the plan is then
-    resolved using the three-level V-S12 rules (explicit mapping → PROVIDER_API_KEY
-    convention → TRUSTED_COMMENTER_TOKEN convention).  If no rule resolves an alias,
-    ``SecretAliasResolutionError`` is raised naming the alias and stage.
+    resolved using the four-level V-S12 rules (explicit mapping → PROVIDER_API_KEY
+    convention → TRUSTED_COMMENTER_TOKEN convention → alias-as-secret-name fallback).
 
     Resolution is purely static: only the ``providers`` block of the config is
     consulted — no GitHub API call, no network access, no repository-secret lookup.
+
+    Stages are iterated directly from the parsed config dict rather than through the
+    full normalization pipeline, which avoids ``ValueError`` for schema-valid stage
+    types or triggers that are absent from the neutral-core enums (e.g. a future
+    ``integration-test`` or ``docs`` type not yet in ``StageKind``).
 
     ``renderer_registry`` is accepted as an optional override for the registry used
     to look up BackendRenderers.  When ``None`` (the default), the two built-in
     renderers (AnthropicClaudeBackendRenderer and OpenAICodexBackendRenderer) are
     registered automatically.  Pass a custom registry in tests to exercise code paths
-    that the built-in renderers cannot reach (e.g. an unresolvable alias).
+    that the built-in renderers cannot reach.
 
     Callers (``_validate_semantics``) catch ``SecretAliasResolutionError`` and
     re-raise as ``RenderError`` so the error surfaces in the standard validation
@@ -233,13 +240,15 @@ def _validate_secret_alias_resolution(
     """
     # Deferred imports avoid circular dependency: stagr.core.pipeline imports
     # from stagr.render.constants, which is a sibling of this module.
-    from stagr.core.pipeline import normalize_config
     from stagr.core.backend_renderer_registry import BackendRendererRegistry
+    from stagr.core.enums import StageGate, StageKind
+    from stagr.core.errors import SecretAliasResolutionError as _CoreSecretError
+    from stagr.core.models import NormalizedStage
+    from stagr.core.normalize import expand_profile_defaults, filter_disabled_stages
     from stagr.core.renderers.anthropic_claude_backend_renderer import (
         AnthropicClaudeBackendRenderer,
     )
     from stagr.core.renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
-    from stagr.core.errors import SecretAliasResolutionError as _CoreSecretError
 
     if renderer_registry is None:
         local_registry = BackendRendererRegistry()
@@ -248,43 +257,94 @@ def _validate_secret_alias_resolution(
     else:
         local_registry = renderer_registry
 
-    normalized_stages = normalize_config(cfg)
+    # Build the active stage list directly from the config dict — bypassing the
+    # full normalization pipeline — to avoid ValueError for schema-valid stage types
+    # or triggers not yet present in the neutral-core enums.
+    profile_name: str = cfg.get("profile") or "custom"
+    explicit_stages: list[dict[str, Any]] = list(cfg.get("stages") or [])
+
+    try:
+        expanded_stages = expand_profile_defaults(profile_name, explicit_stages)
+    except (ValueError, TypeError):
+        return  # unrecognised profile or malformed stage list; nothing to check
+
+    active_stage_dicts = filter_disabled_stages(expanded_stages)
+
+    defaults_cfg: dict[str, Any] = cfg.get("defaults") or {}
+    default_provider: str | None = defaults_cfg.get("provider")
 
     providers_cfg: dict[str, Any] = cfg.get("providers") or {}
     platform_auth_cfg: dict[str, Any] = (cfg.get("platform") or {}).get("auth") or {}
     platform_token_secret: str | None = platform_auth_cfg.get("token_secret")
 
-    for stage in normalized_stages:
-        if not local_registry.has(stage.provider, stage.backend):
+    for stage_dict in active_stage_dicts:
+        stage_id: str = stage_dict.get("id") or "<unknown>"
+
+        # Apply provider default when the stage does not declare one.
+        provider: str | None = stage_dict.get("provider") or default_provider
+        if not provider:
+            continue  # no provider resolvable; skip
+
+        # Extract backend name, handling both the schema-defined object form
+        # ({"name": "codex"}) and plain strings used in tests.
+        raw_backend: Any = stage_dict.get("backend")
+        if isinstance(raw_backend, dict):
+            backend: str = str(raw_backend.get("name") or BACKEND_GENERIC)
+        elif isinstance(raw_backend, str) and raw_backend:
+            backend = raw_backend
+        else:
+            backend = PROVIDER_TOOL.get(provider, BACKEND_GENERIC)
+
+        if not local_registry.has(provider, backend):
             continue  # renderer not registered for this (provider, backend); skip
 
-        backend_renderer = local_registry.get(stage.provider, stage.backend)
+        # Build a minimal NormalizedStage for the renderer.  Use CUSTOM as a safe
+        # fallback for types not yet in the StageKind enum so that schema-valid
+        # but enum-absent types (e.g. 'integration-test') do not raise ValueError.
+        raw_type: str | None = stage_dict.get("type")
         try:
-            execution_plan = backend_renderer.render(stage)
+            stage_kind = StageKind(raw_type) if raw_type else StageKind.CUSTOM
+        except ValueError:
+            stage_kind = StageKind.CUSTOM
+
+        minimal_stage = NormalizedStage(
+            id=stage_id,
+            kind=stage_kind,
+            provider=provider,
+            backend=backend,
+            skill=stage_dict.get("skill") or None,
+            gate=StageGate.NON_BLOCKING,
+            triggers=(),
+            dependencies=(),
+        )
+
+        backend_renderer = local_registry.get(provider, backend)
+        try:
+            execution_plan = backend_renderer.render(minimal_stage)
         except (ValueError, TypeError):
             # The renderer does not support this stage kind (e.g. OpenAICodexBackendRenderer
             # only renders review/security stages). Skip: unsupported stage kinds declare no
             # SecretRef aliases and therefore cannot fail V-S12.
             continue
 
-        provider_entry: dict[str, Any] = providers_cfg.get(stage.provider) or {}
+        provider_entry: dict[str, Any] = providers_cfg.get(provider) or {}
         provider_secrets: dict[str, str] = provider_entry.get("secrets") or {}
         api_key_secret: str | None = provider_entry.get("api_key_secret")
 
         for secret_ref in execution_plan.required_secrets:
             env_name = _resolve_alias_statically(
                 secret_ref.alias,
-                stage.provider,
+                provider,
                 provider_secrets,
                 api_key_secret,
                 platform_token_secret,
             )
             if env_name is None:
                 raise _CoreSecretError(
-                    f"V-S12: stage '{stage.id}' (provider '{stage.provider}'): "
+                    f"V-S12: stage '{stage_id}' (provider '{provider}'): "
                     f"SecretRef alias '{secret_ref.alias}' has no mapping in "
-                    f"providers.{stage.provider}.secrets and does not match a "
-                    f"convention-based fallback (PROVIDER_API_KEY, TRUSTED_COMMENTER_TOKEN). "
-                    f"Add an explicit mapping in providers.{stage.provider}.secrets or use "
+                    f"providers.{provider}.secrets and does not match any "
+                    f"convention-based fallback. "
+                    f"Add an explicit mapping in providers.{provider}.secrets or use "
                     f"a supported alias."
                 )
