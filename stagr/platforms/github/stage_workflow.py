@@ -63,6 +63,10 @@ _EVENT_NAME_EXPRESSION = "${{ github.event_name }}"
 # success() also keeps them from running after a failed eligibility step.
 _PROCEED_CONDITION = "${{ steps.eligibility.outputs.proceed == 'true' }}"
 
+# First line of every generated stage workflow starts with this; `stagr apply --prune` only deletes
+# files that carry it, so a hand-written workflow that merely matches `stage-*.yml` is never removed.
+STAGE_WORKFLOW_NAME_PREFIX = "Stagr stage: "
+
 
 def build_on_section(
     stage_triggers: tuple[StageTrigger, ...],
@@ -130,7 +134,7 @@ def build_stage_workflow_yaml(
         jobs.append(_build_reconcile_job(signal_config, token_step))
         jobs.append(_build_sweep_job(token_step))
     return (
-        f'name: "Stagr stage: {stage.id}"\n'
+        f'name: "{STAGE_WORKFLOW_NAME_PREFIX}{stage.id}"\n'
         "\n"
         "on:\n"
         f"{on_section}"

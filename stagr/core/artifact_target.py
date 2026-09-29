@@ -12,7 +12,8 @@ is written:
   explicit choice, so only its own final component is checked;
 * an existing target path must be a regular file, never a directory or a symlink;
 * only files named by the artifacts are ever written; nothing else in the directory is
-  touched, and stale per-stage files are removed only by the explicit :func:`remove_stale_files`.
+  touched, and stale per-stage files are removed only by the explicit :func:`remove_stale_files`,
+  and only if their first line proves Stagr generated them (never on the file name alone).
 """
 from __future__ import annotations
 
@@ -129,11 +130,13 @@ def find_stale_files(
     target_directory: Path,
     artifacts: tuple[RenderedArtifact, ...],
     stage_artifact_glob: str,
+    stage_artifact_marker: str,
 ) -> tuple[Path, ...]:
-    """Return per-stage files in ``target_directory`` that no artifact would write.
+    """Return per-stage files that Stagr generated earlier but no artifact would write now.
 
-    Only names matching ``stage_artifact_glob`` (for GitHub, ``stage-*.yml``) are considered,
-    so workflows the operator wrote by hand are never reported as stale.
+    A file counts only when its name matches ``stage_artifact_glob`` (for GitHub, ``stage-*.yml``)
+    **and** its first line starts with ``stage_artifact_marker``. The name alone proves nothing: a
+    hand-written ``stage-deploy.yml`` matches the glob, and ``--prune`` must never delete it.
     """
     if not target_directory.is_dir():
         return ()
@@ -141,8 +144,19 @@ def find_stale_files(
     return tuple(
         stage_file
         for stage_file in sorted(target_directory.glob(stage_artifact_glob))
-        if stage_file.is_file() and stage_file.name not in rendered_names
+        if stage_file.is_file()
+        and not stage_file.is_symlink()
+        and stage_file.name not in rendered_names
+        and _first_line_starts_with(stage_file, stage_artifact_marker)
     )
+
+
+def _first_line_starts_with(file_path: Path, expected_prefix: str) -> bool:
+    try:
+        with file_path.open("r", encoding="utf-8") as opened_file:
+            return opened_file.readline().startswith(expected_prefix)
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 def remove_stale_files(stale_files: tuple[Path, ...]) -> None:

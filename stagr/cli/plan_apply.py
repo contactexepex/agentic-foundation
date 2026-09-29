@@ -62,6 +62,15 @@ def _print_stale_files(stale_files: tuple[Path, ...], instruction: str) -> None:
             print(f"      ? {stale_file.name}")
 
 
+def _stale_stage_files(args, pipeline_result):
+    return find_stale_files(
+        args.out,
+        pipeline_result.artifacts,
+        pipeline_result.stage_artifact_glob,
+        pipeline_result.stage_artifact_marker,
+    )
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     rendered = _render_and_classify(args, "plan")
     if rendered is None:
@@ -78,7 +87,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         if artifact_change.status is ArtifactStatus.CHANGED and args.diff:
             _print_unified_diff(artifact_change)
     _print_stale_files(
-        find_stale_files(args.out, pipeline_result.artifacts, pipeline_result.stage_artifact_glob),
+        _stale_stage_files(args, pipeline_result),
         "left untouched; `stagr apply --prune` removes them",
     )
     print("\nplan: dry run only - nothing was written.")
@@ -91,7 +100,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         return 1
     pipeline_result, artifact_changes = rendered
 
-    stale_files = find_stale_files(args.out, pipeline_result.artifacts, pipeline_result.stage_artifact_glob)
+    stale_files = _stale_stage_files(args, pipeline_result)
     try:
         written_changes = write_changed_artifacts(artifact_changes)
         if args.prune:

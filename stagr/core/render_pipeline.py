@@ -57,6 +57,7 @@ class RenderPipelineResult:
     artifacts: tuple[RenderedArtifact, ...]
     warnings: tuple[str, ...]
     stage_artifact_glob: str
+    stage_artifact_marker: str
 
 
 def run_render_pipeline(
@@ -100,6 +101,7 @@ def render_artifacts(render_inputs: RenderInputs) -> RenderPipelineResult:
         artifacts=artifacts,
         warnings=render_inputs.warnings,
         stage_artifact_glob=platform_target.stage_artifact_glob,
+        stage_artifact_marker=platform_target.stage_artifact_marker,
     )
 
 

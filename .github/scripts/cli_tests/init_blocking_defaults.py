@@ -114,6 +114,22 @@ def test_init_gates_match_the_neutral_profile_definitions() -> None:
                       f"({neutral_stage[field]})")
 
 
+def test_security_review_waits_for_the_code_review_in_every_profile_that_has_both() -> None:
+    """Review finding: the two Codex reviews must never start concurrently (AGENTS.md review order)."""
+    for profile in ("standard", "full"):
+        with _project_dir() as project_root:
+            generated_text = init_profile_in_current_project(profile)
+            stages_by_id = {stage["id"]: stage for stage in active_stages(generated_text)}
+            check(stages_by_id["security"].get("depends_on") == ["review"],
+                  f"init {profile}: the security stage depends on the code review")
+            check("depends_on" not in stages_by_id["review"], f"init {profile}: the code review depends on nothing")
+            DEFAULT_CONFIG_FILE.write_text(uncomment_publisher_block(generated_text), encoding="utf-8")
+            exit_code, _, error_output = run_cli("apply", "--out", "out")
+            security_workflow = (project_root / "out" / "stage-security.yml").read_text(encoding="utf-8")
+            check(exit_code == 0 and '"dependencies":[{' in security_workflow.replace(" ", ""),
+                  f"init {profile}: the applied security workflow waits on an upstream stage (stderr: {error_output.strip()})")
+
+
 def test_generated_file_explains_gates_and_keeps_unavailable_stages_commented() -> None:
     for profile in EXPECTED_STAGE_IDS_BY_PROFILE:
         with _project_dir():
@@ -221,6 +237,7 @@ INIT_BLOCKING_DEFAULT_TESTS = [
     test_plan_without_a_publisher_app_id_tells_the_operator_what_to_set,
     test_generated_codex_stages_are_explicitly_blocking_in_every_profile,
     test_init_gates_match_the_neutral_profile_definitions,
+    test_security_review_waits_for_the_code_review_in_every_profile_that_has_both,
     test_generated_file_explains_gates_and_keeps_unavailable_stages_commented,
     test_uncommenting_the_build_and_test_examples_only_renders_placeholders,
     test_wizard_asks_no_governance_question_and_never_offers_advisory,

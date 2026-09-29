@@ -9,6 +9,7 @@ import yaml
 from ..harness import REPO_ROOT, check
 from .helpers import (
     DEFAULT_WORKFLOW_DIRECTORY,
+    GENERATED_STAGE_HEADER,
     DOGFOOD_ENABLED_STAGE_IDS,
     DOGFOOD_WORKFLOW_NAMES,
     dogfood_project,
@@ -87,7 +88,8 @@ def test_apply_never_touches_unrelated_files_and_prunes_only_stale_stage_workflo
         workflow_directory = project_root / DEFAULT_WORKFLOW_DIRECTORY
         workflow_directory.mkdir(parents=True)
         (workflow_directory / "ci.yml").write_text("name: hand written ci\n", encoding="utf-8")
-        (workflow_directory / "stage-removed-stage.yml").write_text("name: stale stage\n", encoding="utf-8")
+        (workflow_directory / "stage-removed-stage.yml").write_text(GENERATED_STAGE_HEADER, encoding="utf-8")
+        (workflow_directory / "stage-deploy.yml").write_text("name: my hand-written deploy\n", encoding="utf-8")
         (project_root / "README.md").write_text("unrelated\n", encoding="utf-8")
 
         _, apply_output, _ = run_cli("apply")
@@ -101,8 +103,13 @@ def test_apply_never_touches_unrelated_files_and_prunes_only_stale_stage_workflo
               "apply --prune: removes the stale stage workflow")
         check((workflow_directory / "ci.yml").exists() and (project_root / "README.md").exists(),
               "apply --prune: hand-written and unrelated files survive")
-        check(sorted(path.name for path in workflow_directory.iterdir()) == sorted(DOGFOOD_WORKFLOW_NAMES + ("ci.yml",)),
-              "apply --prune: directory holds exactly the rendered workflows plus the hand-written one")
+        check((workflow_directory / "stage-deploy.yml").read_text(encoding="utf-8") == "name: my hand-written deploy\n",
+              "apply --prune: a hand-written stage-*.yml is never deleted (the file name alone proves nothing)")
+        check("stage-deploy.yml" not in prune_output and "stage-deploy.yml" not in apply_output,
+              "apply: a hand-written stage-*.yml is never reported as stale")
+        check(sorted(path.name for path in workflow_directory.iterdir())
+              == sorted(DOGFOOD_WORKFLOW_NAMES + ("ci.yml", "stage-deploy.yml")),
+              "apply --prune: directory holds exactly the rendered workflows plus the hand-written ones")
 
 
 def test_apply_honours_a_custom_out_directory() -> None:

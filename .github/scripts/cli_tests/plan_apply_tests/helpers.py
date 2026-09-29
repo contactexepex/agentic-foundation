@@ -26,6 +26,8 @@ DOGFOOD_WORKFLOW_NAMES = (
     *(f"stage-{stage_id}.yml" for stage_id in DOGFOOD_ENABLED_STAGE_IDS),
 )
 DEFAULT_WORKFLOW_DIRECTORY = Path(".github") / "workflows"
+# First line of every workflow Stagr generates for a stage; only such files may be pruned.
+GENERATED_STAGE_HEADER = 'name: "Stagr stage: removed-stage"\n'
 
 
 @contextmanager

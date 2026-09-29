@@ -4,6 +4,7 @@ from __future__ import annotations
 from ..harness import check
 from .helpers import (
     DEFAULT_WORKFLOW_DIRECTORY,
+    GENERATED_STAGE_HEADER,
     DOGFOOD_WORKFLOW_NAMES,
     dogfood_project,
     line_mentioning,
@@ -61,11 +62,14 @@ def test_plan_reports_stale_stage_workflows_but_not_hand_written_ones() -> None:
         workflow_directory = project_root / DEFAULT_WORKFLOW_DIRECTORY
         workflow_directory.mkdir(parents=True)
         (workflow_directory / "ci.yml").write_text("name: hand written\n", encoding="utf-8")
-        (workflow_directory / "stage-removed-stage.yml").write_text("name: stale\n", encoding="utf-8")
+        (workflow_directory / "stage-removed-stage.yml").write_text(GENERATED_STAGE_HEADER, encoding="utf-8")
+        (workflow_directory / "stage-deploy.yml").write_text("name: hand written deploy\n", encoding="utf-8")
 
         _, plan_output, _ = run_cli("plan")
         check("? stage-removed-stage.yml" in plan_output, "plan: a stage workflow no longer rendered is listed as stale")
         check("ci.yml" not in plan_output, "plan: hand-written workflows are never mentioned")
+        check("stage-deploy.yml" not in plan_output,
+              "plan: a hand-written stage-*.yml is not mistaken for a generated stage workflow")
 
 
 def test_plan_after_apply_reports_everything_unchanged() -> None:
