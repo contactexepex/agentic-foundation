@@ -27,6 +27,7 @@ from neutral_core_tests.codex_renderer_tests.test_evidence_and_rejection import 
     test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
     test_codex_renderer_unsupported_stage_kind_raises_value_error,
     test_codex_renderer_non_blocking_stage_raises_value_error,
+    test_codex_renderer_evidence_specs_declare_the_codex_bot_as_producer,
 )
 
 CODEX_RENDERER_TESTS = [
@@ -48,6 +49,7 @@ CODEX_RENDERER_TESTS = [
     test_codex_renderer_security_stage_evidence_sha_field_is_head_sha,
     test_codex_renderer_unsupported_stage_kind_raises_value_error,
     test_codex_renderer_non_blocking_stage_raises_value_error,
+    test_codex_renderer_evidence_specs_declare_the_codex_bot_as_producer,
 ]
 
 __all__ = [
@@ -70,4 +72,5 @@ __all__ = [
     "test_codex_renderer_security_stage_evidence_sha_field_is_head_sha",
     "test_codex_renderer_unsupported_stage_kind_raises_value_error",
     "test_codex_renderer_non_blocking_stage_raises_value_error",
+    "test_codex_renderer_evidence_specs_declare_the_codex_bot_as_producer",
 ]

@@ -51,8 +51,24 @@ EvidenceSpec {
   selector:         string             // backend-defined; opaque to neutral contract
   correlation:      CorrelationSpec
   successCondition: EvidenceSuccessCondition
+  producedBy:       string | null      // identity that authors the evidence item
 }
 ```
+
+### producedBy — evidence authenticity
+
+PR content is untrusted: on a public repository anyone can post a comment that copies a
+backend's selector text and the (public) head SHA. `producedBy` names the identity that
+authors genuine evidence (mirroring `FindingScopeSpec.createdBy`, which does the same for
+findings). The stage execution artifact must ignore any evidence item authored by another
+identity.
+
+- It is **required** for comment-based evidence (`REVIEW_RESULT`, `COMMENT_MATCH`). A
+  PlatformRenderer must reject such a plan at render time when it is missing, rather than
+  fall back to an unauthenticated match.
+- The identity string is platform-defined (a login on GitHub). Bot identities must not be
+  matched against look-alike human accounts: a login ending in `[bot]` matches only a
+  platform Bot actor.
 
 ### EvidenceKind — semantic vocabulary
 

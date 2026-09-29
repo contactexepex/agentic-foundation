@@ -182,6 +182,7 @@ from neutral_core_tests.test_platform_renderer import (
 )
 from neutral_core_tests.phase1_render_loop_tests import PHASE1_RENDER_LOOP_TESTS
 from neutral_core_tests.github_platform_renderer_tests import GITHUB_PLATFORM_RENDERER_TESTS
+from neutral_core_tests.stage_signal_tests import STAGE_SIGNAL_TESTS
 from neutral_core_tests.test_config_parser import CONFIG_PARSER_TESTS
 from neutral_core_tests.test_static_validator import STATIC_VALIDATOR_TESTS
 
@@ -321,6 +322,7 @@ _TESTS = [
     test_platform_renderer_dry_run_render_governance_raises_value_error,
     *PHASE1_RENDER_LOOP_TESTS,
     *GITHUB_PLATFORM_RENDERER_TESTS,
+    *STAGE_SIGNAL_TESTS,
     *CONFIG_PARSER_TESTS,
     *STATIC_VALIDATOR_TESTS,
 ]

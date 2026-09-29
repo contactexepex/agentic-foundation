@@ -63,10 +63,14 @@ def build_execution_plan(
     stage_id: str = "review",
     required_secrets: tuple[SecretRef, ...] = (),
 ) -> ExecutionPlan:
-    """Return a minimal ExecutionPlan for the given stage."""
+    """Return a minimal ExecutionPlan for the given stage.
+
+    Uses a synchronous CI_COMPONENT invocation: a plan with no evidence is only valid when the
+    invocation completes inside the execute job (see stage_signal_config).
+    """
     return ExecutionPlan(
         stage_id=stage_id,
-        invocation=Invocation(kind=InvocationKind.PR_COMMENT),
+        invocation=Invocation(kind=InvocationKind.CI_COMPONENT),
         gate_disposition=GateDispositionSpec(
             kind=GateDispositionKind.ALWAYS_PASS,
             selector="always",

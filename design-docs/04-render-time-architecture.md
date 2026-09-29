@@ -197,11 +197,12 @@ EvidenceSpec {
   selector:         string                    // backend-defined, opaque to neutral contract
   correlation:      CorrelationSpec
   successCondition: EvidenceSuccessCondition
+  producedBy:       string | null             // identity that authors the evidence item
 }
 ```
 
-See `06-runtime-boundary.md` for `EvidenceKind`, `CorrelationSpec`, and
-`EvidenceSuccessCondition` definitions.
+See `06-runtime-boundary.md` for `EvidenceKind`, `CorrelationSpec`,
+`EvidenceSuccessCondition`, and `producedBy` definitions.
 
 ---
 
