@@ -32,7 +32,7 @@ def test_pr_comment_stage_replaces_both_placeholders_with_one_invoke_step() -> N
     names = list(_steps(document))
     assert names == [
         "Acquire Stagr App installation token",
-        "Check eligibility (stub)",
+        "Check eligibility",
         "Invoke backend (idempotent)",
         "Publish result signal",
     ]
@@ -48,7 +48,9 @@ def test_invoke_step_runs_the_shared_runtime_in_invoke_mode_with_only_event_data
         "STAGR_EVENT_HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
         "TRUSTED_COMMENTER_TOKEN": BACKEND_SECRET_EXPRESSION,
     }
-    assert "if" not in invoke_step, "a failed earlier step must not be followed by an invocation"
+    assert invoke_step["if"] == "${{ steps.eligibility.outputs.proceed == 'true' }}", (
+        "the backend is invoked only when the eligibility step said so (implicit success() also "
+        "stops it after any failed earlier step)")
 
 
 def test_only_the_invoke_step_holds_the_backend_secret() -> None:

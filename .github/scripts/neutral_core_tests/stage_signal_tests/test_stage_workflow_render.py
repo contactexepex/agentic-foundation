@@ -111,7 +111,8 @@ def test_app_token_reaches_only_the_signal_steps_never_the_backend_step() -> Non
         for step in job["steps"]:
             has_app_token = "steps.app-token.outputs.token" in str(step.get("env", {}))
             is_signal_step = step["name"] in (
-                "Publish result signal", "Reconcile result signal", "Sweep open pull requests")
+                "Check eligibility", "Publish result signal", "Reconcile result signal",
+                "Sweep open pull requests")
             assert has_app_token == is_signal_step, (job_name, step["name"])
     backend = next(step for step in document["jobs"]["execute"]["steps"] if step["name"].startswith("Invoke backend"))
     assert backend["env"]["TRUSTED_COMMENTER_TOKEN"] == "${{ secrets.REMEDIATION_TOKEN }}"

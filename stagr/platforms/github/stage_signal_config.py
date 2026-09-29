@@ -16,7 +16,14 @@ here, at ``stagr apply`` time, instead of degrading into a weaker check at run t
 - a ``PR_COMMENT`` invocation (issue #205) without a non-empty ``params["body"]``, without the
   ``TRUSTED_COMMENTER_TOKEN`` secret it must be posted with, or with a ``params["lease_minutes"]``
   that is not an integer from 1 to ``MAX_LEASE_MINUTES``. The lease defaults to 30 minutes.
+- (issue #207) a dependency on a stage that is not in the render context, on itself, or whose id or
+  the publisher App id is not plain text that is safe to place inside a workflow ``if:`` expression.
 Other invocation kinds are not posted by this runtime yet and carry no ``invocation`` document.
+
+Eligibility data (issue #207) travels in the same document: ``dependencies`` (each upstream stage id
+with the name of the Check Run that carries its signal) and ``routing`` (the Check Run that carries
+the ``RouteClassification`` and the stage ids that apply to the FAST and to the NORMAL route, or
+``null`` when no fast path is configured).
 """
 from __future__ import annotations
 
@@ -33,12 +40,21 @@ from stagr.core.enums import (
     InvocationKind,
 )
 from stagr.core.models import EvidenceSpec, ExecutionPlan, NormalizedStage, RenderContext
+from stagr.platforms.github.routing_workflow import ROUTE_CLASSIFICATION_CHECK_RUN_NAME
 from stagr.platforms.github.runtime.stage_signal_runtime import (
     DEFAULT_LEASE_MINUTES,
     INVOCATION_KIND_PR_COMMENT,
     MAX_LEASE_MINUTES,
     TRUSTED_COMMENTER_TOKEN_VARIABLE,
 )
+
+# Check Run name of a stage signal: design-doc 08, ``stagr/stage/<stageId>``.
+STAGE_CHECK_RUN_NAME_PREFIX = "stagr/stage"
+
+# The stage id pattern of config.schema.json. Dependency ids are placed inside a quoted literal of
+# the wake-up ``if:`` expression, so anything outside it is refused here rather than escaped.
+_STAGE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_APP_ID_PATTERN = re.compile(r"^[0-9]{1,20}$")
 
 # Invocations that run to completion inside the execute job, so the job's own outcome is the proof.
 _SYNCHRONOUS_INVOCATION_KINDS = frozenset({InvocationKind.CI_COMPONENT, InvocationKind.API_CALL})
@@ -70,8 +86,22 @@ class StageSignalConfig:
         """True when completion is observed later (reconcile/sweep) rather than at execute time."""
         return bool(self.document["evidence"])
 
+    @property
+    def upstream_check_run_names(self) -> tuple[str, ...]:
+        """Check Run names of the stages this stage depends on, in declaration order."""
+        return tuple(item["checkRunName"] for item in self.document["dependencies"])
+
+    @property
+    def has_dependencies(self) -> bool:
+        """True when upstream signals can wake this stage (Check Run and Check Suite events)."""
+        return bool(self.document["dependencies"])
+
     def to_json_text(self) -> str:
         return json.dumps(self.document, sort_keys=True, separators=(",", ":"))
+
+
+def build_stage_check_run_name(stage_id: str) -> str:
+    return f"{STAGE_CHECK_RUN_NAME_PREFIX}/{stage_id}"
 
 
 def build_stage_signal_config(
@@ -97,6 +127,8 @@ def build_stage_signal_config(
         "evidence": evidence_documents,
         "gate": gate_document,
         "invocation": _build_invocation_document(stage, plan),
+        "dependencies": _build_dependency_documents(stage, render_context, publisher_app_id),
+        "routing": _build_routing_document(render_context),
     }
     if _GITHUB_EXPRESSION_OPENER in json.dumps(document):
         raise ValueError(
@@ -204,6 +236,45 @@ def _build_invocation_document(stage: NormalizedStage, plan: ExecutionPlan) -> d
             f"{MAX_LEASE_MINUTES}; got {lease_minutes!r}."
         )
     return {"kind": INVOCATION_KIND_PR_COMMENT, "body": body, "leaseMinutes": lease_minutes}
+
+
+def _build_dependency_documents(
+    stage: NormalizedStage, render_context: RenderContext, publisher_app_id: str
+) -> list[dict[str, str]]:
+    dependency_ids = tuple(dict.fromkeys(stage.dependencies))
+    if not dependency_ids:
+        return []
+    if not _APP_ID_PATTERN.match(str(publisher_app_id)):
+        raise ValueError(
+            f"Stage '{stage.id}': the publisher App id must be numeric to guard the dependency "
+            f"wake-up events; got {publisher_app_id!r}."
+        )
+    known_stage_ids = {known_stage.id for known_stage in render_context.stages}
+    for dependency_id in dependency_ids:
+        if not _STAGE_ID_PATTERN.match(dependency_id):
+            raise ValueError(
+                f"Stage '{stage.id}': dependency {dependency_id!r} is not a valid stage id."
+            )
+        if dependency_id == stage.id or dependency_id not in known_stage_ids:
+            raise ValueError(
+                f"Stage '{stage.id}': dependency '{dependency_id}' is not another active stage, so "
+                f"its signal could never be evaluated."
+            )
+    return [
+        {"stageId": dependency_id, "checkRunName": build_stage_check_run_name(dependency_id)}
+        for dependency_id in dependency_ids
+    ]
+
+
+def _build_routing_document(render_context: RenderContext) -> dict[str, Any] | None:
+    fast_path = render_context.routing_policy.fast_path
+    if fast_path is None:
+        return None
+    return {
+        "checkRunName": ROUTE_CLASSIFICATION_CHECK_RUN_NAME,
+        "fastStageIds": sorted(set(fast_path.stages.fast)),
+        "normalStageIds": sorted(set(fast_path.stages.normal)),
+    }
 
 
 def _reject_unprovable_completion(stage: NormalizedStage, plan: ExecutionPlan) -> None:

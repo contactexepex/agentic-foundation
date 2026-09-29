@@ -30,9 +30,13 @@ ExecutionPlan.required_secrets (resolved alias → env_name pairs). Mixing the A
 with backend invocation calls would grant the backend write access to platform
 primitives (Check Runs) it must not control.
 
-Stage workflow structure (see stage_workflow.py; step 2 is a stub awaiting a later issue):
+Stage workflow structure (see stage_workflow.py):
   execute job    1. App token acquisition   — always emitted
-                 2. Eligibility check       — stub (spec: #207)
+                 2. Eligibility check       — trust, fork policy, current head, route, dependencies
+                                              (spec: #207); sets the output ``proceed`` that gates
+                                              step 3. Runs on the declared triggers and, for a stage
+                                              with dependencies, on upstream check_run/check_suite
+                                              wake-ups.
                  3. Idempotency guard and   — PR_COMMENT backends (spec: #205): one step checks the
                     backend invocation        completion guard and the in-flight lease, then posts
                                               the comment; holds only the TRUSTED_COMMENTER_TOKEN
@@ -40,7 +44,7 @@ Stage workflow structure (see stage_workflow.py; step 2 is a stub awaiting a lat
                  4. Result signaling        — Check Run carrying the StageResultSignal (spec: #206);
                                               the only step that creates the Check Run
   reconcile job  issue_comment wakeup; updates the Check Run in place (spec: #206)
-  sweep job      scheduled backstop over open pull requests (spec: #206)
+  sweep job      scheduled backstop over open pull requests (spec: #206); updates only
 The reconcile and sweep jobs exist only for plans that declare asynchronous evidence.
 
 Trigger mapping (design-doc 08):
@@ -70,11 +74,11 @@ from stagr.platforms.github.routing_workflow import (
     generate_routing_workflow_yaml,
     ROUTING_WORKFLOW_FILENAME,
 )
-from stagr.platforms.github.stage_signal_config import build_stage_signal_config
+from stagr.platforms.github.stage_signal_config import (
+    build_stage_check_run_name,
+    build_stage_signal_config,
+)
 from stagr.platforms.github.stage_workflow import build_on_section, build_stage_workflow_yaml
-
-# Check Run name template — design-doc 08: stagr/stage/<stageId>
-_CHECK_RUN_NAME_PREFIX = "stagr/stage"
 
 
 class GitHubPlatformRenderer:
@@ -158,11 +162,13 @@ class GitHubPlatformRenderer:
         ``pull_request_target`` — a security invariant violation.
         """
         is_privileged = bool(plan.required_secrets)
-        check_run_name = f"{_CHECK_RUN_NAME_PREFIX}/{stage.id}"
+        check_run_name = build_stage_check_run_name(stage.id)
         signal_config = build_stage_signal_config(
             plan, stage, render_context, self._publisher_app_id, check_run_name
         )
-        on_section_yaml = build_on_section(stage.triggers, signal_config.has_asynchronous_evidence)
+        on_section_yaml = build_on_section(
+            stage.triggers, signal_config.has_asynchronous_evidence, signal_config.has_dependencies
+        )
         self._assert_privileged_stage_on_section_is_safe(stage, on_section_yaml, is_privileged)
 
         workflow_yaml = build_stage_workflow_yaml(
