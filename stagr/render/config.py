@@ -59,7 +59,17 @@ def load_config(path: Path) -> dict[str, Any]:
     return resolve_extends(cfg, path.parent)
 
 
-def validate_config(cfg: dict[str, Any]) -> None:
+def validate_config(cfg: dict[str, Any], project_root: Path | None = None) -> None:
+    """Validate *cfg* against the JSON Schema and run semantic coherence checks.
+
+    When *project_root* is supplied, V-S06 (skill file existence) is also
+    enforced: every stage that names a skill must resolve to
+    ``<project_root>/.agentic/skills/<id>/SKILL.md``.  Pass ``Path.cwd()``
+    for CLI invocations where the operator's repository is the working
+    directory.  When *project_root* is ``None`` the filesystem check is
+    skipped (appropriate for in-memory configs without an associated project
+    tree, such as unit tests that exercise schema/semantic rules only).
+    """
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     errors = sorted(Draft202012Validator(schema).iter_errors(cfg), key=lambda err: list(err.path))
     if errors:
@@ -69,6 +79,15 @@ def validate_config(cfg: dict[str, Any]) -> None:
         )
         raise RenderError(f"config does not conform to schema: {details}")
     _validate_semantics(cfg)
+    if project_root is not None:
+        from stagr.core.skill_validator import validate_skill_file_existence  # noqa: PLC0415
+        from stagr.core.models import StaticValidationError  # noqa: PLC0415
+
+        raw_stages = cfg.get("stages") or []
+        try:
+            validate_skill_file_existence(raw_stages, project_root)
+        except StaticValidationError as exc:
+            raise RenderError(str(exc)) from exc
 
 
 def _validate_semantics(cfg: dict[str, Any]) -> None:

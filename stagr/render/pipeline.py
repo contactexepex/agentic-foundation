@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         cfg = load_config(confine_config_path(args.config))
-        validate_config(cfg)
+        validate_config(cfg, project_root=Path.cwd())
         platform = args.platform or (cfg.get("platform", {}) or {}).get("type", "github")
         rendered = render_all(cfg, platform)
         # Confine the CLI-supplied output dir to the project root, exactly as `--config` is confined:

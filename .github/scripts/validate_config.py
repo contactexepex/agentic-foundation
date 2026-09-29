@@ -189,27 +189,17 @@ def main() -> int:
             continue
         validate(cfg, rel)
         check_stage_graph(cfg, rel)
-        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) + templating
-        # safety (no ${{ }} / breakout char in any operator literal). Same code path as `stagr validate`.
-        # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g. a
-        # <anthropic-default-model>) that a real config replaces and that resolution would reject.
+        # Canonical validation: schema + semantic coherence (review graph, auto-merge deadlock) +
+        # templating safety (no ${{ }} / breakout char in any operator literal) + V-S06 skill file
+        # existence. Same code path as `stagr validate` / `stagr plan` / `stagr apply`.
+        # Only for a REAL config, not the scaffold template, which carries <placeholder> values (e.g.
+        # a <anthropic-default-model>) that a real config replaces and that resolution would reject.
         if rel == ".agentic/config.yml":
             try:
-                render.validate_config(cfg)
-                print(f"OK  {rel} passes canonical validation (schema + semantics + templating)")
+                render.validate_config(cfg, project_root=ROOT)
+                print(f"OK  {rel} passes canonical validation (schema + semantics + templating + V-S06)")
             except render.RenderError as exc:
                 fail(f"{rel}: canonical validation failed: {exc}")
-            # V-S06: skill file existence — each stage with skill != None must resolve to
-            # .agentic/skills/<id>/SKILL.md. Disabled stages are skipped (they are removed
-            # before normalization and never participate in the active pipeline).
-            from stagr.core.skill_validator import validate_skill_file_existence  # noqa: PLC0415
-            from stagr.core.models import StaticValidationError  # noqa: PLC0415
-            raw_stages = cfg.get("stages") or []
-            try:
-                validate_skill_file_existence(raw_stages, ROOT)
-                print(f"OK  {rel} passes V-S06 skill file existence check")
-            except StaticValidationError as exc:
-                fail(f"{rel}: V-S06 skill file check failed: {exc}")
 
     # 4. Minimal config.
     validate(
