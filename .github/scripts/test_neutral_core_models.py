@@ -190,6 +190,8 @@ from neutral_core_tests.test_config_parser import (
     test_parse_config_raises_config_version_error_for_string_version,
     test_parse_config_raises_config_version_error_for_unsupported_integer_version,
     test_parse_config_raises_config_version_error_for_non_mapping_document,
+    test_parse_config_raises_config_version_error_for_float_version,
+    test_parse_config_raises_config_version_error_for_bool_version,
     test_parse_config_error_message_names_found_version,
 )
 
@@ -335,6 +337,8 @@ _TESTS = [
     test_parse_config_raises_config_version_error_for_string_version,
     test_parse_config_raises_config_version_error_for_unsupported_integer_version,
     test_parse_config_raises_config_version_error_for_non_mapping_document,
+    test_parse_config_raises_config_version_error_for_float_version,
+    test_parse_config_raises_config_version_error_for_bool_version,
     test_parse_config_error_message_names_found_version,
 ]
 
