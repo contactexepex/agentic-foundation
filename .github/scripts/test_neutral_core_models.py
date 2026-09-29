@@ -183,6 +183,15 @@ from neutral_core_tests.test_platform_renderer import (
 )
 from neutral_core_tests.phase1_render_loop_tests import PHASE1_RENDER_LOOP_TESTS
 from neutral_core_tests.github_platform_renderer_tests import GITHUB_PLATFORM_RENDERER_TESTS
+from neutral_core_tests.test_config_parser import (
+    test_parse_config_dogfood_config_succeeds,
+    test_parse_config_returns_full_config_dict,
+    test_parse_config_raises_config_version_error_when_version_absent,
+    test_parse_config_raises_config_version_error_for_string_version,
+    test_parse_config_raises_config_version_error_for_unsupported_integer_version,
+    test_parse_config_raises_config_version_error_for_non_mapping_document,
+    test_parse_config_error_message_names_found_version,
+)
 
 _TESTS = [
     test_enum_string_values,
@@ -320,6 +329,13 @@ _TESTS = [
     test_platform_renderer_dry_run_render_governance_raises_value_error,
     *PHASE1_RENDER_LOOP_TESTS,
     *GITHUB_PLATFORM_RENDERER_TESTS,
+    test_parse_config_dogfood_config_succeeds,
+    test_parse_config_returns_full_config_dict,
+    test_parse_config_raises_config_version_error_when_version_absent,
+    test_parse_config_raises_config_version_error_for_string_version,
+    test_parse_config_raises_config_version_error_for_unsupported_integer_version,
+    test_parse_config_raises_config_version_error_for_non_mapping_document,
+    test_parse_config_error_message_names_found_version,
 ]
 
 if __name__ == "__main__":
