@@ -13,6 +13,7 @@ Design source: design-docs/07-validation.md (V-S06).
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -59,3 +60,15 @@ def validate_skill_file_existence(
                 f"V-S06: stage '{stage_id}' references skill '{skill_id}' "
                 f"but the expected file does not exist: {expected_skill_file}"
             )
+        skills_base = project_root / ".agentic" / "skills"
+        try:
+            real_file = expected_skill_file.resolve()
+            real_skills_base = skills_base.resolve()
+            if not str(real_file).startswith(str(real_skills_base) + os.sep):
+                stage_id = stage.get("id", "<unknown>")
+                raise StaticValidationError(
+                    f"V-S06: stage '{stage_id}' skill file resolves outside the project "
+                    f"skills directory (possible symlink escape): {expected_skill_file}"
+                )
+        except OSError:
+            pass  # resolve() failed for an unusual reason; is_file() check already handled missing files
