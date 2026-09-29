@@ -113,6 +113,7 @@ def _test_v_s12_convention_fallback_accepts_unknown_alias() -> bool:
         NormalizedStage,
         SecretRef,
     )
+    from stagr.render.stages import expand_stages
 
     _STUB_PROVIDER = "stub_provider"
     _STUB_BACKEND = "stub_backend"
@@ -150,16 +151,59 @@ def _test_v_s12_convention_fallback_accepts_unknown_alias() -> bool:
                 "id": _STUB_STAGE_ID,
                 "type": "implement",
                 "provider": _STUB_PROVIDER,
-                "backend": _STUB_BACKEND,
+                "backend": {"name": _STUB_BACKEND},
                 "gate": "advisory",
             }
         ],
     }
 
+    expanded = expand_stages(cfg)
     try:
-        _validate_secret_alias_resolution(cfg, renderer_registry=stub_registry)
+        _validate_secret_alias_resolution(expanded, cfg, renderer_registry=stub_registry)
         # Convention fallback accepted the alias — validation passed as expected.
         return True
     except SecretAliasResolutionError:
         # Unexpected: convention fallback should have resolved the alias to itself.
+        return False
+
+
+def _test_v_s12_blocking_codex_stage_examines_trusted_commenter_token() -> bool:
+    """A blocking Codex review stage causes TRUSTED_COMMENTER_TOKEN to be examined.
+
+    Before the gate fix (Finding 2), OpenAICodexBackendRenderer.render() raised
+    ValueError for NON_BLOCKING stages and the broad except silently swallowed it,
+    meaning TRUSTED_COMMENTER_TOKEN was never checked.  After the fix the effective
+    gate is derived from the stage dict so blocking Codex stages are probed correctly.
+
+    This test verifies that a standard review stage (gate: blocking, provider: openai)
+    reaches the renderer and that validation passes (TRUSTED_COMMENTER_TOKEN resolves
+    to the REMEDIATION_TOKEN default — no explicit platform.auth.token_secret needed).
+    """
+    from stagr.core.errors import SecretAliasResolutionError
+    from stagr.render.stages import expand_stages
+
+    cfg: dict = {
+        "version": 2,
+        "profile": "custom",
+        "platform": {"type": "github", "default_branch": "main"},
+        "defaults": {"provider": "openai", "models": {}},
+        "routing": {"fast_path": {"enabled": False}},
+        "stages": [
+            {
+                "id": "review",
+                "type": "review",
+                "provider": "openai",
+                "gate": "blocking",
+            }
+        ],
+    }
+
+    expanded = expand_stages(cfg)
+    try:
+        _validate_secret_alias_resolution(expanded, cfg)
+        # Blocking Codex review stage was probed; TRUSTED_COMMENTER_TOKEN resolved
+        # to REMEDIATION_TOKEN via the convention fallback — validation passed.
+        return True
+    except SecretAliasResolutionError:
+        # Unexpected: TRUSTED_COMMENTER_TOKEN should resolve to REMEDIATION_TOKEN.
         return False

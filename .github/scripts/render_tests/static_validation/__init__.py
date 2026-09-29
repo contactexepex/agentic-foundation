@@ -30,6 +30,7 @@ from render_tests.static_validation.test_v_s12 import (
     _test_resolve_alias_trusted_commenter_default,
     _test_resolve_alias_trusted_commenter_explicit,
     _test_resolve_alias_unknown_falls_back_to_alias,
+    _test_v_s12_blocking_codex_stage_examines_trusted_commenter_token,
     _test_v_s12_convention_fallback_accepts_unknown_alias,
 )
 
@@ -111,4 +112,8 @@ def test_static_validation() -> None:
     check(
         _test_v_s12_convention_fallback_accepts_unknown_alias(),
         "V-S12: _validate_secret_alias_resolution accepts unregistered alias via convention fallback",
+    )
+    check(
+        _test_v_s12_blocking_codex_stage_examines_trusted_commenter_token(),
+        "V-S12: blocking Codex review stage is probed; TRUSTED_COMMENTER_TOKEN resolves via convention",
     )

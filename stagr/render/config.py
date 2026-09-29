@@ -111,11 +111,13 @@ def _validate_semantics(cfg: dict[str, Any]) -> None:
     _warn_dormant_routing_config(cfg)
 
     # V-S12: static secret alias resolution — all BackendRenderer-declared aliases must resolve.
+    # Pass the render-layer expanded stages so V-S12 iterates the same stage graph as the
+    # renderer, including profile defaults (standard not custom) and from: preset resolution.
     # SecretAliasResolutionError is imported here (deferred) to keep stagr.core.errors out of
     # module-level imports and avoid any circular-import risk through the pipeline chain.
     from stagr.core.errors import SecretAliasResolutionError
     try:
-        _validate_secret_alias_resolution(cfg)
+        _validate_secret_alias_resolution(expanded, cfg)
     except SecretAliasResolutionError as exc:
         raise RenderError(str(exc)) from exc
 
@@ -210,23 +212,26 @@ def _resolve_alias_statically(
 
 
 def _validate_secret_alias_resolution(
+    expanded_stages: list[dict[str, Any]],
     cfg: dict[str, Any],
     renderer_registry: Any = None,
 ) -> None:
     """V-S12: verify that every BackendRenderer-declared alias resolves to an env_name.
 
-    For each active stage in the config, the registered BackendRenderer is invoked
-    to obtain its ``ExecutionPlan``.  Each ``SecretRef.alias`` in the plan is then
-    resolved using the four-level V-S12 rules (explicit mapping → PROVIDER_API_KEY
-    convention → TRUSTED_COMMENTER_TOKEN convention → alias-as-secret-name fallback).
+    For each active stage in the render-layer expanded stage graph, the registered
+    BackendRenderer is invoked to obtain its ``ExecutionPlan``.  Each
+    ``SecretRef.alias`` in the plan is then resolved using the four-level V-S12 rules
+    (explicit mapping → PROVIDER_API_KEY convention → TRUSTED_COMMENTER_TOKEN
+    convention → alias-as-secret-name fallback).
 
     Resolution is purely static: only the ``providers`` block of the config is
     consulted — no GitHub API call, no network access, no repository-secret lookup.
 
-    Stages are iterated directly from the parsed config dict rather than through the
-    full normalization pipeline, which avoids ``ValueError`` for schema-valid stage
-    types or triggers that are absent from the neutral-core enums (e.g. a future
-    ``integration-test`` or ``docs`` type not yet in ``StageKind``).
+    ``expanded_stages`` must be the render-layer expanded stages already computed by
+    ``expand_stages`` in ``_validate_semantics``.  Using the render-layer graph
+    (rather than re-expanding from ``cfg``) ensures that profile defaults (the correct
+    ``standard`` default, not ``custom``) and ``from:`` preset resolution are applied
+    consistently — the same stage graph the renderer itself sees.
 
     ``renderer_registry`` is accepted as an optional override for the registry used
     to look up BackendRenderers.  When ``None`` (the default), the two built-in
@@ -244,7 +249,6 @@ def _validate_secret_alias_resolution(
     from stagr.core.enums import StageGate, StageKind
     from stagr.core.errors import SecretAliasResolutionError as _CoreSecretError
     from stagr.core.models import NormalizedStage
-    from stagr.core.normalize import expand_profile_defaults, filter_disabled_stages
     from stagr.core.renderers.anthropic_claude_backend_renderer import (
         AnthropicClaudeBackendRenderer,
     )
@@ -257,18 +261,10 @@ def _validate_secret_alias_resolution(
     else:
         local_registry = renderer_registry
 
-    # Build the active stage list directly from the config dict — bypassing the
-    # full normalization pipeline — to avoid ValueError for schema-valid stage types
-    # or triggers not yet present in the neutral-core enums.
-    profile_name: str = cfg.get("profile") or "custom"
-    explicit_stages: list[dict[str, Any]] = list(cfg.get("stages") or [])
-
-    try:
-        expanded_stages = expand_profile_defaults(profile_name, explicit_stages)
-    except (ValueError, TypeError):
-        return  # unrecognised profile or malformed stage list; nothing to check
-
-    active_stage_dicts = filter_disabled_stages(expanded_stages)
+    # Use the render-layer expanded stages directly — they have already had profile
+    # defaults applied (with the correct "standard" default), from: presets resolved,
+    # and disabled stages filtered out.
+    active_stage_dicts = expanded_stages
 
     defaults_cfg: dict[str, Any] = cfg.get("defaults") or {}
     default_provider: str | None = defaults_cfg.get("provider")
@@ -307,13 +303,22 @@ def _validate_secret_alias_resolution(
         except ValueError:
             stage_kind = StageKind.CUSTOM
 
+        # Derive the effective gate from the stage dict (M1 config vocabulary: "blocking"
+        # or "advisory").  Blocking stages must be probed with StageGate.BLOCKING so that
+        # OpenAICodexBackendRenderer (which raises ValueError for NON_BLOCKING stages) is
+        # reached and its TRUSTED_COMMENTER_TOKEN alias is examined.  Defaulting to
+        # "blocking" is correct — profile stage definitions always carry an explicit gate
+        # and custom stages that omit gate default to blocking in the rendered workflow.
+        raw_gate: str = stage_dict.get("gate") or "blocking"
+        stage_gate = StageGate.BLOCKING if raw_gate == "blocking" else StageGate.NON_BLOCKING
+
         minimal_stage = NormalizedStage(
             id=stage_id,
             kind=stage_kind,
             provider=provider,
             backend=backend,
             skill=stage_dict.get("skill") or None,
-            gate=StageGate.NON_BLOCKING,
+            gate=stage_gate,
             triggers=(),
             dependencies=(),
         )

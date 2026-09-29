@@ -103,42 +103,6 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "depends_on": [],
         },
     ],
-    "full": [
-        {
-            "id": "implement",
-            "type": "implement",
-            "provider": "anthropic",
-            "gate": "advisory",
-            "triggers": ["issue_labeled"],
-            "depends_on": [],
-        },
-        {
-            "id": "security",
-            "type": "security",
-            "provider": "openai",
-            "skill": "security-review",
-            "gate": "blocking",
-            "triggers": ["pr_opened", "pr_updated"],
-            "depends_on": [],
-        },
-        {
-            "id": "test",
-            "type": "test",
-            "provider": "openai",
-            "gate": "blocking",
-            "triggers": ["pr_opened", "pr_updated"],
-            "depends_on": [],
-        },
-        {
-            "id": "review",
-            "type": "review",
-            "provider": "openai",
-            "skill": "code-review",
-            "gate": "blocking",
-            "triggers": ["pr_opened", "pr_updated"],
-            "depends_on": [],
-        },
-    ],
     "custom": [],
 }
 
