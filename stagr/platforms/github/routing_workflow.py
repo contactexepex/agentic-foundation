@@ -105,9 +105,9 @@ def generate_routing_workflow_yaml(
     )
 
     if fast_path_policy is None:
-        payload_steps = _build_normal_only_publication_step(app_token_output_expr)
+        payload_steps = _build_normal_only_publication_step(app_token_output_expr, publisher_app_id)
     else:
-        payload_steps = _build_path_analysis_steps(fast_path_policy, app_token_output_expr)
+        payload_steps = _build_path_analysis_steps(fast_path_policy, app_token_output_expr, publisher_app_id)
 
     return (
         f'name: "Stagr route classification"\n'
@@ -153,34 +153,56 @@ def _build_token_acquisition_step(
     )
 
 
-def _build_normal_only_publication_step(app_token_output_expr: str) -> str:
-    """Return the YAML block for the NORMAL-only Check Run publication step.
+def _build_normal_only_publication_step(app_token_output_expr: str, publisher_app_id: str) -> str:
+    """Return the YAML block for the NORMAL-only Check Run publication step with upsert.
 
     Used when fast_path is disabled. Emits ``RouteClassification=NORMAL``
-    immediately without any path analysis. No ``changed-files`` or classify
-    step is present.
+    immediately without any path analysis. Updates an existing Stagr App Check
+    Run for the head SHA if one exists, or creates a new one. This prevents
+    duplicate Check Runs when routing re-fires for the same head SHA (e.g.,
+    after a base-branch edit that triggers the ``edited`` event).
     """
     return (
         f"      - name: Publish RouteClassification Check Run (NORMAL — fast path disabled)\n"
         f"        env:\n"
         f'          GH_TOKEN: "{app_token_output_expr}"\n'
         f'          HEAD_SHA: "${{{{ github.event.pull_request.head.sha }}}}"\n'
+        f'          STAGR_APP_ID: "{publisher_app_id}"\n'
         f"        run: |\n"
         f"          set -euo pipefail\n"
-        f"          gh api --method POST \\\n"
-        f'            "repos/${{GITHUB_REPOSITORY}}/check-runs" \\\n'
-        f'            -f name="{ROUTE_CLASSIFICATION_CHECK_RUN_NAME}" \\\n'
-        f'            -f head_sha="${{HEAD_SHA}}" \\\n'
-        f"            -f status=completed \\\n"
-        f"            -f conclusion=success \\\n"
-        f'            -f output[title]="RouteClassification=NORMAL" \\\n'
-        f'            -f output[summary]="Fast path is disabled; all PRs are routed to the NORMAL lane."\n'
+        f"          existing_runs=$(gh api \\\n"
+        f'            "repos/${{GITHUB_REPOSITORY}}/commits/${{HEAD_SHA}}/check-runs'
+        f"?check_name={ROUTE_CLASSIFICATION_CHECK_RUN_NAME}&filter=all&per_page=2\" \\\n"
+        f"            --jq '.check_runs' 2>&1) || {{\n"
+        f'            echo "::error::Failed to query existing RouteClassification Check Runs."\n'
+        f"            exit 1\n"
+        f"          }}\n"
+        f'          existing_run_id=$(echo "${{existing_runs}}" | jq --arg app_id "${{STAGR_APP_ID}}" \\\n'
+        f"            -r '[.[] | select(.app.id | tostring == $app_id)][0].id // empty')\n"
+        f'          if [[ -n "${{existing_run_id}}" ]]; then\n'
+        f"            gh api --method PATCH \\\n"
+        f'              "repos/${{GITHUB_REPOSITORY}}/check-runs/${{existing_run_id}}" \\\n'
+        f"              -f status=completed \\\n"
+        f"              -f conclusion=success \\\n"
+        f'              -f "output[title]=RouteClassification=NORMAL" \\\n'
+        f'              -f "output[summary]=Fast path is disabled; all PRs are routed to the NORMAL lane."\n'
+        f"          else\n"
+        f"            gh api --method POST \\\n"
+        f'              "repos/${{GITHUB_REPOSITORY}}/check-runs" \\\n'
+        f'              -f "name={ROUTE_CLASSIFICATION_CHECK_RUN_NAME}" \\\n'
+        f'              -f "head_sha=${{HEAD_SHA}}" \\\n'
+        f"              -f status=completed \\\n"
+        f"              -f conclusion=success \\\n"
+        f'              -f "output[title]=RouteClassification=NORMAL" \\\n'
+        f'              -f "output[summary]=Fast path is disabled; all PRs are routed to the NORMAL lane."\n'
+        f"          fi\n"
     )
 
 
 def _build_path_analysis_steps(
     fast_path_policy: FastPathPolicy,
     app_token_output_expr: str,
+    publisher_app_id: str,
 ) -> str:
     """Return YAML blocks for the three steps that retrieve, classify, and publish.
 
@@ -192,7 +214,7 @@ def _build_path_analysis_steps(
 
     changed_files_step = _build_changed_files_step(app_token_output_expr)
     classify_step = _build_classify_step(patterns_json)
-    publication_step = _build_full_publication_step(app_token_output_expr)
+    publication_step = _build_full_publication_step(app_token_output_expr, publisher_app_id)
 
     return f"{changed_files_step}\n{classify_step}\n{publication_step}"
 
@@ -258,22 +280,46 @@ def _build_classify_step(patterns_json: str) -> str:
     )
 
 
-def _build_full_publication_step(app_token_output_expr: str) -> str:
-    """Return the YAML block for the Check Run publication step (FAST or NORMAL)."""
+def _build_full_publication_step(app_token_output_expr: str, publisher_app_id: str) -> str:
+    """Return the YAML block for the Check Run publication step (FAST or NORMAL) with upsert.
+
+    Updates an existing Stagr App Check Run for the head SHA if one exists,
+    or creates a new one. This prevents duplicate Check Runs when routing
+    re-fires for the same head SHA (e.g., after a base-branch edit).
+    """
     return (
         f"      - name: Publish RouteClassification Check Run\n"
         f"        env:\n"
         f'          GH_TOKEN: "{app_token_output_expr}"\n'
         f'          HEAD_SHA: "${{{{ github.event.pull_request.head.sha }}}}"\n'
         f'          ROUTE: "${{{{ steps.classify.outputs.route }}}}"\n'
+        f'          STAGR_APP_ID: "{publisher_app_id}"\n'
         f"        run: |\n"
         f"          set -euo pipefail\n"
-        f"          gh api --method POST \\\n"
-        f'            "repos/${{GITHUB_REPOSITORY}}/check-runs" \\\n'
-        f'            -f name="{ROUTE_CLASSIFICATION_CHECK_RUN_NAME}" \\\n'
-        f'            -f head_sha="${{HEAD_SHA}}" \\\n'
-        f"            -f status=completed \\\n"
-        f"            -f conclusion=success \\\n"
-        f'            -f output[title]="RouteClassification=${{ROUTE}}" \\\n'
-        f'            -f output[summary]="PR classified as ${{ROUTE}} route."\n'
+        f"          existing_runs=$(gh api \\\n"
+        f'            "repos/${{GITHUB_REPOSITORY}}/commits/${{HEAD_SHA}}/check-runs'
+        f"?check_name={ROUTE_CLASSIFICATION_CHECK_RUN_NAME}&filter=all&per_page=2\" \\\n"
+        f"            --jq '.check_runs' 2>&1) || {{\n"
+        f'            echo "::error::Failed to query existing RouteClassification Check Runs."\n'
+        f"            exit 1\n"
+        f"          }}\n"
+        f'          existing_run_id=$(echo "${{existing_runs}}" | jq --arg app_id "${{STAGR_APP_ID}}" \\\n'
+        f"            -r '[.[] | select(.app.id | tostring == $app_id)][0].id // empty')\n"
+        f'          if [[ -n "${{existing_run_id}}" ]]; then\n'
+        f"            gh api --method PATCH \\\n"
+        f'              "repos/${{GITHUB_REPOSITORY}}/check-runs/${{existing_run_id}}" \\\n'
+        f"              -f status=completed \\\n"
+        f"              -f conclusion=success \\\n"
+        f'              -f "output[title]=RouteClassification=${{ROUTE}}" \\\n'
+        f'              -f "output[summary]=PR classified as ${{ROUTE}} route."\n'
+        f"          else\n"
+        f"            gh api --method POST \\\n"
+        f'              "repos/${{GITHUB_REPOSITORY}}/check-runs" \\\n'
+        f'              -f "name={ROUTE_CLASSIFICATION_CHECK_RUN_NAME}" \\\n'
+        f'              -f "head_sha=${{HEAD_SHA}}" \\\n'
+        f"              -f status=completed \\\n"
+        f"              -f conclusion=success \\\n"
+        f'              -f "output[title]=RouteClassification=${{ROUTE}}" \\\n'
+        f'              -f "output[summary]=PR classified as ${{ROUTE}} route."\n'
+        f"          fi\n"
     )
