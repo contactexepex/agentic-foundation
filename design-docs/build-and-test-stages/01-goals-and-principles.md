@@ -25,11 +25,15 @@
 
 | Stage | Meaning | Required |
 |---|---|---|
-| Build | The code compiles / packages | Always |
-| Unit tests | All unit tests pass | Always |
+| Build | The code compiles / packages | Always for code repositories |
+| Unit tests | All unit tests pass | Always for code repositories |
 | Code review | Review agent finished, all comments resolved | Always |
 | Security review | Security agent finished (OWASP, CVE, pen-tester view), all comments resolved | Always |
 | Integration / performance / SQL / SAST / DAST / scans | Team-defined | Optional per team |
+
+`stagr init` always generates the four baseline stages. A repository with nothing to build (for
+example documentation only) turns `build` and `unit-test` off explicitly with `enabled: false`;
+the schema keeps `build:` optional.
 
 ## Non-goals
 
@@ -40,6 +44,10 @@
   for anything richer.
 - No deployment or release stages in this plan (`deploy` is a separate, later design).
 - No new merge rules beyond "all blocking stages green and all comments resolved".
+- Not solved here, and documented as limits: toolchain and version provisioning (the platform
+  runner image and the team's own commands do that), service containers, monorepo path
+  selection, and detecting a test run that executed zero tests (that is the test tool's exit
+  code semantics).
 
 ## Principles (each one is testable)
 

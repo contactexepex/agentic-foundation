@@ -7,7 +7,7 @@
 | A new tool as a check (linter, scanner, load test, SQL validation) | Config only: a `custom` stage with `run.commands`, or an observed stage | No |
 | A new language / toolchain preset | A preset entry (data) for `build.preset` | No |
 | A CI or service Stagr does not run | An observed stage naming its result and producer | No |
-| A new CI/CD platform | A renderer package plus its capability descriptor (05) | No |
+| A new CI/CD platform | A renderer package plus its capability declaration (05) | No |
 | A new way to read a result (new evidence source) | A new evidence kind and its reader in the platform package | Small: one enum value, one vector group |
 | A new stage kind | Avoid. Kinds only change defaults (Decision D1) | Yes (deliberately hard) |
 
@@ -23,10 +23,10 @@ Fast to slow, matching `AGENTS.md`:
 | 1. Schema and config | New keys, exclusions (`run` vs `observe`), bad names rejected, secret values never echoed | `validate_config.py`, `test_cli.py` |
 | 2. Pure mapping tests | Native outcome to `(state, conclusion)`; latest-attempt rule; dependency table | `test_neutral_core_models.py` |
 | 3. Shared conformance vectors | The same input/output cases for the neutral reference *and* every platform runtime | both of the above |
-| 4. Render structure tests | Security rules S1 to S10 hold in the rendered artifact (no secret in execute, no checkout in publish, read-only token, pinned, timeout) | `test_render.py` |
+| 4. Render structure tests | Security rules S1 to S14 hold in the rendered artifact (no secret in the work unit, no checkout in publish, read-only token, pinned, timeout) | `test_render.py` |
 | 5. Behavioural tests with a strict fake platform CLI | End-to-end publish, reconcile, sweep, wake-up, re-run behaviour on the real runtime | existing stage-signal test package |
-| 6. Governance interop | A published check-stage result is accepted or rejected by the real merge gate script | existing interop test |
-| 7. Static workflow lint | Rendered pipeline files pass the platform's own linter (for GitHub: actionlint) | existing render tests |
+| 6. Governance interop | A published check-stage result is accepted or rejected by the merge gate scripts: the generated `governance.yml` (existing interop test) **and** this repository's foundation gate once it consumes Stagr results (08, I10) | existing interop test; new test in I10 |
+| 7. Static workflow lint | Rendered pipeline files pass the platform's own workflow linter (GitHub: `actionlint`) | existing render tests |
 | 8. Mutation checks | Deliberately break the mapping and security assertions; tests must fail | run by the implementer per PR, results in the PR |
 | 9. Dogfood smoke | The repository runs its own build and unit test through Stagr on a real pull request | Phase 7 acceptance |
 
@@ -44,9 +44,9 @@ and must pass the neutral vectors unchanged.
 |---|---|
 | V-N native outcome | success passes; failure, timeout, cancelled fail; skipped, neutral and missing do **not** pass |
 | V-H head binding | result for an older head is ignored; head moved during a run is refused |
-| V-A attempts | latest attempt wins both ways (green after red, red after green) |
+| V-A attempts | green after red passes; red after a published green does not revoke it (`PASS` is final for a head); a second same-name result without shared lineage is ambiguous and not passed |
 | V-O observed | right producer passes; wrong producer ignored; same name from a second producer is ambiguous and not passed; no result stays pending; timeout becomes `FAILED` |
-| V-D dependencies | wait on missing / running / red / blocked upstream; `FAILED` upstream propagates |
+| V-D dependencies | wait on every non-`PASS` upstream: missing, running, red, blocked, and state `FAILED`; a wake-up never starts a stage that already has a result for the head |
 | V-G gate | one red blocking stage blocks; advisory red does not; open review thread blocks; all green merges |
 | V-S security | hostile command, branch and title strings stay inert; secret-named fields never echoed |
 
@@ -57,19 +57,19 @@ adds cases and never changes an old expected value.
 
 - Config: new keys are optional (P9). Schema `version` stays `1`.
 - `StageResultSignal`: schema version 1 unchanged.
-- Capability descriptor: has its own version number; a renderer built for version N keeps
-  working until N is retired with notice.
+- Capability declaration: not versioned in V1; it changes together with the code in one pull request.
 - Vectors: versioned as above.
 
 ## Migration
 
 | From | To | How |
 |---|---|---|
+| The legacy `Validate` job (`python -m stagr.render`, runs `build.commands` verbatim in one job, may use `${{ secrets.X }}`, publishes no Stagr result) | Managed `build` + `unit-test` stages | Both lanes coexist until I10. The legacy job's freedom to use secrets in `build.commands` does **not** carry over: secrets move to `run.secrets` on a stage that may hold them (04, S5) |
 | A `build` / `test` stage that rendered a placeholder | A real managed stage | Set `build.commands`. Today such a stage renders stub steps that run nothing and has no evidence source (only the two review backends do). Phase 1 first pins with a test exactly what it publishes today. **Behaviour change to call out in release notes:** a *blocking* check stage with no commands and no `observe` fails closed, and `plan`/`doctor` report it before `apply` |
 | Legacy schema `type` values (`integration-test`, `plan`, `docs`, `release`) | Neutral kinds | Accepted with a documented mapping and a deprecation warning; alignment happens once in Phase 1 |
 | `modules.sonar: true` | An observed `sonar` stage | Deprecated alias for one release; `doctor` prints the equivalent stage; both together is an error (06) |
 | A repository's own CI (Jenkins, GitLab CI, Azure Pipelines, ...) | Observed stage | Name its result and producer; nothing else changes |
-| This repository's `Validate` workflow | Managed `build` + `unit-test` stages | Phase 7: run both side by side on several pull requests, compare, then swap the required checks. Changing branch protection is a repository-admin action, done by a human |
+| This repository's `Validate` workflow and foundation gate | Managed `build` + `unit-test` stages | Phase 7: run both side by side on several pull requests and record every difference; then the foundation gate (which today requires the `Validate` check from the trusted workflow, not Stagr stage results) is changed in its own security-reviewed pull request to require the Stagr stage results; then the required checks are swapped. Changing branch protection is a repository-admin action, done by a human |
 
 Note on this repository's migration: GitHub Actions results are all authored by the same
 GitHub-owned app, and a pull request can edit its own workflow files. Observing the existing

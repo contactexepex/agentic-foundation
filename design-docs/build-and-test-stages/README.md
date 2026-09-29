@@ -8,8 +8,10 @@ not only GitHub. It is split into small documents so each can be reviewed on its
 
 ## The problem in one paragraph
 
-Today only the two AI review stages (code review, security review) are real. A `build` or `test`
-stage renders a placeholder workflow that runs nothing. Yet the standard baseline for production
+Today only the two AI review stages (code review, security review) are real in the neutral
+pipeline. A `build` or `test` stage renders a placeholder workflow that runs nothing. (The older
+`python -m stagr.render` lane renders a single `Validate` job from `build.commands`, but that job
+is not a stage: it publishes no Stagr result and is not neutral. This plan replaces it; see 07.) Yet the standard baseline for production
 software is: **the code compiles, the unit tests pass, code review is done, security review is
 done, and every review comment is resolved.** This plan closes that gap without breaking the
 project's core rules: Stagr stays a control plane (it writes the wiring, the platform runs the
@@ -35,7 +37,7 @@ work), stays platform-neutral, and never lets untrusted code touch trusted crede
 - **Check stage** — a stage whose result is a deterministic pass/fail produced by CI compute:
   build, unit test, integration test, performance test, SQL validation, SAST, DAST, dependency
   scan, or any custom check. **New in this plan.**
-- **Managed** — Stagr renders the CI job that runs the work.
+- **Managed** — Stagr renders the CI job that runs the work (the *work unit*).
 - **Observed** — the team's own CI already runs the work; Stagr only reads the result.
 - **Execution plane** — where the code under test runs (untrusted, no credentials).
 - **Publication plane** — where the trusted result is written (holds the Stagr credential).

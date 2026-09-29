@@ -22,34 +22,33 @@ If a core file needs a platform word, the design is wrong (P1).
 ## The capability descriptor
 
 Each platform renderer declares the answers below in code. The core reads them; it never
-special-cases a platform name. They drive `stagr doctor`, rendering decisions, and honest
-warnings.
+special-cases a platform name. It is deliberately small: **only questions whose answer changes what
+the core renders, refuses or warns about**. Everything else (for example timeouts, which every
+rendered work unit must have) is the renderer's plain duty, not a capability. The descriptor is
+not versioned in V1; it changes together with the code in one pull request.
 
 | Capability | Values | Why the core needs it |
 |---|---|---|
 | `definition_source` | `trusted_base` \| `pr_branch` | Can the pipeline that judges a pull request come from the trusted base (S4)? |
-| `attested_outcome` | `in_pipeline` \| `api_query` \| `none` | How the publish unit obtains the platform's own outcome of the execute unit (S2) |
+| `attested_outcome` | `in_pipeline` \| `api_query` \| `none` | How the publish unit obtains the platform's own outcome of the work unit (S2) |
 | `publisher_identity` | `app` \| `service_account` \| `name_only` | How strongly a result author can be identified (provenance level, below) |
 | `head_binding` | yes / no | Can a result be bound to one commit (P6, S9)? |
-| `native_required_result` | yes / no | Can the platform itself mark a result as required for merge? |
 | `read_foreign_results` | yes / no | Can a trusted unit read results produced by another system (observed mode)? |
 | `fork_isolation` | `no_secrets_for_forks` \| `none` | Do fork pipelines run without secrets by default? |
-| `ephemeral_runners` | yes / no / optional | Is a clean runner per job available (T12)? |
-| `supersede_cancel` | yes / no | Can a newer push cancel the older run? |
-| `timeouts` | yes / no | Can a hard timeout be set per job (S6)? |
-| `attempt_identity` | yes / no | Are re-run attempts distinguishable (02: latest attempt rule)? |
+| `ephemeral_runners` | yes / no | Is a clean runner per job the default or available (S14)? |
+| `attempt_lineage` | yes / no | Can two results of the same name be told apart as re-run attempts versus separate jobs (02)? |
 
 ### What the core does with the answers
 
 | Situation | Behaviour |
 |---|---|
-| Blocking **managed** stage and any of `attested_outcome=none`, `head_binding=no`, `timeouts=no` | **Refuse to render** (error). The guarantee cannot be met (P5). |
-| Blocking stage and `publisher_identity=name_only` | Refuse. Provenance level too weak (below). |
-| `definition_source=pr_branch` | Render, but `doctor` warns: the pull request can alter the definition that judges it. Protected paths (04) become required, not advisory. |
-| `fork_isolation=none` | Fork policy must be `DENY`; anything else is an error. |
-| `ephemeral_runners=no` | Warning that runners persist between jobs (T12). |
-| Observed stage and `read_foreign_results=no` | Refuse to render. |
-| Advisory stage | Weaker capabilities allowed; the stage cannot block, so it cannot be a false pass. |
+| Blocking **managed** stage and any of `attested_outcome=none`, `head_binding=no`, `ephemeral_runners=no` | **Refuse to render** (error). The guarantee cannot be met (P5) |
+| Blocking stage and `publisher_identity=name_only` | Refuse. Provenance level too weak (below) |
+| `definition_source=pr_branch` | Render, but `doctor` warns that the pull request can alter the definition that judges it, and an empty `merge.protected_paths` becomes an error (04) |
+| `fork_isolation=none` | Managed stages refuse forks anyway (S13); the fork policy for review stages must be `DENY` |
+| Observed stage and `read_foreign_results=no` | Refuse to render |
+| Observed or managed stage and `attempt_lineage=no` | Any duplicate result of the same name is ambiguous and not passed |
+| Advisory stage | Weaker capabilities allowed; the stage cannot block, so it cannot be a false pass |
 
 ## Provenance levels
 
@@ -57,11 +56,15 @@ warnings.
 
 | Level | Identity | Example | Allowed for blocking? |
 |---|---|---|---|
-| L3 | Registered application / integration id | GitHub App id | Yes |
+| L3 | Registered application / integration id **dedicated to that tool** | A code-analysis service's own GitHub App | Yes |
 | L2 | Named service account or token owner | GitLab project access token user, Azure service principal | Yes |
-| L1 | Result name / label only | A status called "build" | **No** |
+| L1 | Result name / label only, **or an identity shared by every pipeline of the repository** | A status called "build"; the CI platform's built-in Actions identity | **No** for observed stages |
 
-`observe.producer` (03) is matched against this identity, never against the display name.
+The last case matters: on a platform where every pipeline result is authored by the same built-in
+identity, a pull request that can edit its own pipeline definition can create a result with any
+name. Such a result is only L3-strong when `definition_source` is `trusted_base`; otherwise it is
+treated as L1 and cannot satisfy a blocking observed stage. `observe.producer` (03) is matched
+against the identity, never the display name.
 
 ## Neutral concept to platform mapping
 
@@ -73,7 +76,7 @@ row.
 | Neutral concept | GitHub (implemented) | GitLab CI | Azure DevOps Pipelines | Bitbucket Pipelines | Jenkins |
 |---|---|---|---|---|---|
 | Trigger: pull request opened / updated | `pull_request_target` types opened, synchronize, ... | Merge request pipeline (`merge_request_event` rule) | Branch policy build validation (Azure Repos); YAML `pr:` trigger (GitHub repos) | `pull-requests` pipeline | Multibranch PR discovery |
-| Execute unit | Job with `contents: read`, no secrets | Job in the pipeline | Job in a stage | Step | Stage / agent |
+| Work unit | Job with `contents: read`, no secrets | Job in the pipeline | Job in a stage | Step | Stage / agent |
 | Definition source (S4) | Base branch (`pull_request_target`) | PR branch by default; a pipeline execution policy with `override_project_ci` can replace it (Ultimate tier only). Compliance pipelines are deprecated | PR branch by default; a required-template check exists but covers only pipelines that use the protected resource | PR branch (**verify**) | PR head for same-repository PRs; target branch for untrusted fork PRs (branch-source trust setting) |
 | Attested outcome | `needs.<job>.result` in the same workflow (`success`, `failure`, `cancelled`, `skipped`; the publish job needs `if: always()`) | Job status via pipeline API (**verify**) | `dependsOn` + result condition (**verify**) | Not in-pipeline; API query (**verify**) | Build result via API (**verify**) |
 | Publish unit | Job holding the GitHub App key, no checkout | Job or external service using a service account (**verify**) | Job with service connection (**verify**) | Job or external service using an access token (**verify**) | Post-build step or external service |
@@ -98,9 +101,10 @@ Two things to notice:
 
 A platform renderer for check stages must:
 
-1. Render the three units (eligibility, execute, publish) or, for observed stages, the
+1. Render the three units (eligibility, work, publish) or, for observed stages, the
    eligibility and publish units only.
-2. Declare its capability descriptor truthfully and completely.
+2. Declare its capability descriptor truthfully and completely, and give every work unit a timeout
+   and its own cancel-superseded concurrency (04, S6 and T11).
 3. Keep all platform words (event names, job keys, API paths) inside its own package.
 4. Pass every conformance vector (07) using only the neutral interface.
 5. Carry the same stage-result contract (`StageResultSignal`, schema version 1). Only the
@@ -114,12 +118,16 @@ support: identify producer, bind to head, distinguish states, be re-published fo
 A platform whose carrier cannot do all four gets `head_binding=no` or `publisher_identity=name_only`
 and is limited to advisory stages until that changes.
 
+The descriptor and table are intentionally short and only as detailed as the current GitHub
+implementation needs. They are the checklist a second platform is reviewed against, not a
+framework built ahead of one.
+
 ## Adding a platform (summary)
 
 1. Write the capability descriptor and mapping row; get it reviewed against vendor docs.
 2. Implement the renderer package behind the existing renderer interface.
 3. Run the shared conformance vectors; fix until all pass.
-4. Add a `platform.kind` value and its docs page.
+4. Add a `platform.type` value and its docs page.
 
 No core, schema-shape or model change is needed for step 2 or 3. If one is, the neutral contract
 was incomplete and is fixed once, for everyone (P8).

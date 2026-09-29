@@ -1,32 +1,42 @@
 # 06 — Orchestration and Gating
 
 This document says what runs when, what one stage triggers in another, and how the merge gate
-decides. The merge gate itself does **not change** (design doc `05-governance-and-trust.md`,
-conditions 5 to 8): check stages plug into the rules that already exist.
+decides. The merge gate rules themselves do **not change** (design doc
+`05-governance-and-trust.md`, conditions 5 to 8): check stages plug into the rules that already
+exist. The one gate-side change this plan needs is in this repository's own foundation gate (08, I10).
 
 ## The standard pipeline
 
 ```
-                     +--> code review ------+
-   build ---+        |                      |
-            +--------+--> security review --+--> merge gate
-            |                               |
-            +--> unit test -----------------+
+   build ---+--> unit test ------------------+
+            |                                |
+            +--> code review, security ------+--> merge gate
+                 review (their order:        |
+                 unchanged, see D11)
    (optional, team-defined: integration, performance, SQL, SAST, DAST, scans)
 ```
 
 - `build` runs first. Nothing else starts until the code compiles.
-- `unit-test`, `code review` and `security review` then run **in parallel**.
+- `unit-test` and the two reviews then run. The plan does **not** change how the two reviews relate
+  to each other (see below).
 - Optional stages depend on whatever the team chooses (usually `build`).
 - The merge gate needs every **blocking** stage to be `COMPLETED` + `PASS` for the current head
   and zero open review discussions.
 
 Why reviews wait for `build`: an AI review costs money and a reviewer comment on code that does not
 compile is noise. Why reviews do **not** wait for `unit-test`: it lengthens the critical path for
-no safety gain, because the merge gate needs both anyway. (Decision D4 in 08: recommended default;
-a team can rewire it.)
+no safety gain, because the merge gate needs both anyway. (Decision D4 in 08.)
 
-Per design invariant R1 (no invented dependencies) the ordering is **written explicitly** into the
+### Code review and security review order
+
+This repository's contract (`AGENTS.md`, `CLAUDE.md`) says code review and security review run
+**in sequence** in this repository's own automation, while `08-github-codex-mapping.md` plans them
+as independent stages. This plan takes no side: it adds `build` in front of both and leaves the
+relation between them exactly as configured (`depends_on`). Whether the generated default should
+make `security` depend on `review` is Decision D11 for the owners; nothing else in this plan
+depends on the answer.
+
+Per design invariant R1 (no invented dependencies) every ordering is **written explicitly** into the
 generated config by `stagr init` as `depends_on`; the renderer never adds an edge on its own.
 
 ## Dependencies express order, not data
@@ -36,42 +46,56 @@ stages: no artifacts, no variables. A stage that needs the compiled output rebui
 it through the team's own CI. This is deliberate (non-goals in 01). It keeps stages independent
 and any platform able to run them.
 
-## What a dependency does when the upstream is red
+## What a dependency does when the upstream is not green
 
 | Upstream signal for the head | Effect on the dependent |
 |---|---|
 | `COMPLETED` + `PASS` | Start |
-| missing, `PENDING`, `RUNNING` | Wait (not started, not failed) |
-| `COMPLETED` + `BLOCKED` or `COMPLETED` + `FAILED` | **Wait** (recoverable: a re-run or a new push can fix it) |
-| state `FAILED` (Stagr could not evaluate) | Dependent becomes state `FAILED` ("dependency failed"), terminal until re-run |
+| anything else: missing, `PENDING`, `RUNNING`, `COMPLETED` + `BLOCKED`, `COMPLETED` + `FAILED`, state `FAILED` | **Wait.** The dependent does not start and is not marked failed |
 
-The third row is an **amendment** to today's runtime, which turns any upstream
-`conclusion == FAILED` into a terminal `FAILED` state for the dependent. That was safe while
-`COMPLETED` + `FAILED` was rare. For check stages it is common (a red test), and it would leave a
-review stuck at `FAILED` even after the test is fixed and re-run. With the amendment, the
-dependent simply stays waiting, and wakes up when the upstream turns green. The merge gate blocks
-in the meantime because the failing stage is not `PASS`. (Delivery Phase 2 changes the rule, with
-tests and a migration note.)
+This is an **amendment** to today's runtime (Decision D8), which turns an upstream
+`conclusion == FAILED` or state `FAILED` into a terminal `FAILED` state for the dependent. That was
+safe while upstream failures were rare. For check stages a red test is common, and even an
+infrastructure error in `build` would leave the paid review stages stuck at a terminal `FAILED`
+after `build` is fixed. With the amendment the dependent simply stays waiting and wakes up when the
+upstream turns green. The merge gate blocks in the meantime because the upstream is not `PASS`. The
+dependent's waiting reason is shown in its pending result text. (Delivery Phase 2.)
 
-## Wake-ups
+## Wake-ups and re-runs
 
-Stages that wait need a nudge when their upstream changes. The mechanism already exists and is
-unchanged:
+Stages that wait need a nudge when their upstream changes. The mechanism exists and is unchanged:
 
 - **Event wake-up:** an upstream result change wakes dependents (platform event).
-- **Sweep:** a periodic, credential-free pass re-evaluates waiting stages, so a missed event
-  never strands a pull request.
+- **Sweep:** a periodic, credential-free, update-only pass re-evaluates waiting stages, so a missed
+  event never strands a pull request (it cannot start a stage, as documented for design doc 08).
 - **Reconcile:** a result that disagrees with the platform outcome is corrected (update only).
 
-The neutral requirement (per platform in 05): *some* mechanism must re-evaluate a waiting stage
-after its upstream changes, and a missed nudge must be recoverable.
+**A wake-up never runs work twice.** For a check stage:
+
+- A wake-up may *start* a stage that has no result yet for the head (its dependency just turned
+  green).
+- A wake-up never starts a stage that already has a `RUNNING` or `COMPLETED` result for the head.
+  Only a pull request event (opened, reopened, updated, ready for review) or an explicit re-run
+  starts work again. Without this rule, unrelated check chatter would re-run tests and, worse,
+  re-trigger paid stages in a loop.
+- The work unit writes `RUNNING` (a lease) before executing, so two concurrent wake-ups cannot both
+  run.
+
+**Observed stages** have their own wake-up need: the result comes from another system, so the
+trigger is that system's completion event for the named result (filtered by name and producer), and
+the sweep can only correct, not create. A missed event therefore leaves the stage `PENDING` until
+the next pull request event or manual re-run; this limitation is documented and covered by
+`observe.timeout_minutes`. Fork pull requests carry no pull request number in such events and are not
+woken (the existing documented limitation).
 
 ## Triggers
 
 Check stages use the existing neutral triggers: `pr_opened`, `pr_updated`, `manual`. A new head
-resets every stage to `PENDING` and cancels the superseded run where the platform supports it.
-Stages triggered by pushes to the default branch (post-merge builds) are out of scope here and
-are a later design.
+resets every stage to `PENDING`. The work unit of a superseded head is cancelled (its own
+concurrency group with cancel-in-progress) while the trusted publish unit stays serialized, so a
+360-minute run for an old head cannot block the new head and a cancelled run can never overwrite the
+new head's result (S9). Stages triggered by pushes to the default branch (post-merge builds) are out
+of scope and a later design.
 
 ## Routing (fast path)
 
@@ -89,12 +113,14 @@ so every stage applies to every pull request.
 | Must be `PASS` | Yes | No |
 | Review comments must be resolved | Yes (merge gate condition 8) | No |
 | Publishes a result | Yes | Yes |
-| Native result shown | Real outcome (success or failure) | Real outcome, but a failure is shown as **neutral** so it cannot trip "all checks must pass" rules by accident |
+| Stagr's published result on failure | Failure | Signal payload says `FAILED`; the display value on the platform carrier is informational (non-failing) so it cannot trip a "all checks must pass" rule by accident (Decision D6) |
 | Included in `blockingStageIds` | Yes | No |
 
-The neutral `StageResultSignal` still says `FAILED` for a red advisory stage; only the platform
-carrier's display value is softened, and the signal payload remains the authority (design doc 06).
-An advisory stage that has not finished never holds the gate.
+Two limits of that softening, stated so nobody is surprised: (1) it applies only to the result
+**Stagr publishes**; the platform's own job/check for the work unit still shows its real outcome, so
+a team that marks every check required will still be blocked, and `continue-on-error` is **not**
+used because it would destroy the attested outcome (S2); (2) the runtime has no notion of a gate
+today, so the gate is passed to it as a render-time constant, like the other stage settings.
 
 ## Outputs of a stage
 
@@ -105,8 +131,9 @@ informational summary and link (02). It emits no artifacts and triggers nothing 
 ## One contract for external gates
 
 Today `modules.sonar: true` adds an *external gate* that is **fail-open**: if the check is absent
-it is ignored (design doc 05, "External gates (V1)"). That contradicts P5 (fail closed) and P4
-(verify the producer). An observed stage (03) replaces it:
+it is ignored (design doc 05, "External gates (V1)"), and `stagr plan` / `stagr apply` do not
+evaluate it at all (V-S15 warns). That contradicts P5 (fail closed) and P4 (verify the producer).
+An observed stage (03) replaces it:
 
 | | `modules.sonar` (V1) | Observed stage |
 |---|---|---|
@@ -117,27 +144,25 @@ it is ignored (design doc 05, "External gates (V1)"). That contradicts P5 (fail 
 
 Migration (Decision D5): keep `modules.sonar` working as a documented, deprecated alias for one
 release; `stagr doctor` warns and prints the equivalent observed stage; a config that declares
-both is an error. New code uses observed stages only.
+both is an error. New code uses observed stages only. Rollback: remove the observed stage and
+restore the alias line; nothing else changed.
 
 ## Re-runs, cancellation and timeouts
 
-- **Re-run:** re-running the execute unit creates a new attempt; the latest attempt is
-  authoritative (02).
-- **Superseded run:** when a new head arrives, an older run may be cancelled. Its outcome is
-  published only if its head is still current (S9), so a late cancellation can never overwrite the
-  new head's result.
-- **Timeout:** an execute unit that exceeds `run.timeout_minutes` ends as `COMPLETED` + `FAILED`
-  with reason "timeout". For observed stages the default is to wait; an optional
-  `observe.timeout_minutes` converts a result that never appears into state `FAILED`.
+- **Re-run:** re-running the work unit creates a new attempt; attempts of one lineage are ordered,
+  and a published `PASS` is final for the head (02, D9).
+- **Timeout:** a work unit that exceeds `run.timeout_minutes` ends as `COMPLETED` + `FAILED`
+  (the reason may only say "failed or cancelled" on platforms that do not report timeouts
+  distinctly). For observed stages the default is to wait; an optional `observe.timeout_minutes`
+  converts a result that never appears into state `FAILED`.
 
 ## Non-normative: how this lands on today's GitHub runtime
 
-The existing generated `stage-<id>.yml` and its Python runtime already provide eligibility,
-publish, reconcile and sweep. For a managed check stage:
-
-- `eligibility` and `publish` are reused unchanged in shape.
-- The AI-backend `invoke` step is replaced by an unprivileged `execute` job that runs the
-  configured commands with a read-only token and no secrets.
-- `publish` reads the execute job's outcome (`needs.<job>.result`) as `WORKFLOW_RESULT` evidence
-  and writes the Check Run through the publisher App. Reconcile and sweep stay update-only.
-- The dependency rule above is the one runtime change (Phase 2).
+Today one generated job holds eligibility, invocation and publish steps. For a managed check stage
+the workflow becomes three jobs: `eligibility` (reuses the existing eligibility mode), a `work` job
+that runs the configured commands with a read-only, non-persisted token and no secrets, and a
+`publish` job that runs `always()` (not `!cancelled()`), reads the work job's result
+(`needs.<job>.result`) as `WORKFLOW_RESULT` evidence, and writes the Check Run through the
+publisher App. Reconcile and sweep stay update-only. This is a restructuring, including
+re-establishing that publish is the only Check Run creator, plus two runtime changes: the
+dependency rule above (Phase 2) and the inverted, fail-closed outcome mapping (Phase 3, see 02).

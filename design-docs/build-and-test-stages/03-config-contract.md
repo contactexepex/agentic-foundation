@@ -11,7 +11,7 @@ the single source of truth for the baseline build and test stages:
 
 ```yaml
 version: 1
-platform: { kind: github }
+platform: { type: github }
 
 build:
   preset: maven          # python | maven | gradle | node | go | rust | dotnet | custom
@@ -30,76 +30,83 @@ How `build:` maps to stages:
 
 | `build.commands.*` | Runs in stage | Notes |
 |---|---|---|
-| `install`, `lint`, `typecheck` | `build` | Compile / package / static checks. Fails the stage if any step fails |
+| `install`, `build`, `lint`, `typecheck` | `build` | Dependencies, compile / package, static checks, in this order. Any failing step fails the stage |
 | `test` | `unit-test` | Runs after `build` (dependency). Fails the stage if it fails |
 
-A command that is empty or missing is skipped, not treated as a pass-through of a placeholder.
-If a stage would have **no** commands at all, `stagr plan` warns and the stage is rendered as
-a visible placeholder that does **not** pass (fail closed, P5) — the operator must either set the
-command, disable the stage, or mark it `observed`.
+**Schema addition (Decision D12):** `build.commands` has no compile/package key today (its
+`install` for some presets, for example Maven, does not compile). This plan adds an optional
+`build.commands.build` and gives every preset a default for it, so "the code compiles" is a real
+command rather than a side effect of `install` or `test`.
+
+A command that is empty or missing is skipped. If a stage would have no commands at all, see
+"A blocking check stage with nothing to run" below.
 
 ## Adding more check stages
 
-Extra check stages use the ordinary `stages:` list with three optional additions.
+Extra check stages use the ordinary `stages:` list with a few optional additions.
 
 ```yaml
 stages:
   - id: integration-test
     type: custom              # any check that is not build / unit test
-    purpose: integration      # optional label, shown in reports, no behavior
-    gate: advisory            # advisory | blocking; default is blocking for build/test
+    gate: advisory            # advisory | blocking (always write it for custom stages)
     depends_on: [build]
     run:
       commands: ["./scripts/integration.sh"]
       timeout_minutes: 30
       secrets: [INTEGRATION_DB_URL]      # names only, never values (P3)
 
-  - id: sonar
+  - id: analysis
     type: custom
-    purpose: sast
     gate: blocking
-    execution: observed       # the team's CI or service already runs it
+    execution: observed       # the team's CI or an external service already runs it
     observe:
-      check: "SonarCloud Code Analysis"  # the name the platform shows
-      producer: sonarqubecloud           # who is allowed to author it
+      check: "Code Analysis"             # the result name the platform shows
+      producer: "<producer identity>"    # who is allowed to author it
 ```
 
-### New optional stage keys
+### New optional stage keys (deliberately few)
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `execution` | `managed` \| `observed` | `managed` | Who runs the work (see 02) |
-| `purpose` | string | none | Free-text label for reports; never changes behavior |
-| `run.commands` | list of strings | from `build:` | Commands to run, in order; stop at the first failure |
+| `run.commands` | list of strings | none | Commands for a **custom** stage, in order; stop at the first failure |
 | `run.timeout_minutes` | integer 1..360 | 30 | Hard limit; timeout is `COMPLETED` + `FAILED` |
-| `run.env` | map name to string | none | Non-secret environment values |
 | `run.secrets` | list of names | none | Secret **names** the platform injects. Never values |
-| `run.reports` | list of paths | none | Files whose *presence* is informational only (see below) |
 | `observe.check` | string | required if observed | Name of the platform result to read |
 | `observe.producer` | string | required if observed | Identity allowed to author that result |
 | `observe.timeout_minutes` | integer 1..10080 | none (wait) | If the result never appears, the stage becomes state `FAILED` after this time (06) |
 
-Rules the schema enforces:
+There is no `purpose`, `env` or `reports` key. A label is a `name:`; a non-secret environment
+value is part of the command (`FOO=bar ./run.sh`); test-report attachment is the CI system's job
+(Charter section 6: reference, do not re-declare). Each key above changes behavior.
 
-1. `run` is allowed only when `execution` is `managed`; `observe` only when `observed`. A stage
+Rules the schema and static validation enforce:
+
+1. **Single source of truth for commands.** The `build` and `unit-test` stages take their commands
+   **only** from `build:`; `run.commands` on them is an error. `run.commands` exists only for other
+   (`custom`) managed stages.
+2. `run` is allowed only when `execution` is `managed`; `observe` only when `observed`. A stage
    with both, or with `execution: observed` and no `observe.producer`, is a configuration error.
-2. `observe.producer` is **mandatory**. Reading a result by name alone would let anyone who can
+3. `observe.producer` is **mandatory**. Reading a result by name alone would let anyone who can
    create a check of that name satisfy the gate (see 04, threat T4).
-3. `secrets` accepts names that match `^[A-Z][A-Z0-9_]*$`. Values are rejected at load time and
-   error messages never echo them (existing `describe_schema_error` behavior).
-4. A managed stage with `secrets` is **not** run for untrusted pull requests (fork policy, 04).
-5. `depends_on` may only name existing stages and must be acyclic (already enforced).
-6. Existing keys keep their meaning: `gate`, `enabled`, `triggers`, `depends_on`, `name`.
-
-`run.reports` never decides the result. The result is always the platform's native outcome for the
-job (02). Reports let a platform attach test results to its own UI where it supports that; a
-platform that has no such feature ignores the key.
+4. `run.secrets` names must match `^[A-Z][A-Z0-9_]*$`, must not use a prefix the platform reserves
+   (for example `GITHUB_` on GitHub), and **must not name any credential Stagr itself uses**: the
+   publisher private-key secret, the platform token secret, or any provider or backend secret
+   that the config resolves for another stage. Naming one is a static error (a V-S12-style
+   check), because it would hand that credential to the untrusted work unit (04, S1).
+5. Values of secret-like fields are rejected at load time and error messages never echo them
+   (existing `describe_schema_error` behavior).
+6. A managed stage with `secrets` is **not** run for untrusted pull requests, and no managed stage
+   runs fork code at all (04).
+7. `depends_on` may only name existing stages and must be acyclic (already enforced).
+8. Existing keys keep their meaning: `gate`, `enabled`, `triggers`, `depends_on`, `name`.
 
 ### What is deliberately missing
 
-No `matrix`, `services`, `cache`, `container`, `if`, `artifacts`, `retries` or `parallelism`
-keys. These are CI-system features (goals, non-goals in 01). A team that needs them writes the
-job in its own CI and uses `execution: observed`. This keeps the config small and stops Stagr
+No `matrix`, `services`, `cache`, `container`, `if`, `artifacts`, `retries`, `parallelism`, `env`,
+`runs_on` or `purpose` keys. These are CI-system features or labels. A team that needs them writes
+the job in its own CI and uses `execution: observed`. This keeps the config small and stops Stagr
 from becoming a second CI language.
 
 ## Gate defaults
@@ -108,10 +115,20 @@ from becoming a second CI language.
 |---|---|---|
 | `build`, `test` | `blocking` | Baseline (01) |
 | `review`, `security` | `blocking` | Baseline (01); already the neutral default |
-| `custom` | `advisory` | Optional checks never block unless the team says so |
+| `custom` | Write it explicitly | The two config lanes disagree on an omitted `gate` today; Phase 1 (I1) makes it one documented value. Until then examples always write `gate:` |
 
-`stagr init` writes the four baseline stages as blocking, with the `build:` commands as
-commented placeholders (option A, already implemented for review/security).
+`stagr init` writes the four baseline stages as blocking. Their `build:` commands are commented
+placeholders (option A, already implemented for review/security).
+
+## A blocking check stage with nothing to run
+
+One rule, stated once (used by 05, 07 and 08):
+
+- `stagr plan` **warns**; `stagr doctor` reports an **error** naming the stage.
+- If applied anyway, the stage runs and publishes `FAILED` with the reason "no commands
+  configured". It never passes and never renders a silent no-op.
+- To resolve: set `build.commands` (or the preset), mark the stage `execution: observed`, or turn
+  it off with `enabled: false`.
 
 ## Validation and errors
 
@@ -132,6 +149,6 @@ All new keys are optional and additive (P9). A config without them behaves as to
 
 ## Configuration budget check
 
-For the common repository: `platform.kind`, `build.preset`, and optionally `platform.publisher`
+For the common repository: `platform.type`, `build.preset`, and optionally `platform.publisher`
 (already required for blocking stages). Everything in "Adding more check stages" is opt-in and
 sits next to the rule it configures.
