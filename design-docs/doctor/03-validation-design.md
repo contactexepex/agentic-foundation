@@ -49,9 +49,12 @@ access"). Only a positive finding from a probe is otherwise an ERROR or WARN.
 - **Pipeline:** read presence flags (D4). Each missing secret is an ERROR naming the secret and the stage.
 - **Central (D10):** list the target repo's secret names and the org secrets available to it with
   `STAGR_PLATFORM_TOKEN` (F8) and compare them to the requirement.
+- **Scope:** repository and organization secrets only. The generated stage jobs declare no GitHub
+  environment, so a secret that exists only in an environment is empty inside the stage. It does not
+  satisfy V-E01 ([06](06-deployment-scenarios.md)).
 - **Why flags in the pipeline, not the API:** listing secrets needs elevated access, and `GITHUB_TOKEN`
-  cannot do it (F2). The `secrets` context already answers "does it exist?" for repo, environment and org
-  secrets (F1).
+  cannot do it (F2). The `secrets` context already answers "does it exist?" for the repo and org secrets
+  the job can read (F1).
 
 ### V-E02 — Publisher App
 
@@ -98,8 +101,10 @@ show up as a 403 on the first PR.
 
 ### V-E04 — Trusted roles
 
-- V-S14 already validates role values. Doctor adds an offline check: `WARN` when `trusted_roles` is only
-  `owner`, because every PR from anyone else is then skipped.
+- V-S14 already validates role values. Doctor adds an offline check that runs in every context:
+  - `WARN` when `trusted_roles` is empty (`[]`). The schema allows it, but the pipeline then rejects
+    every PR author, so nothing ever runs.
+  - `WARN` when `trusted_roles` is only `owner`, because every PR from anyone else is skipped.
 - **Optional live probe (D7):** with `STAGR_PLATFORM_TOKEN`, doctor lists collaborator roles (F7) and
   `WARN`s when nobody holds a role in `trusted_roles`. Same contexts as V-E03.
 

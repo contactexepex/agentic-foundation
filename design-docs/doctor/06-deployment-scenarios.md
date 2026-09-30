@@ -62,5 +62,9 @@ The exact minimum permissions for V-E03 and V-E04 must be confirmed (F6, F7 in
 - **Secrets kept outside GitHub** (for example fetched from Vault through OIDC). The generated
   workflows read `${{ secrets.NAME }}`, so V-E01 is correct for what Stagr generates. Vault support
   would be a separate feature.
-- **Secrets held in a GitHub environment.** The doctor job must declare that environment to see them,
-  and may then wait for its approval rules. Note this in the runbook; no special support.
+- **Secrets held only in a GitHub environment.** The generated stage jobs declare no `environment:`, so
+  they cannot read these secrets. Doctor does not count them toward V-E01: the secret is reported
+  missing, and the fix line says to store it as a repository or organization secret. The doctor job
+  declares no environment either, so its presence flags match what the stage sees. Supporting
+  environments would mean adding an environment field to the config and the renderer; that is a
+  separate feature.
