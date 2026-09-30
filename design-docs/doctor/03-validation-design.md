@@ -15,10 +15,11 @@ Part of the [doctor design set](README.md). Supersedes the "Environment validati
 | `PASS` | Checked and correct | No |
 | `WARN` | Checked; risky but not broken | No |
 | `ERROR` | Checked and wrong, or could not be checked in `--ci` | **Yes** |
-| `SKIP` | Not checked. Local mode: cannot verify here. `--ci`: blocked by an earlier ERROR | No |
+| `SKIP` | Not checked. Local mode: cannot verify here. `--ci`: blocked by an earlier ERROR, or an optional probe with no token (D7) | No |
 
 Rule: **a live check that cannot run in `--ci` is an ERROR, never a silent SKIP.** `--ci` is the
-authoritative mode, so a missing input there is a setup mistake.
+authoritative mode, so a missing input there is a setup mistake. The only exceptions are the two
+optional probes (V-E03, V-E04 live), which `SKIP` without `STAGR_PLATFORM_TOKEN`.
 
 ## Two sources of truth
 
@@ -58,36 +59,41 @@ doctor unions them. Today the required set exists only as a hand-written table i
 implementation adds a declared-permissions field to each rendered artifact, fills it in the GitHub
 renderer, and makes the docs table match. Doctor never hardcodes a global permission list.
 
-**D3 — how c and d authenticate.** The App's permissions can only be read with an App JWT, which is
-signed with the private key (F3, F4).
+**D3 (decided: option A) — how c and d authenticate.** The App's permissions can only be read with an
+App JWT, which is signed with the private key (F3, F4). In `--ci`, the workflow passes the key to doctor;
+doctor signs a 10-minute JWT **in memory** and never prints, logs or writes the key. This amends the
+"no secret value is read" rule for this one command.
 
-| Option | How | Trade-off |
-|---|---|---|
-| **A (proposed)** | In `--ci`, the workflow passes the key to doctor; doctor signs a 10-minute JWT **in memory**, never prints, logs or writes it | Full check of install and permissions. Amends the "no secret value is read" rule for this one command |
-| B | Doctor never reads the key. The workflow mints an installation token (proves install + valid key); doctor probes read access only | Keeps the rule. Cannot verify `write` permissions without writing, so those stay on the checklist |
-
-A requires: same-repo trusted triggers only (push to the default branch, `workflow_dispatch`); never
+Conditions: same-repo trusted triggers only (push to the default branch, `workflow_dispatch`); never
 fork or untrusted PR code; the key is used only to sign.
+
+Rejected: option B (never read the key; mint an installation token and probe read access only). It keeps
+the rule but cannot verify `write` permissions without writing, so a missing `checks: write` would only
+show up as a 403 on the first PR.
 
 ### V-E03 — Workflow permissions
 
 - Generated workflows declare their own minimal `permissions:` blocks, so the repo's default token
   setting does not affect them. The remaining risk is an org policy that restricts Actions, which only an
   admin can read.
-- **All modes:** doctor lists the permissions each generated workflow declares (checklist). The live
-  probe is out of scope (D7). An org restriction shows up at first run, and the checklist tells the
-  platform team what to allow.
+- **All modes:** doctor lists the permissions each generated workflow declares (checklist), so the
+  platform team knows what to allow.
+- **Optional live probe (D7):** with `STAGR_PLATFORM_TOKEN` (admin-level), `--ci` reads the repo's default
+  workflow permissions and allowed actions (F6) and reports an ERROR for anything the generated
+  workflows need that is blocked. Without the token: `SKIP (no STAGR_PLATFORM_TOKEN)`.
 
 ### V-E04 — Trusted roles
 
 - V-S14 already validates role values. Doctor adds an offline check: `WARN` when `trusted_roles` is only
   `owner`, because every PR from anyone else is then skipped.
-- Live matching against collaborators needs push access and is out of scope (D7).
+- **Optional live probe (D7):** with `STAGR_PLATFORM_TOKEN` (push access or better), `--ci` lists
+  collaborator roles (F7) and `WARN`s when nobody holds a role in `trusted_roles`. Without the token:
+  `SKIP (no STAGR_PLATFORM_TOKEN)`.
 
 ## Where the code lives
 
 - Core (`stagr/core/`): the check-result type, the requirements derived from render output, and the
   pass/fail rules. No GitHub knowledge.
-- GitHub (`stagr/platforms/github/`): the JWT, the installation call, permission comparison, and the
-  declared permissions, behind a small interface so tests inject a fake client (C8).
+- GitHub (`stagr/platforms/github/`): the JWT, the installation call, permission comparison, the
+  optional probes, and the declared permissions, behind a small interface so tests inject a fake client (C8).
 - CLI (`stagr/cli/`): thin `doctor` command wiring the above.

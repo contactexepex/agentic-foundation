@@ -14,10 +14,11 @@ acceptance criteria, each with a test.
 | A5 | V-E02 names the App ID when not installed | Unit (fake GitHub client): `404`; assert App ID in output |
 | A6 | V-E02 names the missing private-key secret, and c/d become `SKIP` | Unit: key flag `false`; assert name, and c/d blocked |
 | A7 | V-E02 lists each missing or too-weak permission | Unit: installed permissions lack `checks: write`; assert it is listed |
-| A8 | Missing `--ci` input is an ERROR, never a silent SKIP | Unit: unset flag in `--ci` |
+| A8 | Missing required `--ci` input is an ERROR, never a silent SKIP | Unit: unset flag in `--ci` |
 | A9 | V-E04 warns on `owner`-only roles | Unit |
 | A10 | Exit code is 0 with no ERROR, else 1; secret values never appear in output | Unit: sentinel secret value absent from stdout/stderr |
 | A11 | Declared artifact permissions match the docs table | Test compares the renderer's union to `docs/CONFIGURATION.md` |
+| A12 | Optional probes: with `STAGR_PLATFORM_TOKEN`, V-E03 and V-E04 report ERROR/WARN from a fake client; without it, both `SKIP` and exit code is unaffected | Unit (fake client, with and without token) |
 
 ## Test approach
 
@@ -27,13 +28,14 @@ acceptance criteria, each with a test.
   passes 350 lines; run by the existing `validate.yml` commands.
 - Existing gates stay: `python .github/scripts/validate_config.py`, `test_neutral_core_models.py`,
   `test_cli.py`, `py_compile` on changed files.
-- **One real run.** After merge, run `stagr doctor --ci` once against a real App and repository to
-  confirm F1 to F4. Open question 1 in the README: which repo and App.
+- **One real run.** After merge, run `stagr doctor --ci` in this repository (App 5125793, secret
+  `STAGR_APP_PRIVATE_KEY`) to confirm F1 to F4. Expect PASS. Then run once on a scratch branch with a wrong
+  App ID to confirm the ERROR text.
 
 ## Verify GitHub facts first
 
-Before code, confirm F1 to F5 ([01](01-constraints.md)). If F3 fails, V-E02 c/d fall back to option B
-(03). If F1 fails, V-E01 needs a different presence signal.
+Before code, confirm F1 to F7 ([01](01-constraints.md)). If F3 fails, V-E02 c/d need a different App
+signal and the owner decides again. If F1 fails, V-E01 needs a different presence signal.
 
 ## Docs to update with the implementation
 
@@ -47,8 +49,8 @@ Before code, confirm F1 to F5 ([01](01-constraints.md)). If F3 fails, V-E02 c/d 
 
 ## Rollout
 
-1. **This PR:** the design set only. Review by Codex and the owner; decisions D3, D6, D7 need the
-   owner's answer.
+1. **This PR:** the design set only. Review by Codex and the owner. The owner has decided D3, D6, D7
+   and D8.
 2. **One implementation PR** for #203: core check types and requirements, GitHub probes, `doctor`
    command, tests, docs. One PR because the checklist, the checks, and the declared permissions must
    agree; splitting them invites drift (the same reason `plan` and `apply` shipped together).

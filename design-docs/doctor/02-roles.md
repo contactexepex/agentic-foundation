@@ -46,6 +46,20 @@ to install App 123456 on this repository").
 
 Steps 5 and 7 are the only ones that need privileged access, and neither is done by the author.
 
+## Where the optional platform token lives (D7)
+
+The optional live probes (V-E03, V-E04) need an admin-level token, `STAGR_PLATFORM_TOKEN`. Doctor only
+reads it from the environment, so the organization chooses where it comes from:
+
+| Pattern | Who holds the token | Who runs the probes | Fits |
+|---|---|---|---|
+| **Shared** | Stored as a repo secret and passed in the pipeline step | The author's pipeline, every run | Small teams where one group owns everything |
+| **Separated** | Only the platform team | The platform team, in a workflow they own | Larger organizations with multi-level access |
+
+In the separated pattern the author's pipeline shows `SKIP` for those probes and the platform team runs
+them. The shared pattern puts an admin-level token in that repo's CI, so use it only where the team
+already holds that trust. Stagr does not choose for you.
+
 ## Ongoing use
 
 Adding a stage or provider changes the required secrets and permissions. Re-running local

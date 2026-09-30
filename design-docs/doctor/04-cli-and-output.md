@@ -17,10 +17,11 @@ appears.
 | Input | Source | Purpose |
 |---|---|---|
 | `STAGR_HAS_<SECRET_NAME>` = `true`/`false` | workflow: `${{ secrets.NAME != '' }}` | V-E01, V-E02 key present. Flag only, never the value |
-| `STAGR_DOCTOR_APP_KEY` | workflow: `${{ secrets.<private_key_secret> }}` | V-E02 JWT (option A only) |
+| `STAGR_DOCTOR_APP_KEY` | workflow: `${{ secrets.<private_key_secret> }}` | V-E02 JWT (D3) |
+| `STAGR_PLATFORM_TOKEN` (optional) | workflow: `${{ secrets.STAGR_PLATFORM_TOKEN }}` | V-E03 and V-E04 live probes. Absent: they `SKIP`. Where it comes from: [02](02-roles.md) |
 | `GITHUB_REPOSITORY`, `GITHUB_API_URL` | provided by Actions | which repo to query |
 
-A missing input in `--ci` is an ERROR that names it.
+A missing required input in `--ci` is an ERROR that names it. `STAGR_PLATFORM_TOKEN` is the only optional input.
 
 ## Output
 
@@ -66,10 +67,11 @@ Trusted roles:             owner, member, collaborator
 ```
 
 Followed by a **CI step snippet** for this exact config: a job with the `STAGR_HAS_*` flags and the key
-env (for option A) already filled in, on a trusted trigger. The snippet is generated from the same
+env already filled in, on a trusted trigger. The snippet is generated from the same
 requirements, so it cannot drift.
 
 ## Docs that teach this
 
 `docs/CLI.md` gets a setup runbook organized by role (02), and its "No network" rule becomes "no network
-except `doctor --ci`". Both ship with the implementation.
+except `doctor --ci`". Both ship with the implementation. The exact CI snippet is **not** duplicated in the
+docs (D8): the docs explain the flags and point to `stagr doctor`, so there is one source of truth.
