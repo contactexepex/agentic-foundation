@@ -239,7 +239,10 @@ If you ever see a secret value in a log or comment, treat it as compromised and 
 
 1. Add `.agentic/config.yml` (section 3), starting from a `profile` and a `platform`, and adding
    `stages` only for finer control. Put each `skill` a stage names at `.agentic/skills/<id>/SKILL.md`;
-   the starter skills are under `stagr/templates/skills/`.
+   the starter skills, `code-review` and `security-review`, are the folders under
+   [`stagr/templates/skills/`](https://github.com/contactexepex/agentic-foundation/tree/main/stagr/templates/skills)
+   in this repository (they also ship inside the installed package, next to the `stagr` module). Copy
+   them into `.agentic/skills/`; `stagr plan` fails with V-S06 for any stage whose skill file is missing.
 2. Create the secrets your providers need (section 2) in your CI/SCM secret store.
 3. Create the Stagr GitHub App and its private-key secret, and put the App's ID in
    `platform.publisher.app_id` ([Publisher](#publisher-stagr-github-app)).

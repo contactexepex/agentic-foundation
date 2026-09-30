@@ -18,6 +18,7 @@ from .harness import (
     dogfood_project,
     run_cli,
     snapshot_tree,
+    starter_project,
 )
 
 ENTRY_LINE_PATTERN = re.compile(r"^\s+(new|changed|unchanged)\s+(\S+)\s+(\d+) bytes\s+sha256:([0-9a-f]+)$")
@@ -246,12 +247,11 @@ def test_symlinked_and_directory_targets_are_refused() -> None:
 
 
 def test_the_documented_minimal_config_plans_cleanly() -> None:
-    """The starter config in docs/CONFIGURATION.md must be one `plan` accepts (with the starter skills)."""
+    """The starter config in docs/CONFIGURATION.md plans cleanly in an empty repo plus the copied starter skills."""
     guide_text = (REPOSITORY_ROOT / "docs" / "CONFIGURATION.md").read_text(encoding="utf-8")
     example_start = guide_text.index("# Minimal config")
     minimal_config_text = guide_text[example_start:guide_text.index("```", example_start)]
-    with dogfood_project() as project_root:
-        (project_root / CONFIG_FILE_PATH).write_text(minimal_config_text, encoding="utf-8")
+    with starter_project(minimal_config_text) as project_root:
         exit_code, stdout, stderr = run_cli(["plan", "--root", str(project_root)])
         check(exit_code == 0 and stderr == "", "docs: the documented minimal config plans cleanly")
         check(len(parse_entries(stdout)) == 4, "docs: the standard profile plans two stage workflows, routing and governance")
