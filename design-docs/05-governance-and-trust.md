@@ -1,6 +1,8 @@
 # Stagr Neutral Core — Governance and Trust
 
-**Status:** Design phase — not yet implemented
+**Status:** Implemented: `TrustPolicy`, `RoutingPolicy` and `MergePolicy` (`stagr/core/policy.py`) and the rendered
+governance workflow, which blocks a merge but never merges. The automatic merge in the foundation lane below is
+done today by this repository's own `.github/workflows/auto-merge-foundation-prs.yml`.
 
 ---
 

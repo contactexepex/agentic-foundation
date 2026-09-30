@@ -1,6 +1,8 @@
 # Stagr Neutral Core — Overview
 
-**Status:** Design phase — not yet implemented  
+**Status:** Implemented for the GitHub renderer (`stagr help`, `stagr plan`, `stagr apply`). Not built yet:
+`stagr init`, `stagr doctor` (see `doctor/`) and check stages (see `09-check-stages.md`).
+
 **Scope:** Neutral core architecture for the Stagr toolkit  
 **Audience:** Implementors, reviewers, future renderer authors
 

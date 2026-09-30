@@ -1,6 +1,8 @@
 # Stagr Neutral Core — Canonical Stage Model
 
-**Status:** Design phase — not yet implemented
+**Status:** Implemented: the enumerations, `NormalizedStage`, the dependency rules and profile expansion. Not built
+yet: the `commands` and `observed` executors and the four-stage `standard` profile below
+(`09-check-stages.md`). In code, `standard` still expands to an independent `review` and `security` stage.
 
 ---
 

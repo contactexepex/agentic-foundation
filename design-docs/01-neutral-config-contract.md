@@ -1,6 +1,8 @@
 # Stagr Neutral Core — Neutral Config Contract
 
-**Status:** Design phase — not yet implemented
+**Status:** Implemented for agent stages: `stagr/config.schema.json` lists the keys the pipeline reads. Not built
+yet: the check-stage keys `build`, `commands`, `timeout_minutes` and `observe`, which are designed in
+`09-check-stages.md` and are not in the schema.
 
 ---
 

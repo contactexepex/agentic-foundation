@@ -204,7 +204,7 @@ Every identifier must communicate its purpose without needing a comment:
   responsibilities. Do not create so many small classes that the code becomes unnecessarily
   fragmented — aim for balanced decomposition where each class has one clear purpose.
 - When a test module grows beyond 350 lines, extract logical groups into focused sub-modules within
-  a package (following the `render_tests/` pattern), and keep a thin runner that imports and calls
+  a package (following the `.github/scripts/neutral_core_tests/stage_signal_tests/` pattern), and keep a thin runner that imports and calls
   each test function. The validate.yml runner command stays unchanged; only the module structure
   changes underneath it.
 

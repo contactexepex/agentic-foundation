@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Provider, Backend, and Model
 
-**Status:** Design phase — not yet implemented
+**Status:** Implemented for the providers `openai` and `anthropic`: default backend resolution, secret aliases and
+the `providers` block. Other providers and the `generic` backends named below are examples and are not built.
 
 ---
 
@@ -36,7 +37,7 @@ Examples:
 |---|---|---|
 | `openai` | `codex` | Posts `@codex review` or `@codex security review` as a PR comment |
 | `openai` | `generic` | Calls the OpenAI Chat Completions API directly |
-| `anthropic` | `claude-code` | Invokes Claude Code in a CI workflow step |
+| `anthropic` | `claude-code-action` | Invokes Claude Code in a CI workflow step |
 | `anthropic` | `generic` | Calls the Anthropic Messages API directly |
 | `deepseek` | `generic` | Calls the DeepSeek API directly |
 
@@ -57,7 +58,7 @@ normalization time (after profile expansion, before rendering):
 ```
 provider: openai  → default backend: codex
 provider: openai, backend: codex  → default model: (backend-defined)
-provider: anthropic  → default backend: claude-code
+provider: anthropic  → default backend: claude-code-action
 provider: deepseek  → default backend: generic
 ```
 
@@ -117,11 +118,10 @@ SecretRef {
 
 ### Why this matters
 
-The current implementation hardcodes `REMEDIATION_TOKEN` as the secret name in the
-workflow scripts. This leaks a platform-specific secret name into the neutral design.
-Under the correct model, `REMEDIATION_TOKEN` is the platform secret name for the alias
-`TRUSTED_COMMENTER_TOKEN` — that mapping is provider configuration, not part of the
-neutral stage declaration.
+A backend must not hardcode a platform secret name such as `REMEDIATION_TOKEN` in the neutral design.
+`REMEDIATION_TOKEN` is the platform secret name for the alias `TRUSTED_COMMENTER_TOKEN` by default, and the
+operator can change that mapping in the config (`providers.<provider>.secrets` or `platform.auth.token_secret`)
+without touching a stage declaration.
 
 ---
 
@@ -141,8 +141,8 @@ platform secret name). It becomes required when the platform secret names differ
 the aliases the backend declares.
 
 > **V1 decision:** Provider configuration lives in `config.yml` under the `providers:`
-> block. A separate `.agentic/providers.yml` is not needed in V1. Keeping everything in
-> one file simplifies the operator experience and the Stagr CLI's config loading path.
+> block. Keeping everything in one file simplifies the operator experience and the Stagr CLI's
+> config loading path.
 
 ---
 

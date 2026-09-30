@@ -121,7 +121,7 @@ All production and test Python code must satisfy the coding standards defined in
   files (YAML, JSON, TOML) are exempt. When a class grows beyond 350 lines, decompose it into
   focused, well-named classes. Do not fragment code unnecessarily — balanced decomposition is the
   goal. When a test module grows beyond 350 lines, extract logical groups into a sub-package
-  following the `render_tests/` pattern; the runner command in `validate.yml` remains unchanged.
+  following the `.github/scripts/neutral_core_tests/stage_signal_tests/` pattern; the runner command in `validate.yml` remains unchanged.
 - **Modules** are the right boundary when grouping related classes and functions; using modules is
   perfectly acceptable and encouraged.
 

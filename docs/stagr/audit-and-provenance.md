@@ -1,88 +1,77 @@
-# Audit & provenance — decision events and the orchestrator seam
+# Audit & provenance — decision events
 
-Emitting run/cost/decision events is explicitly **in scope** for the control plane
-([`../CHARTER.md`](../CHARTER.md) §2). This page defines what stagr emits, why it is both the clean
-seam to an external orchestrator **and** the compliance/provenance wedge, and where the line to
-"not a dashboard" sits.
+Emitting run, cost and decision events is in scope for the control plane
+([`../CHARTER.md`](../CHARTER.md) §2). This page defines what stagr should emit, why the same stream
+serves both other tools and compliance, and where the line to "not a dashboard" sits.
 
-> **Status: [target].** No decision-event emitter ships in `stagr/` today — this entire page is
-> **design intent**, not current behaviour. The decision records, provenance fields, delivery
-> retries, and sink-failure handling below describe what the emit layer will do; they are tracked in
-> [roadmap.md](roadmap.md). Do not read any statement here as an existing guarantee.
+> **Status: design only.** No decision-event emitter exists in `stagr/`, so nothing on this page is
+> built. The work is tracked in issues #66 (sink configuration), #74 (minimal decision record),
+> #76 (run and cost events), #78 (durable outbox), #80 (provenance fields), #82 (a record for every
+> gate decision), #114 (attestation stream) and #127 (compliance mapping).
 
 ## stagr emits; it does not store or display
 
-stagr is not a database or a UI. It **emits a structured event stream** to the org's existing
-tools (log/observability sink, event bus, or an orchestrator's ingest). Holding history,
-correlating across PRs, and drawing dashboards are consumers' jobs — not stagr's
-([overview.md](overview.md#non-goals-what-keeps-stagr-a-tool-not-a-framework)).
+stagr is not a database or a UI. It **emits a structured event stream** to the org's existing tools
+(a log or observability sink, an event bus, or another tool's ingest). Keeping history, correlating
+across pull requests and drawing dashboards are the consumers' jobs, not stagr's
+([`../CHARTER.md`](../CHARTER.md) §5).
 
 ## The decision record
 
-Every consequential gate action emits a **decision record** — a structured, append-only event.
-Minimum fields:
+Every consequential gate action emits a **decision record**: a structured, append-only event. The
+minimum fields are:
 
-- **what** — the stage/gate and the decision (`review-converged`, `security-clean`,
-  `blocked:<reason>`, `escalated:<reason>`, `ready`, `merged`).
-- **which head** — the exact commit SHA the decision was bound to.
-- **which agent/model/backend** — the principal and model that produced the artifact.
-- **which policy** — the config/schema version and the specific rule that applied.
-- **who** — the acting principal (and, for a merge, the approver in the human lane).
-- **when** — timestamp and correlation id (PR + story).
+- **what**: the stage or gate and the decision (for example `ready`, `blocked:<reason>`, `merged`).
+- **which head**: the exact commit SHA the decision was bound to.
+- **which agent, model and backend**: the principal and model that produced the artifact.
+- **which policy**: the config and schema version and the specific rule that applied.
+- **who**: the acting principal (and, for a human-gated merge, the approver).
+- **when**: a timestamp and a correlation id (pull request and story).
 
 Records are **tamper-evident** (append-only, ordered, ideally signed) and **secret-free** (values
-redacted per [security-and-secrets.md](security-and-secrets.md)).
+are never written, see [security-and-secrets.md](security-and-secrets.md)).
 
 ## Two jobs, one stream
 
-1. **Seam to the orchestrator.** The external orchestrator (which decides *what* to start and
-   tracks live progress) consumes these events — most importantly the **merge event**, which lets
-   it update the project brain and unblock dependent stories. stagr and the orchestrator
-   communicate **only through GitHub artifacts + this event stream**, never by calling each other
-   ([overview.md](overview.md#the-two-sibling-toolkits)).
+1. **Feed to other tools.** Anything that needs to know what happened, such as an external
+   orchestrator deciding what to start next or a deploy toolkit reacting to a merge, consumes these
+   events, most importantly the **merge event**, instead of polling the repository. stagr and those
+   tools do not call each other.
 
-2. **Compliance & provenance wedge.** The same stream is a per-change **provenance trail**: which
-   agent wrote what, under which policy version, reviewed by whom, gated how, approved by whom. That
-   is exactly what regulated orgs need for AI-generated-code governance (EU AI Act, ISO 42001,
-   SOC 2) — and it is a position the platform incumbents structurally under-serve. Provenance is a
-   named pillar, not plumbing.
+2. **Compliance and provenance.** The same stream is a per-change **provenance trail**: which agent
+   wrote what, under which policy version, reviewed by whom, gated how, approved by whom. That is
+   what regulated organizations need for AI-generated-code governance (EU AI Act, ISO 42001,
+   SOC 2). Provenance is a named pillar, not plumbing.
 
-## Cost & run telemetry
+## Cost and run telemetry
 
-Alongside decisions, stagr emits **run and cost events** (per stage: tokens/cost, duration,
-outcome) so budgets ([governance-and-limits.md](governance-and-limits.md)) are auditable and an
-orchestrator can see which lane is expensive or stuck. Telemetry is an **emit-adapter**: nothing
-about the sink, endpoint, or format is hardcoded; it adapts to what the org already runs.
+Alongside decisions, stagr emits **run and cost events** per stage (tokens or cost, duration,
+outcome), so spending is auditable and another tool can see which stage is expensive or stuck.
+Telemetry is an **emit adapter**: nothing about the sink, endpoint or format is hardcoded, so it
+adapts to what the org already runs.
 
-## Boundary: emit-adapter, not observability platform
+## Boundary: emit adapter, not observability platform
 
-- stagr **emits** to a configured sink; it does not host storage, search, or a UI.
-- It does not reinvent LLM/agent observability — it speaks a standard event shape (e.g.
-  OpenTelemetry GenAI conventions) so an existing backend ingests it.
+- stagr **emits** to a configured sink. It does not host storage, search or a UI.
+- It does not reinvent LLM or agent observability. It uses a standard event shape (for example
+  OpenTelemetry GenAI conventions) so an existing backend can ingest it.
 
 ### The record must always exist (sink failure handling)
 
-Because "every decision is recorded" and "a merge without a record is defective" must both hold, the
-intended design writes to a **durable outbox** and treats remote emission as **best-effort on top**.
-**Caveat [target]:** the platform's native run log is only a *fallback*, and it is **retention-bound
-and deletable** — it is **not** a truly durable record. So the "nothing is lost / always auditable"
-guarantee holds **only once a durable outbox (or a sink delivery-acknowledgement) is implemented**;
-until then it is best-effort. With that outbox in place, **every** record — including the no-sink and
-failing-sink cases — is committed to the **durable outbox before merge** (never only to the native run
-log):
+"Every decision is recorded" and "a merge without a record is a defect" must both hold. A platform's
+own run log is **not** enough for that: it is retention-bound and can be deleted. So the design
+writes every record to a **durable outbox** first and treats delivery to a remote sink as
+best-effort on top:
 
-- **No sink configured** → the record is committed to the **durable outbox**; the native run log is
-  only a convenience copy.
-- **Configured sink unavailable** (webhook down, OTLP collector unreachable, bus rejects) → the record
-  is already in the **durable outbox**, so the merge is **not blocked** by a remote outage; remote
-  delivery is **retried from the outbox**, never silently dropped.
-- The merge is gated on the **durable-outbox commit** (not on any remote sink's availability), which is
-  what keeps "a merge always has a record" true. **Until the durable outbox is implemented this is
-  best-effort** (native run log only) — see the caveat above.
+- **No sink configured**: the record is still committed to the durable outbox.
+- **Sink unavailable** (webhook down, collector unreachable, bus rejects): the record is already in
+  the outbox, so the merge is **not blocked** by a remote outage. Delivery is **retried from the
+  outbox** and never silently dropped.
+- The merge waits for the **outbox commit**, not for any remote sink.
 
 ## What "auditable" means here
 
-Auditable means: **every** gate decision and escalation produces a record; each record is
-SHA-bound, policy-versioned, principal-attributed, and secret-free; and the merge event carries
-enough for a consumer to both continue the pipeline and reconstruct *why this change was allowed
-in*. A merge with no decision record is a defect.
+Auditable means: **every** gate decision produces a record; each record is bound to a commit,
+versioned by policy, attributed to a principal and free of secrets; and the merge event carries
+enough for a consumer to both continue its work and reconstruct *why this change was allowed in*.
+A merge with no decision record is a defect.

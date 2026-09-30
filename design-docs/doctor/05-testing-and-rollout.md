@@ -49,7 +49,7 @@ signal and the owner decides again. If F1 fails, V-E01 needs a different presenc
 - `design-docs/00-overview.md`: doc-set table.
 - `docs/CLI.md`: doctor section, setup runbook by role, network rule.
 - `docs/CONFIGURATION.md`: point the App permissions table at the declared set.
-- `docs/stagr/roadmap.md`: update the `doctor` probes line.
+- `docs/stagr/onboarding-and-config.md`: update the `stagr doctor` paragraph.
 - `stagr/cli/__init__.py` docstring and CLI help tests.
 
 ## Rollout

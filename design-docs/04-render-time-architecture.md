@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Render-Time Architecture
 
-**Status:** Design phase — not yet implemented
+**Status:** Implemented: the two-phase render pipeline, renderers that return artifacts, and the object model. Not
+built yet: the check planner for `commands` and `observed` executors (`09-check-stages.md`).
 
 ---
 

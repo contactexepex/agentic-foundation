@@ -1,6 +1,8 @@
 # Stagr Neutral Core — GitHub + Codex Implementation Mapping
 
-**Status:** Design phase — not yet implemented
+**Status:** The GitHub renderer writes the stage, routing and governance workflows described here for stages started
+by a pull request comment. The "current" rows describe this repository's hand-written workflows, which still run its
+merge gate and have not been replaced by rendered ones.
 
 ---
 

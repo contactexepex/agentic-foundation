@@ -1,6 +1,8 @@
 # Stagr Neutral Core — Runtime Boundary
 
-**Status:** Design phase — not yet implemented
+**Status:** Implemented for stages started by a pull request comment: the rendered GitHub stage workflows and their
+runtime script (`stagr/platforms/github/runtime/stage_signal_runtime.py`). Not built yet: result signals for check
+stages (`09-check-stages.md`).
 
 ---
 

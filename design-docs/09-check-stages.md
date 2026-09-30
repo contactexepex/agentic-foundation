@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Check Stages (build, test and other CI results)
 
-**Status:** Design phase — not yet implemented
+**Status:** Design only. Nothing in this document is built; the work items in section 12 are tracked in issues #249
+to #257.
 
 ---
 
