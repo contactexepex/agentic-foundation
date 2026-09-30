@@ -46,7 +46,7 @@ classifiers = [
 stagr = "stagr.cli:main"
 
 [project.urls]
-Repository = "https://github.com/contactexepex/agentic-foundation"
+Repository = "https://github.com/exepex/agentic-foundation"
 
 [tool.hatch.version]
 path = "stagr/__init__.py"

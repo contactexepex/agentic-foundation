@@ -44,7 +44,7 @@ you can rename them in the config (see below).
 ## 3. `.agentic/config.yml` — field reference
 
 Write `.agentic/config.yml` by hand and keep it valid against
-[`stagr/config.schema.json`](https://raw.githubusercontent.com/contactexepex/agentic-foundation/main/stagr/config.schema.json).
+[`stagr/config.schema.json`](https://raw.githubusercontent.com/exepex/agentic-foundation/main/stagr/config.schema.json).
 The schema lists exactly the keys the toolkit reads; a key that is not listed does nothing.
 
 - An **unknown key inside a Stagr key** (`platform`, `defaults`, `stages`, ...) is an error.
@@ -240,7 +240,7 @@ If you ever see a secret value in a log or comment, treat it as compromised and 
 1. Add `.agentic/config.yml` (section 3), starting from a `profile` and a `platform`, and adding
    `stages` only for finer control. Put each `skill` a stage names at `.agentic/skills/<id>/SKILL.md`;
    the starter skills, `code-review` and `security-review`, are the folders under
-   [`stagr/templates/skills/`](https://github.com/contactexepex/agentic-foundation/tree/main/stagr/templates/skills)
+   [`stagr/templates/skills/`](https://github.com/exepex/agentic-foundation/tree/main/stagr/templates/skills)
    in this repository (they also ship inside the installed package, next to the `stagr` module). Copy
    them into `.agentic/skills/`; `stagr plan` fails with V-S06 for any stage whose skill file is missing.
 2. Create the secrets your providers need (section 2) in your CI/SCM secret store.

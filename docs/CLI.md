@@ -38,9 +38,9 @@ logged** — only the secret *names* the contract references.
 >
 > ```bash
 > # reproducible — replace <commit> with a specific commit SHA (or a release tag):
-> pipx install "https://github.com/contactexepex/agentic-foundation/archive/<commit>.tar.gz"
+> pipx install "https://github.com/exepex/agentic-foundation/archive/<commit>.tar.gz"
 > # or the latest tip of main (evaluation only, mutable):
-> pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
+> pipx install "https://github.com/exepex/agentic-foundation/archive/refs/heads/main.tar.gz"
 > ```
 >
 > or, from a local checkout of this repository: `pipx install .` (or `pip install .`).
