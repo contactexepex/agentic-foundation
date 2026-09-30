@@ -24,7 +24,7 @@ from .dag import build_and_validate_dag
 from .defaults import resolve_defaults
 from .enums import StageGate, StageKind, StageTrigger
 from .models import ConfigError, NormalizedStage
-from .normalize import expand_profile_defaults, filter_disabled_stages
+from .normalize import DEFAULT_PROFILE_NAME, expand_profile_defaults, filter_disabled_stages
 
 
 def _resolve_backend(stage: dict[str, Any]) -> str:
@@ -176,7 +176,7 @@ def expand_active_stages(config: dict[str, Any]) -> list[dict[str, Any]]:
         ValueError: from ``expand_profile_defaults`` when the profile name is unrecognised,
             a stage is missing its ``id``, or duplicate ids are present.
     """
-    profile_name: str = config.get("profile") or "custom"
+    profile_name: str = config.get("profile") or DEFAULT_PROFILE_NAME
     explicit_stages: list[dict[str, Any]] = list(config.get("stages") or [])
     expanded_stages = expand_profile_defaults(profile_name, explicit_stages)
     return filter_disabled_stages(expanded_stages)

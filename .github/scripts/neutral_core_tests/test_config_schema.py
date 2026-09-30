@@ -216,6 +216,20 @@ def test_front_door_reports_an_unknown_dependency() -> None:
     raise AssertionError("expected V-S05 for an unknown dependency")
 
 
+def test_omitted_profile_means_the_standard_profile() -> None:
+    """A config without ``profile`` gets the schema default, ``standard``: review and security stages."""
+    from stagr.core.config_validation import load_schema
+    from stagr.core.pipeline import expand_active_stages, normalize_config
+
+    assert load_schema()["properties"]["profile"]["default"] == "standard"
+    minimal_config = {"version": 2}
+    assert [stage["id"] for stage in expand_active_stages(minimal_config)] == ["review", "security"]
+    assert [stage.id for stage in normalize_config({"version": 2, "defaults": {"provider": "openai"}})] == [
+        "review",
+        "security",
+    ]
+
+
 CONFIG_SCHEMA_TESTS = [
     test_schema_accepts_the_valid_baseline_config,
     test_schema_rejects_keys_deleted_from_stagr_namespaces,
@@ -229,6 +243,7 @@ CONFIG_SCHEMA_TESTS = [
     test_secret_name_fields_reject_anything_that_is_not_a_name,
     test_pasted_key_in_a_secrets_map_is_not_echoed,
     test_provider_without_default_backend_needs_an_explicit_backend,
+    test_omitted_profile_means_the_standard_profile,
     test_front_door_reports_a_missing_skill_file,
     test_front_door_reports_an_unknown_dependency,
 ]

@@ -71,6 +71,9 @@ def filter_disabled_stages(merged_stages: list[dict[str, Any]]) -> list[dict[str
 # Field values use the M1 config vocabulary (lower-case string literals).
 # V1 built-in profiles: minimal, standard, custom.
 # ---------------------------------------------------------------------------
+# The profile a config gets when it omits ``profile``; matches the schema default.
+DEFAULT_PROFILE_NAME = "standard"
+
 _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
     "minimal": [
         {
@@ -142,8 +145,8 @@ def expand_profile_defaults(
 
     Args:
         profile_name: The value of the ``profile`` key from the M1 config.
-            Operators who omit ``profile`` should pass ``"custom"`` (the
-            default in the neutral-core normalization pipeline).
+            When the config omits ``profile``, the pipeline passes
+            ``DEFAULT_PROFILE_NAME`` (``"standard"``, the schema default).
         explicit_stages: The stage list from the M1 config.  Each entry must
             be a dict containing at minimum an ``"id"`` key; duplicate ids
             are a validation error.
