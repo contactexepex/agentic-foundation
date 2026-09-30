@@ -240,16 +240,17 @@ cancelled and the operator runs it again. Nothing ever turns green because of it
 
 ## 6. Observed stages
 
-An observed stage has no work unit. One trusted job reads the **latest** result named
+An observed stage has no work unit. One trusted job reads the **newest** result named
 `observe.check` for the current head, whose authenticated author identity equals
-`observe.producer`, and publishes the signal:
+`observe.producer`, and publishes the signal. The newest result is the one that started last:
+when the producer has run more than once on the same head, the latest evidence wins, as for
+managed stages (section 3).
 
 | Result of the producer | Signal |
 |---|---|
 | success | `COMPLETED` + `PASS` |
 | completed, not success (failure, cancelled, skipped, neutral, timed out) | `COMPLETED` + `FAILED` |
 | not present, or still running | no result / `RUNNING` |
-| two different latest results with that name from the producer | state `FAILED` + conclusion `FAILED` (ambiguous; the next run re-reads) |
 
 Results with the same name from any other author identity are ignored, so nobody else can
 satisfy the stage by creating a check with that name. The job runs on pull request events, when
@@ -278,31 +279,40 @@ provides these capabilities; a renderer that cannot provide one refuses to rende
 | 1 | Ephemeral runners | GitHub-hosted runners (self-hosted only if ephemeral) |
 | 2 | Work unit without credentials; read-only, non-stored repository token | separate job with `permissions: contents: read`, checkout with `persist-credentials: false`, no App token step |
 | 3 | Job definition from the trusted base | `pull_request_target` |
-| 4 | Platform-attested outcome of the work unit, readable by publish | `needs.<work job>.result` |
+| 4 | Platform-attested outcome of the work unit, readable by publish | `needs.<work job>.result`. GitHub reports a timeout as `cancelled` (section 9, fact 2), so publish records the reason "timed out" when the work job's run time, read from the jobs API, reached its `timeout-minutes` |
 | 5 | Runs of one stage per change request never overlap; a push cancels older-head work | one concurrency group per stage and pull request; `cancel-in-progress` only on `synchronize` |
 | 6 | Result carrier authored by the publisher identity and bound to a head | Check Run written by the Stagr App |
 | 7 | Wake-up when another stage's result changes | `check_run` / `check_suite` completed |
 | 8 | Per-job timeout | `timeout-minutes` |
-| 9 | Observed stages only: list results by name and authenticated author identity for a head, and wake when such a result is created, re-requested or completed | Check Runs API, latest per name, matched on `.app.id`; `check_run` created, rerequested, completed |
+| 9 | Observed stages only: list results by name and authenticated author identity for a head, and wake when such a result is created, re-requested or completed | Check Runs API: every result for the head with that name, matched on `.app.id`; the one that started last wins (`filter=latest` is not enough, section 9, fact 4); `check_run` created, rerequested, completed |
 
 Other platforms (GitLab, Azure DevOps, Bitbucket, Jenkins) are added later as one column of
 this table each, checked against that vendor's documentation at that time. None is claimed now.
 
 ## 9. Verification before code
 
-The GitHub column above rests on behavior that must be confirmed on real GitHub before the
-managed workflow is built. One throwaway workflow verifies, and the result is recorded in this
-section (item S below):
+The GitHub column above rests on behavior confirmed on real GitHub before the managed workflow
+is built (item S below). Throwaway workflows ran on 2026-09-30 in the test repository
+`exepex/spring-angular-book-management`. Issue #249 lists every run.
 
-1. A manual run and a re-run wait in the same concurrency group as ordinary runs (no overlap).
-2. `needs.<work job>.result` reports failure, timeout, cancelled and skipped, and a publish job
-   with `always()` still runs after each.
-3. A `pull_request_target` job can check out the head SHA with a read-only, non-stored token and
-   no App token.
-4. The Check Runs API with `filter=latest` returns one result per name and author after a re-run.
-5. A `check_run` created, rerequested or completed event from a foreign producer starts a
-   workflow for the pull request.
-6. `cancel-in-progress` accepts an expression.
+| # | Fact | Result |
+|---|---|---|
+| 1 | A manual run and a re-run wait in the same concurrency group as ordinary runs (no overlap) | **Verified.** A manual run started after the pull-request run ended ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36748955501)), and a re-run started after a manual run ended ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36748953700), attempt 2) |
+| 2 | `needs.<work job>.result` reports failure, timeout, cancelled and skipped, and a publish job with `always()` still runs after each | **Corrected.** Publish runs after each. GitHub reports `success`, `failure`, `cancelled` and `skipped`, but a **timeout is reported as `cancelled`**, in `needs.<work job>.result` and in the check-run conclusion alike ([timeout](https://github.com/exepex/spring-angular-book-management/actions/runs/36748905937), [cancelled](https://github.com/exepex/spring-angular-book-management/actions/runs/36748910303)). Publish therefore tells them apart by run time (section 8, capability 4) |
+| 3 | A `pull_request_target` job can check out the head SHA with a read-only, non-stored token and no App token | **Verified.** The head matched, no credential stayed in `.git`, and a write with the token was refused with HTTP 403 ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36748953700)) |
+| 4 | The Check Runs API with `filter=latest` returns one result per name and author after a re-run | **Corrected.** It holds for a re-run inside one workflow run ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749923387)). Separate runs on the same head each stay "latest", because `filter=latest` works per check suite ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749380522)). Stagr therefore lists every result and takes the one that started last (section 6) |
+| 5 | A `check_run` created, rerequested or completed event from a foreign producer starts a workflow for the pull request | **Verified for created and completed**, from SonarCloud and CodeQL ([created](https://github.com/exepex/spring-angular-book-management/actions/runs/36749001079), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36749059157)). Rerequested was not exercised |
+| 6 | `cancel-in-progress` accepts an expression | **Verified.** A push cancelled the older head's work; a manual run and a re-run cancelled nothing ([cancelled run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749940333)) |
+
+Also observed:
+
+- A cancel, a timeout and a push-cancel each took about 75 to 90 seconds to stop the job. The
+  next run in the group waits during that time, so runs still never overlap.
+- Results created by GitHub Actions itself (App id 15368) never started a `check_run` workflow:
+  about 20 such results during the test, against 19 wake-ups that all came from SonarCloud and
+  CodeQL. An observed stage whose producer is a GitHub Actions workflow is therefore not woken by
+  capability 9 and is caught only by the scheduled run. The fix is an open owner decision (#265).
+- Results the Stagr App writes (capability 7) were not exercised; the test used no App token.
 
 If a fact turns out false, this document is corrected first, then the code.
 
