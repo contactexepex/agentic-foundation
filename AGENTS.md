@@ -12,6 +12,14 @@ behavior wherever the target design needs it. Do not add migration paths, compat
 deprecated aliases, or legacy behavior kept for its own sake, and do not raise review findings that
 ask for them. Backward-compatibility findings apply only once a release has consumers.
 
+## No dead code, config, files, or links
+
+Keep the repository free of anything dead. Delete or fix code, config keys, schema fields, workflows,
+tests, docs, links, and issue references that are unused, unreachable, unreferenced, or point at
+something that no longer exists. A change that leaves such things behind, including things it makes
+dead by removing their last use, is incomplete. A review finding that names dead code, config, files,
+or links is actionable, not a style finding.
+
 ## Threat model (project context)
 
 - Agentic automation here is driven only by **trusted authors** (`author_association` OWNER / MEMBER
