@@ -4,8 +4,9 @@
 over the neutral core (`stagr/core/`): no network, and **no secret values are ever read, printed, or
 logged** — only the secret *names* the contract references.
 
-**Today the only command is `stagr help`.** The commands that turn a `.agentic/config.yml` into a
-pipeline (`plan`, `apply`, `init`, `doctor`) are planned; see [Planned commands](#planned-commands).
+**Today the commands are `stagr help`, `stagr plan` and `stagr apply`.** `plan` and `apply` turn a
+`.agentic/config.yml` into workflow files; `init` and `doctor` are planned, see
+[Planned commands](#planned-commands).
 
 ## What you need
 
@@ -68,19 +69,55 @@ stagr help          # list every command with its purpose
 stagr help <command>  # detail for one command (also: `stagr <command> help`)
 ```
 
+### `stagr plan` and `stagr apply`
+
+```bash
+stagr plan  [--root DIR]    # validate, render, list the files; writes nothing
+stagr apply [--root DIR]    # validate, render, write those same files
+```
+
+`--root` is the project root (default: the current directory). Both commands read
+`<root>/.agentic/config.yml`, and `apply` writes under `<root>`.
+
+They run **one shared pipeline**: read the config, run the static checks (V-S01 to V-S09, and a V-S11
+warning), render every file, compare with what is on disk. Only the last step differs — `plan` prints
+the list, `apply` writes it and prints the same list. So a config that `plan` accepts is a config
+`apply` accepts (`apply` can still fail on the file system, for example a read-only directory), and
+an invalid config fails both with the same message and exit code 1. `apply` renders everything
+before it writes anything, so a validation error never leaves a half-written set.
+
+Each line shows what would happen to a file, its size, and the start of its SHA-256 hash:
+
+```
+plan: 4 file(s) under .; nothing was written
+  new       .github/workflows/stage-review.yml  72280 bytes  sha256:2a5ea4ba8697
+  ...
+```
+
+- **`new`** — the file does not exist. **`changed`** — it exists with different content, and `apply`
+  replaces it. **`unchanged`** — identical; `apply` leaves it alone, so running `apply` twice changes
+  nothing.
+- **Files written:** one `.github/workflows/stage-<stage id>.yml` per enabled stage, plus
+  `.github/workflows/routing.yml` and `.github/workflows/governance.yml`. Other workflows in that
+  directory are never touched, and nothing is deleted (removing files left behind by a renamed or
+  disabled stage is a separate, later step).
+- **Needs** `platform.publisher.app_id` in the config: the numeric ID of the Stagr GitHub App that
+  publishes the check runs (see [CONFIGURATION.md](CONFIGURATION.md)).
+- **Refuses** to write through a symlink or over a directory, so a file can never land outside the
+  root.
+- Warnings (for example V-S11, a disabled fast path that still lists routing keys) go to stderr and do
+  not fail the command.
+
 ## Planned commands
 
 These do not exist yet. They are described here so the design is visible; do not rely on them.
 
-- **`stagr plan`** — dry run: list the files the config would produce, and write nothing.
-- **`stagr apply`** — write those same files to `.github/workflows/`.
 - **`stagr init`** — create a starter `.agentic/config.yml`. It will ask for the GitHub App ID of the
   Stagr publisher App.
 - **`stagr doctor`** — validate the config and list the secret **names** the pipeline needs.
 
 Renderers only return the files they would produce and never write them; `plan` lists that result and
-`apply` writes it, so what `plan` shows is what `apply` writes. Cleaning up stale files will be
-designed as its own step.
+`apply` writes it, so what `plan` shows is what `apply` writes.
 
 ## Design rules
 

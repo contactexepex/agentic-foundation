@@ -52,15 +52,17 @@ The schema lists exactly the keys the toolkit reads; a key that is not listed do
   the same file.
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version` (always `2`), a
-`profile` (default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub).
-That is a few lines; add `stages` and other blocks only to take finer control. See
+`profile` (default `standard`, which expands to a stage graph), a `platform` (defaults to GitHub), and
+`platform.publisher.app_id`, the ID of your Stagr GitHub App, which `stagr plan` and `stagr apply`
+require (see [Publisher](#publisher-stagr-github-app)). That is a few lines; add `stages` and other
+blocks only to take finer control. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```yaml
 # Minimal config — the profile expands to a stage graph.
 version: 2
 profile: standard
-platform: { type: github, default_branch: main }
+platform: { type: github, default_branch: main, publisher: { app_id: 123456 } }
 ```
 
 ### `profile`
@@ -76,7 +78,7 @@ platform: { type: github, default_branch: main }
 | `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). Default `true`. |
 | `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. Default `owner`, `member`, `collaborator`. |
 | `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
-| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. Required whenever the generated pipeline needs the publisher. |
+| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. **Required by `stagr plan` and `stagr apply`**: the generated workflows publish their check runs as this App. |
 | `publisher.private_key_secret` | Optional, used with `publisher`. The **name** of the repository secret that holds the App's private key. Default `STAGR_APP_PRIVATE_KEY`. Never the key itself. |
 | `labels.human_merge` | A change-request with this label is **never** merged automatically (a human keeps merge authority). Default `human-merge`. |
 
@@ -237,10 +239,16 @@ If you ever see a secret value in a log or comment, treat it as compromised and 
 
 1. Add `.agentic/config.yml` (section 3), starting from a `profile` and a `platform`, and adding
    `stages` only for finer control. Put each `skill` a stage names at `.agentic/skills/<id>/SKILL.md`;
-   the starter skills are under `stagr/templates/skills/`.
+   the starter skills, `code-review` and `security-review`, are the folders under
+   [`stagr/templates/skills/`](https://github.com/contactexepex/agentic-foundation/tree/main/stagr/templates/skills)
+   in this repository (they also ship inside the installed package, next to the `stagr` module). Copy
+   them into `.agentic/skills/`; `stagr plan` fails with V-S06 for any stage whose skill file is missing.
 2. Create the secrets your providers need (section 2) in your CI/SCM secret store.
-3. Generating the workflows into `.github/workflows/` is done by `stagr plan` and `stagr apply`. They
-   are planned and do not exist yet; see [CLI.md](CLI.md).
+3. Create the Stagr GitHub App and its private-key secret, and put the App's ID in
+   `platform.publisher.app_id` ([Publisher](#publisher-stagr-github-app)).
+4. Run `stagr plan` to validate the config and list the workflow files it produces (it writes
+   nothing), then `stagr apply` to write them into `.github/workflows/`. Commit the result. See
+   [CLI.md](CLI.md).
 
 ---
 

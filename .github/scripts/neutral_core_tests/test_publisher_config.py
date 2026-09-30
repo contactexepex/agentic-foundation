@@ -133,7 +133,8 @@ def test_derive_publisher_config_normalizes_app_id_to_string() -> None:
 
     from_integer = derive_publisher_config(_config_with_publisher({"app_id": 99001}))
     from_string = derive_publisher_config(_config_with_publisher({"app_id": "99001"}))
-    assert from_integer.app_id == "99001" and isinstance(from_integer.app_id, str)
+    assert from_integer.app_id == "99001"
+    assert isinstance(from_integer.app_id, str)
     assert from_integer == from_string
 
 
@@ -262,12 +263,14 @@ def test_publisher_front_door_reports_schema_violation() -> None:
 
 
 def test_publisher_shipped_config_still_validates() -> None:
-    """The dogfood config validates through the front door and carries no publisher block."""
+    """The dogfood config validates through the front door and names the Stagr App `plan`/`apply` need."""
     from stagr.core.config_validation import validate_config
 
     dogfood_path = Path(REPO_ROOT) / ".agentic" / "config.yml"
     config = yaml.safe_load(dogfood_path.read_text(encoding="utf-8"))
-    assert "publisher" not in config["platform"], "the dogfood config must not invent an App ID"
+    from stagr.core.publisher import derive_publisher_config
+
+    assert derive_publisher_config(config).app_id, "stagr plan and apply need platform.publisher.app_id"
     assert not _schema_errors(config), "the dogfood config must validate against the schema"
     validate_config(config, project_root=Path(REPO_ROOT))
 

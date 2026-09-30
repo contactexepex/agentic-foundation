@@ -348,8 +348,9 @@ These edits ship in the same pull request as this document, so no document contr
 
 Each item ships its own user documentation (`CONFIGURATION.md`, `ARCHITECTURE.md`, `CLI.md`).
 Order: S first, then A; B, D, E and F after A; C after A, B and S; G after A, C and E; H last.
-Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline, and `init` and
-`doctor` on the neutral pipeline, are delivered separately; G needs the latter.
+Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline are delivered
+(`stagr/cli/render_pipeline.py`); `init` and `doctor` on the neutral pipeline are delivered
+separately, and G needs the latter.
 
 **S. Verify the GitHub behavior of section 9.**
 - Done when: each of the six facts is marked verified or corrected in section 9, with the

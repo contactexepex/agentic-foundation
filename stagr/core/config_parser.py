@@ -19,7 +19,7 @@ from typing import Any
 
 import yaml
 
-from .errors import ConfigVersionError
+from .errors import ConfigSyntaxError, ConfigVersionError
 
 # V-S02: the single supported config version.
 SUPPORTED_VERSION: int = 2
@@ -45,13 +45,17 @@ def parse_config(config_path: Path) -> dict[str, Any]:
 
     Raises:
         OSError: If ``config_path`` cannot be opened or read.
-        yaml.YAMLError: If the file content is not valid YAML.
+        ConfigSyntaxError: If the file content is not valid YAML. The message names the line and
+            column only, never the text the YAML parser quoted.
         ConfigVersionError: If ``config["version"]`` is not the integer ``2``.
             Also raised when the top-level document is not a mapping (because
             a missing or non-integer ``version`` key is then equally invalid).
     """
     with config_path.open(encoding="utf-8") as config_file:
-        raw_config = yaml.safe_load(config_file)
+        try:
+            raw_config = yaml.safe_load(config_file)
+        except yaml.YAMLError as yaml_error:
+            raise ConfigSyntaxError(_describe_yaml_position(yaml_error)) from None
 
     if not isinstance(raw_config, dict):
         # A non-mapping document has no version key — treat it as version=None
@@ -63,3 +67,14 @@ def parse_config(config_path: Path) -> dict[str, Any]:
         raise ConfigVersionError(version)
 
     return raw_config
+
+
+def _describe_yaml_position(yaml_error: yaml.YAMLError) -> str:
+    """Return "config is not valid YAML at line N, column M" without any quoted config text."""
+    error_mark = getattr(yaml_error, "problem_mark", None) or getattr(yaml_error, "context_mark", None)
+    if error_mark is None:
+        return "config is not valid YAML"
+    return (
+        f"config is not valid YAML at line {error_mark.line + 1}, column {error_mark.column + 1}; "
+        "fix the syntax there (the parser's message is withheld because it can quote config text)"
+    )

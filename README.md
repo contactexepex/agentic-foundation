@@ -13,7 +13,7 @@ merge request is opened for human review.
 ## What it is (and is not)
 
 - **Is:** a platform-neutral **config contract** + per-platform renderers + pluggable agent
-  backends + a CLI (only `stagr help` today; `plan`, `apply`, `init`, and `doctor` are planned) + a
+  backends + a CLI (`help`, `plan` and `apply` today; `init` and `doctor` are planned) + a
   Claude Code skill front door (planned). Provider-, model-, platform-, and language-agnostic.
 - **Is not:** an agent (it *composes* mature OSS agents), a deployment system, a runtime, or anything
   tied to one language, one AI vendor, or one Git host.
@@ -60,8 +60,9 @@ provider/backend/language-agnostic) are the content; a stage points at one with 
 [skills](docs/ARCHITECTURE.md#3a-skills--content-vs-wiring).
 
 **Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
-(`minimal`/`standard`/`custom`; `minimal` and `standard` expand to a default stage graph), and a
-`platform`. An `anthropic` stage (Claude Code) also needs a model binding
+(`minimal`/`standard`/`custom`; `minimal` and `standard` expand to a default stage graph), a
+`platform`, and `platform.publisher.app_id` (the ID of your Stagr GitHub App, which `stagr plan` and
+`stagr apply` need). An `anthropic` stage (Claude Code) also needs a model binding
 (`defaults.models.anthropic`, or a per-stage model); an `openai` stage (Codex) supplies its own.
 Model resolution is fail-loud — no hidden default. Still a few lines; define `stages` only for finer
 control.
@@ -84,7 +85,7 @@ can bend the toolkit to how they deploy and host:
 
 ## Quickstart
 
-Only the install and `stagr help` work today; the commands that generate and check a pipeline are
+The install, `stagr help`, `stagr plan` and `stagr apply` work today; `init` and `doctor` are still
 being rebuilt (see [docs/CLI.md](docs/CLI.md)).
 
 1. **Install the CLI** (needs only Python 3.10+; see [docs/CLI.md](docs/CLI.md) for options). `stagr`
@@ -97,13 +98,17 @@ being rebuilt (see [docs/CLI.md](docs/CLI.md)).
    For a reproducible, auditable install, pin the URL to a commit SHA (or a release tag) instead of
    `main` — see [docs/CLI.md](docs/CLI.md).
 2. Run `stagr help` to see the available commands.
-3. Write `.agentic/config.yml` by hand in your target repo. The full field reference, provider→secret
-   mapping, and troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
+3. In your target repo, write `.agentic/config.yml` by hand, and copy the two starter skill folders,
+   `code-review` and `security-review`, from
+   [`stagr/templates/skills/`](https://github.com/contactexepex/agentic-foundation/tree/main/stagr/templates/skills)
+   into `.agentic/skills/` (they are also inside the installed package). Every stage's skill must exist
+   there, or `plan` fails with V-S06. The full field reference, provider→secret mapping, and
+   troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
+4. Run `stagr plan` in the repo root to validate the config and list the files it produces (nothing is
+   written), then `stagr apply` to write those same files under `.github/workflows/`.
 
-**Planned commands** (not available yet): `stagr plan` lists the files a config would produce and
-`stagr apply` writes those same files (issues #201, #202); `stagr init` creates a starting config and
-will ask for the GitHub App ID; `stagr doctor` checks the config and lists the secret names to create
-(issue #203).
+**Planned commands** (not available yet): `stagr init` creates a starting config and will ask for the
+GitHub App ID; `stagr doctor` checks the config and lists the secret names to create (issue #203).
 
 > **What exists today:** the neutral core validates a config, expands the profile, resolves
 > providers, backends, and models, and builds the stage graph. The GitHub renderer turns that graph
@@ -116,7 +121,7 @@ will ask for the GitHub App ID; `stagr doctor` checks the config and lists the s
 
 ```
 stagr/                                 the installable package
-stagr/cli/                             the `stagr` command (only `help` today)
+stagr/cli/                             the `stagr` command (`help`, `plan`, `apply` today)
 stagr/core/                            the neutral core: config validation, normalization, stage graph,
                                        backend renderers (renderers/)
 stagr/platforms/github/                the GitHub renderer
@@ -153,8 +158,8 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 
 > Status: **neutral core + GitHub renderer, dogfooded.** The platform-neutral stage-graph schema,
 > profiles, provider/backend/model resolution, and the GitHub renderer (per-stage, routing, and
-> governance workflows) are in place, alongside the toolkit's own live Claude+Codex automation. Next:
-> the `plan`/`apply`/`init`/`doctor` commands, more stage types, more platform renderers, and the
+> governance workflows) and the `stagr plan` / `stagr apply` commands are in place, alongside the
+> toolkit's own live Claude+Codex automation. Next: the `init`/`doctor` commands, more stage types, more platform renderers, and the
 > front-door skill (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).
 
 ## License

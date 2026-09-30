@@ -1,6 +1,7 @@
 # agentic-foundation dogfoods its own contract. This file declares the review pipeline this
 # repository wants; the hand-written .github/workflows/ implement it today, and will be replaced
 # by workflows generated from this file (`stagr apply`) once the generated pipeline takes over.
+# `stagr plan` lists what `stagr apply` would generate from it; nothing generated is committed yet.
 # Only keys in stagr/config.schema.json do anything; validate with
 # `python .github/scripts/validate_config.py`.
 version: 2
@@ -14,6 +15,9 @@ platform:
     human_merge: human-merge          # foundation gate hard-stop
   # Publication/remediation uses a real-user PAT; reads use the workflow GITHUB_TOKEN.
   auth: { token_secret: REMEDIATION_TOKEN }
+  # The Stagr GitHub App that publishes the check runs the generated workflows emit. The ID is not
+  # a secret; the private key lives in the repository secret named below (default shown).
+  publisher: { app_id: 5125793, private_key_secret: STAGR_APP_PRIVATE_KEY }
 
 providers:
   # Secret alias map: each key is a SecretRef.alias used in the BackendRenderer's ExecutionPlan;

@@ -3,6 +3,10 @@
 ``ConfigVersionError`` is raised by ``parse_config`` (V-S02) when the version
 field in a config file is not the supported integer 2.
 
+``ConfigSyntaxError`` is raised by ``parse_config`` when the file is not valid YAML. It carries the
+line and column, never the parser's message, because that message can quote config text and a
+config may hold a pasted secret.
+
 ``ConfigSchemaError`` is raised by ``validate_config`` when the config does not conform to
 ``stagr/config.schema.json``.
 
@@ -32,6 +36,15 @@ class ConfigVersionError(ValueError):
             f"unsupported config version {found_version!r}; "
             "the only supported version is 2 (integer)"
         )
+
+
+class ConfigSyntaxError(ValueError):
+    """Raised when the config file is not valid YAML.
+
+    The message gives the line and column of the problem and nothing the parser quoted: a PyYAML
+    message can echo config text (for example ``could not determine a constructor for the tag
+    '!<text>'``), and text in a secret-name field must never reach CLI or CI logs.
+    """
 
 
 class ConfigSchemaError(ValueError):
