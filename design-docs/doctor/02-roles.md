@@ -48,8 +48,9 @@ Steps 5 and 7 are the only ones that need privileged access, and neither is done
 
 ## Where the optional platform token lives (D7)
 
-The optional live probes (V-E03, V-E04) need an admin-level token, `STAGR_PLATFORM_TOKEN`. Doctor only
-reads it from the environment, so the organization chooses where it comes from:
+The optional live probes (V-E03, V-E04) need an elevated token, `STAGR_PLATFORM_TOKEN`. Doctor only
+reads it from the environment, so the organization chooses where it comes from. Full scenarios, from a
+small team to a regulated enterprise, are in [06](06-deployment-scenarios.md). In short:
 
 | Pattern | Who holds the token | Who runs the probes | Fits |
 |---|---|---|---|

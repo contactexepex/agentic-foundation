@@ -15,11 +15,12 @@ Part of the [doctor design set](README.md). Supersedes the "Environment validati
 | `PASS` | Checked and correct | No |
 | `WARN` | Checked; risky but not broken | No |
 | `ERROR` | Checked and wrong, or could not be checked in `--ci` | **Yes** |
-| `SKIP` | Not checked. Local mode: cannot verify here. `--ci`: blocked by an earlier ERROR, or an optional probe with no token (D7) | No |
+| `SKIP` | Not checked. Local mode: cannot verify here. `--ci`: blocked by an earlier ERROR, or an optional probe has no token or no access (D7, 06) | No |
 
 Rule: **a live check that cannot run in `--ci` is an ERROR, never a silent SKIP.** `--ci` is the
 authoritative mode, so a missing input there is a setup mistake. The only exceptions are the two
-optional probes (V-E03, V-E04 live), which `SKIP` without `STAGR_PLATFORM_TOKEN`.
+optional probes (V-E03, V-E04 live), which `SKIP` without `STAGR_PLATFORM_TOKEN`, or when GitHub answers 401, 403 or 404 to it. Only a
+positive finding from a probe is an ERROR or WARN ([06](06-deployment-scenarios.md)).
 
 ## Two sources of truth
 

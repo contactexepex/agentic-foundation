@@ -18,8 +18,8 @@ appears.
 |---|---|---|
 | `STAGR_HAS_<SECRET_NAME>` = `true`/`false` | workflow: `${{ secrets.NAME != '' }}` | V-E01, V-E02 key present. Flag only, never the value |
 | `STAGR_DOCTOR_APP_KEY` | workflow: `${{ secrets.<private_key_secret> }}` | V-E02 JWT (D3) |
-| `STAGR_PLATFORM_TOKEN` (optional) | workflow: `${{ secrets.STAGR_PLATFORM_TOKEN }}` | V-E03 and V-E04 live probes. Absent: they `SKIP`. Where it comes from: [02](02-roles.md) |
-| `GITHUB_REPOSITORY`, `GITHUB_API_URL` | provided by Actions | which repo to query |
+| `STAGR_PLATFORM_TOKEN` (optional) | workflow: `${{ secrets.STAGR_PLATFORM_TOKEN }}` | V-E03 and V-E04 live probes. Absent or lacking access: they `SKIP`. Where it comes from: [06](06-deployment-scenarios.md) |
+| `GITHUB_REPOSITORY`, `GITHUB_API_URL` | provided by Actions; a central platform workflow sets `GITHUB_REPOSITORY` per target repo | which repo and GitHub instance to query |
 
 A missing required input in `--ci` is an ERROR that names it. `STAGR_PLATFORM_TOKEN` is the only optional input.
 
