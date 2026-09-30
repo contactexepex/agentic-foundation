@@ -135,6 +135,9 @@ For stages with a `commands` or `observed` executor (`09-check-stages.md`, secti
 
 ## Environment validation (`stagr doctor`)
 
+> **Proposed redesign:** [doctor/](doctor/README.md) redefines this section (two modes, CI-only live
+> checks, V-E02 as the publisher App). It is under review; until accepted, the text below stands.
+
 Warnings and errors here do not prevent `stagr apply` from running, but they indicate
 conditions that will cause run-time failures. All `doctor` checks should pass before
 relying on the generated pipeline.

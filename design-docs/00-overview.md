@@ -82,3 +82,4 @@ never contradict the neutral core.
 | `07-validation.md` | Static and environment validation checklists |
 | `08-github-codex-mapping.md` | How the neutral model maps to the current GitHub+Codex implementation |
 | `09-check-stages.md` | Build, test and other CI-result stages: executors, results, trust, ordering, work items |
+| `doctor/` | Proposed design for `stagr doctor` (environment checks, roles, CI mode) |
