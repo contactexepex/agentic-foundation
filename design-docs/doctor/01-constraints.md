@@ -10,7 +10,7 @@ Part of the [doctor design set](README.md). Every choice in the other docs follo
 | C2 | The GitHub App private key is held by the platform team and stored as a repo secret. It is not on developer machines. | Nothing that needs the key can run locally. |
 | C3 | A local run may have no network and no credentials. | Local mode is fully offline and must still be useful. |
 | C4 | In CI, `GITHUB_TOKEN` is limited: no secrets listing, no admin settings. A workflow *can* see secrets through the `secrets` context and can use the App credentials it is given. | Live checks use only those two things. |
-| C5 | Secret values are never printed, logged, or written (see `AGENTS.md`). | Presence flags, not values. The one exception is D3 (decided): `--ci` reads the App key in memory to sign a JWT. |
+| C5 | Secret values are never printed, logged, or written (see `AGENTS.md`). | Presence flags, not values. The one exception is D3 (decided): in the pipeline context doctor reads the App key in memory to sign a JWT. |
 | C6 | Stagr is a control plane: it declares, initializes and governs; it never executes the pipeline (`docs/CHARTER.md`). | Doctor is read-only. It creates no Apps, secrets or settings. Generated workflows never call Stagr. |
 | C7 | Stagr is pre-release with zero consumers. | Change docs and rules directly. No migration paths. |
 | C8 | The neutral core is platform-independent; GitHub is the only renderer today. | Core defines check results and requirements. GitHub-specific probes live in `stagr/platforms/github/`. |
@@ -29,7 +29,7 @@ These shape the design. They come from our understanding of GitHub's behavior an
 | F5 | The generated workflows mint the App token without `permission-*` inputs, so the token carries every permission the installation has | D5: the required set is not in the artifacts today |
 | F6 | With an elevated token, `GET /repos/{r}/actions/permissions/workflow` and the repo or org Actions permissions endpoints return the default workflow permissions and allowed actions. A classic token needs `repo`; the fine-grained and App permission needed is **not yet confirmed** | V-E03 optional probe |
 | F8 | With an elevated token, the repo secrets list and the org secrets available to a repo are readable and return names only, never values (confirmed by GitHub docs). The minimum fine-grained or App permission is **not yet confirmed** | V-E01, V-E02b in a central run |
-| F9 | The default `GITHUB_*` variables in a workflow cannot be overwritten, so a central workflow cannot point `GITHUB_REPOSITORY` at another repo | Why `--repo` exists (D10) |
+| F9 | The default `GITHUB_*` variables in a workflow cannot be overwritten, so a central workflow cannot point `GITHUB_REPOSITORY` at another repo | Why `--repo` exists (D10); a central run cannot rely on `GITHUB_REPOSITORY` |
 | F7 | With write, maintain or admin access, `GET /repos/{r}/collaborators` returns each collaborator's highest role from any source (repo, team, org, enterprise) (GitHub docs). Minimum fine-grained or App permission not yet confirmed | V-E04 optional probe |
 
 ## Out of scope

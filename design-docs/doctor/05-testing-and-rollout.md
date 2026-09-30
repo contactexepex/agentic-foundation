@@ -14,15 +14,16 @@ acceptance criteria, each with a test.
 | A5 | V-E02 names the App ID when not installed | Unit (fake GitHub client): `404`; assert App ID in output |
 | A6 | V-E02 names the missing private-key secret, and c/d become `SKIP` | Unit: key flag `false`; assert name, and c/d blocked |
 | A7 | V-E02 lists each missing or too-weak permission | Unit: installed permissions lack `checks: write`; assert it is listed |
-| A8 | Missing required `--ci` input is an ERROR, never a silent SKIP | Unit: unset flag in `--ci` |
+| A8 | In the pipeline and central contexts a missing required input is an ERROR, never a silent SKIP | Unit: unset flag (pipeline), unset token (central) |
 | A9 | V-E04 warns on `owner`-only roles | Unit |
 | A10 | Exit code is 0 with no ERROR, else 1; secret values never appear in output | Unit: sentinel secret value absent from stdout/stderr |
-| A14 | Source selection: flags present uses flags; no flags plus token uses the API; neither is an ERROR; some-but-not-all flags names the missing one | Unit (fake env and fake client) |
-| A15 | Central run: missing secret named from API listing, including an org secret not shared with the repo; listing 401/403/404 is an ERROR | Unit (fake client) |
-| A16 | Central run prints `not verified: V-E02c, V-E02d` and exits 0 when everything else passes | Unit |
 | A11 | Declared artifact permissions match the docs table | Test compares the renderer's union to `docs/CONFIGURATION.md` |
 | A12 | Optional probes: with `STAGR_PLATFORM_TOKEN`, V-E03 and V-E04 report ERROR/WARN from a fake client; without it, both `SKIP` and exit code is unaffected | Unit (fake client, with and without token) |
 | A13 | A probe that gets 401, 403 or 404 reports `SKIP` with the status code, never ERROR; only a positive finding is ERROR/WARN | Unit (fake client returning each status) |
+| A14 | Context detection: no `GITHUB_ACTIONS` and no `--repo` is local; `GITHUB_ACTIONS=true` without `--repo` is pipeline; `--repo` is central. A token in the local context is ignored with a message | Unit (fake env) |
+| A15 | Central run: missing secret named from API listing, including an org secret not shared with the repo; listing 401/403/404 is an ERROR | Unit (fake client) |
+| A16 | Central run prints `not verified: V-E02c, V-E02d` and exits 0 when everything else passes | Unit |
+| A17 | Credential safety (07): the API client rejects non-GET requests; the token is sent only to the configured HTTPS host; a sentinel token and sentinel App key never appear in output; the App key is ignored with a warning outside the pipeline context; ambient credentials (`GITHUB_TOKEN`, `gh` login) are never read | Unit (fake client, fake env) |
 
 ## Test approach
 
@@ -32,7 +33,7 @@ acceptance criteria, each with a test.
   passes 350 lines; run by the existing `validate.yml` commands.
 - Existing gates stay: `python .github/scripts/validate_config.py`, `test_neutral_core_models.py`,
   `test_cli.py`, `py_compile` on changed files.
-- **One real run.** After merge, run `stagr doctor --ci` in this repository (App 5125793, secret
+- **One real run.** After merge, run `stagr doctor` in a workflow in this repository (App 5125793, secret
   `STAGR_APP_PRIVATE_KEY`) to confirm F1 to F4. Expect PASS. Then run once on a scratch branch with a wrong
   App ID to confirm the ERROR text.
 
@@ -58,4 +59,4 @@ signal and the owner decides again. If F1 fails, V-E01 needs a different presenc
 2. **One implementation PR** for #203: core check types and requirements, GitHub probes, `doctor`
    command, tests, docs. One PR because the checklist, the checks, and the declared permissions must
    agree; splitting them invites drift (the same reason `plan` and `apply` shipped together).
-3. **Post-merge:** the one real `--ci` run, then close #203.
+3. **Post-merge:** the one real pipeline run, then close #203.

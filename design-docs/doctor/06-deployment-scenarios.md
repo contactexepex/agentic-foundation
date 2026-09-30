@@ -5,17 +5,17 @@ regulated organization. These are common patterns, not descriptions of any speci
 
 ## One mechanism, many setups
 
-Doctor never decides where credentials live. It reads environment variables (04). Each organization
+Doctor never decides where credentials live. It reads environment variables (04) and the rules in [07](07-credential-safety.md) apply. Each organization
 chooses who supplies them and where doctor runs.
 
 ## Which checks can run where
 
-| Check | Needs | Can run in the repo's own pipeline | Can run in a central platform workflow |
+| Check | Needs | Pipeline context (repo's own pipeline) | Central context (`--repo`, workflow or laptop) |
 |---|---|:-:|:-:|
 | V-E01 secrets present | Flags from the repo's `secrets` context, **or** `STAGR_PLATFORM_TOKEN` to list names (D10) | Yes (flags) | Yes (API listing) |
 | V-E02a-b App ID, key secret present | Same as V-E01 | Yes | Yes |
-| V-E02c-d App installed, permissions | The App key | Yes | **No** (the key is not held centrally) |
-| V-E03 workflow permissions (optional) | `STAGR_PLATFORM_TOKEN` | Yes, if the token is present | Yes (`--repo` per target repo) |
+| V-E02c-d App installed, permissions | The App key | Yes | **No** (the key is never held centrally or on a laptop) |
+| V-E03 workflow permissions (optional) | `STAGR_PLATFORM_TOKEN` | Yes, if the token is present | Yes (`--repo OWNER/NAME`) |
 | V-E04 trusted roles (optional) | `STAGR_PLATFORM_TOKEN` | Yes, if the token is present | Yes |
 
 So in a separated setup the **platform team** can check secrets, org settings and roles centrally, and only
@@ -48,10 +48,10 @@ The exact minimum permissions for V-E03 and V-E04 must be confirmed (F6, F7 in
 ## Failure rules for the optional probes
 
 - No token: `SKIP (no STAGR_PLATFORM_TOKEN)`.
-- Optional probes (V-E03, V-E04): token present but GitHub answers 401, 403 or 404 (too little access, or the endpoint is missing on an
+- Optional probes (V-E03, V-E04) in the pipeline context: token present but GitHub answers 401, 403 or 404 (too little access, or the endpoint is missing on an
   older Enterprise Server): `SKIP (token lacks access)` with the status code. Not an ERROR.
-- In a central run, failing to list secrets (401, 403, 404) is an ERROR, because the listing is the only
-  source for V-E01.
+- In the central context the token is the whole point, so any 401, 403 or 404 is an ERROR ("token lacks
+  access"), including the secrets listing.
 - Only a positive finding is reported as ERROR or WARN (for example "no collaborator holds a trusted
   role").
 - Settings can be enforced at repo, org or enterprise level. The probe reports the effective value it

@@ -12,13 +12,14 @@ key** on their machines. So doctor is designed around *who can see what*, not ar
 
 ## The design in five sentences
 
-1. Doctor has two modes. **Local** (default) is offline and needs no credentials. **`--ci`** runs inside
-   the team's own pipeline and is the authoritative check.
+1. Doctor is one command that detects its context. **Local** is offline and needs no credentials.
+   **Pipeline** (inside the team's own GitHub Actions run) is the authoritative check. **Central** (the
+   platform team passes `--repo`) checks another repo with an elevated token.
 2. Locally, doctor runs static validation, then prints a **provisioning checklist** that the config
    author hands to the platform team. Every live check shows `SKIP`.
-3. In CI, doctor uses only what a workflow already holds: secret *presence flags* from the `secrets`
-   context, and the App's own credentials. It calls an admin-only API only when an optional platform
-   token is supplied (D7).
+3. In the pipeline, doctor uses only what a workflow already holds: secret *presence flags* from the
+   `secrets` context, and the App's own credentials. Elevated API calls happen only with an explicit
+   `STAGR_PLATFORM_TOKEN` (D7, D10), read-only, and never with the App key outside the pipeline (D11).
 4. Doctor is read-only and creates nothing. Generated workflows never depend on Stagr.
 5. Each failure names the **role** that must fix it and the exact remediation.
 
@@ -32,23 +33,25 @@ key** on their machines. So doctor is designed around *who can see what*, not ar
 | [04-cli-and-output.md](04-cli-and-output.md) | Commands, flags, inputs, output, exit codes |
 | [05-testing-and-rollout.md](05-testing-and-rollout.md) | Acceptance criteria, tests, docs to update, PR plan |
 | [06-deployment-scenarios.md](06-deployment-scenarios.md) | Small team to regulated enterprise: who holds the token, where doctor runs |
+| [07-credential-safety.md](07-credential-safety.md) | Rules for running doctor with credentials, including from a laptop |
 
-Suggested review order: this file, 01, 03, 02, 06, 04, 05. Each doc stands alone; terms are below.
+Suggested review order: this file, 01, 03, 07, 02, 06, 04, 05. Each doc stands alone; terms are below.
 
 ## Decisions
 
 | ID | Decision | Status |
 |---|---|---|
-| D1 | Two modes: local (offline) and `--ci` (live, authoritative). `--ci` serves both the repo's own pipeline and the platform team's central run (D10) | Proposed |
+| D1 | One command, no mode flag. Doctor detects its context: **local** (offline), **pipeline** (`GITHUB_ACTIONS=true`), **central** (`--repo` given). The only flags are `--root` and `--repo` | **Decided by owner** (keep the CLI surface small) |
 | D2 | No admin-only API call is needed by any default check. Admin-level calls happen only in the optional probes (D7) | Proposed |
-| D3 | `--ci` reads the App private key **in memory only** to sign a short-lived JWT, and reads installation permissions. Amends the rule "no secret value is read" for this one command, on trusted triggers | **Decided by owner: option A** |
+| D3 | In the pipeline context only, doctor reads the App private key **in memory** to sign a short-lived JWT and read installation permissions. Amends the rule "no secret value is read" for that context, on trusted triggers | **Decided by owner: option A** |
 | D4 | Secret presence comes from workflow-provided flags (`${{ secrets.NAME != '' }}`), not from the secrets API | Proposed |
 | D5 | The platform renderer declares the App permissions each artifact needs; doctor unions them (today they are only a static doc table) | Proposed |
-| D6 | New status `SKIP`. In local mode it means "cannot verify here". In `--ci` it is allowed only when an earlier ERROR blocks the check, or when an optional probe has no token (D7) | **Decided by owner** |
-| D7 | Live V-E03 and V-E04 probes are **optional**: they run in `--ci` only when `STAGR_PLATFORM_TOKEN` is set, otherwise `SKIP`. Offline checks and checklist entries always run. Where the token comes from is deployment choice (06). An access failure (401/403/404) is a `SKIP`, never an ERROR | **Decided by owner** |
-| D9 | V-E01 and V-E02 run in the repo's own pipeline (they need its secrets); V-E03 and V-E04 can also run centrally by the platform team. Recommended platform token: a read-only GitHub App, then a fine-grained token, then a classic token | **Decided by owner** |
-| D10 | In `--ci`, V-E01 and V-E02b get their answer from presence flags when any `STAGR_HAS_*` flag is set (repo pipeline), otherwise from the secrets API using `STAGR_PLATFORM_TOKEN` (central run). `--repo OWNER/NAME` selects the target. A central run cannot verify V-E02c/d and says so | **Decided by owner** (extend `--ci`, not a new mode) |
+| D6 | New status `SKIP`. Allowed in the local context, when an earlier ERROR blocks a check, for optional probes in the pipeline context, and for V-E02c-d in the central context (`not verified`) | **Decided by owner** |
+| D7 | Live V-E03 and V-E04 probes are **optional** in the pipeline context (run only when `STAGR_PLATFORM_TOKEN` is set; access failure is `SKIP`) and expected in the central context. Where the token comes from is deployment choice (06) | **Decided by owner** |
 | D8 | The CI snippet is generated by doctor only; docs explain the flags and point to `stagr doctor` | **Decided by owner** |
+| D9 | Recommended platform token: a read-only GitHub App, then a fine-grained token, then a classic token. V-E02c-d can only run in the repo's own pipeline (they need the App key) | **Decided by owner** |
+| D10 | `--repo OWNER/NAME` is the only switch into the central context. There, V-E01 and V-E02b list secret names through the API with `STAGR_PLATFORM_TOKEN`; a central run ends with `not verified: V-E02c, V-E02d` | **Decided by owner** |
+| D11 | Credential safety (07): explicit opt-in token only, read-only GET client, token sent only to the configured GitHub host, never printed, App key never read outside the pipeline context, short-lived tokens preferred | **Decided by owner** |
 
 ## Open questions
 

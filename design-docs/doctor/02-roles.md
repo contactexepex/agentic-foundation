@@ -22,7 +22,7 @@ work easy: do the deriving, say exactly what is needed, and name who does it.
 | Write `.agentic/config.yml` and skills | **Do** | | Review |
 | Run `stagr plan`, `apply`, `doctor` locally | **Do** | | |
 | Hand the provisioning checklist to the platform team | **Do** | Receive | |
-| Add the `stagr doctor --ci` step to the pipeline | **Do** | Review | |
+| Add the `stagr doctor` pipeline step (the printed snippet) | **Do** | Review | |
 | Fix a doctor ERROR | As the message says | As the message says | |
 | Merge the PR | | | **Do** |
 
@@ -39,8 +39,8 @@ to install App 123456 on this repository").
    permissions this config needs, so nobody guesses.
 5. **Platform team** provisions: installs the App, stores the secrets, grants the permissions.
 6. The author opens a PR with the config, the generated workflows, and a pipeline step running
-   `stagr doctor --ci` on a trusted trigger (see 04).
-7. `--ci` runs with real credentials. Green means the environment matches the config. An ERROR names
+   `stagr doctor` on a trusted trigger (the snippet doctor printed; see 04).
+7. Doctor runs in the pipeline context with real credentials. Green means the environment matches the config. An ERROR names
    what is missing and who fixes it.
 8. **Maintainer** merges.
 
