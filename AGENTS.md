@@ -123,9 +123,8 @@ clarification, treat the answer as evidence and re-run the affected validation.
   converged (completed + clean on the head) a single security review runs as the final pre-merge step
   (`request-final-security-review.yml`). The merge gate requires a head-bound Codex *code* review AND a
   head-bound *security* review to have completed, plus zero unresolved review threads; a finding — code
-  or security — blocks via its thread. Self-review never substitutes for a required review. This
-  sequencing is how this repository's own hand-written review process runs; it is not part of the
-  Stagr contract, where the `review` and `security` stages of the `standard` profile are independent.
+  or security — blocks via its thread. Self-review never substitutes for a required review. The
+  `standard` profile declares the same order: its `security` stage depends on `review`.
 - Keep changes scoped to the requested task; read existing code before replacing it.
 - Do not overwrite unrelated human changes; do not force-push over concurrent work.
 - Do not merge a PR while mandatory CI, tests, or security checks are red or pending.

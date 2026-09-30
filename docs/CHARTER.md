@@ -106,9 +106,8 @@ Ordered by fit to the identity; each is control-plane, not runtime:
 
 1. **Zero-config onboarding** — detect language/build/platform → propose a default `.agentic/config.yml`
    (the planned `stagr init` + front-door skill), so the toolkit "just works" when dropped into a repo.
-2. **Multi-stage "definition of ready"** — the security review is a gated stage in the graph, next to
-   the code review; the two are independent stages. (This repository's own hand-written review
-   process runs them one after the other; that is a rule of this repo, not of the contract.) Still
+2. **Multi-stage "definition of ready"** — the security review is a gated stage in the graph that
+   starts after the code review passes (`security` depends on `review`). Still
    roadmap: first-class build / test / custom gate stages in the graph and the merge gate, beyond the
    code and security reviews.
 3. **More platform renderers** — GitLab, Bitbucket, Azure DevOps (contract → native pipeline mapping

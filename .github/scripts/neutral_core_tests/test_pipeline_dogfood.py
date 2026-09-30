@@ -105,8 +105,8 @@ def test_pipeline_dogfood_config_security() -> None:
     assert stage.triggers == (StageTrigger.PR_OPENED, StageTrigger.PR_UPDATED), (
         f"security triggers: expected (PR_OPENED, PR_UPDATED), got {stage.triggers}"
     )
-    assert stage.dependencies == (), (
-        f"security dependencies: expected (), got {stage.dependencies}"
+    assert stage.dependencies == ("review",), (
+        f"security dependencies: expected ('review',), got {stage.dependencies}"
     )
 
 

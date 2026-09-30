@@ -128,7 +128,7 @@ def test_expand_profile_defaults_minimal_shape() -> None:
 
 
 def test_expand_profile_defaults_standard_shape() -> None:
-    """standard profile expands to review + security, both BLOCKING and independent."""
+    """standard profile expands to review + security, both BLOCKING; security waits for review."""
     from stagr.core.normalize import expand_profile_defaults
 
     result = expand_profile_defaults("standard", [])
@@ -149,7 +149,7 @@ def test_expand_profile_defaults_standard_shape() -> None:
     assert security["skill"] == "security-review"
     assert security["gate"] == "blocking"
     assert security["triggers"] == ["pr_opened", "pr_updated"]
-    assert security["depends_on"] == []
+    assert security["depends_on"] == ["review"]
 
 
 def test_expand_profile_defaults_standard_fills_missing_fields() -> None:

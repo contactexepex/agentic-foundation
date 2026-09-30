@@ -150,7 +150,7 @@ Profile expansions:
 | Profile | Stages |
 |---|---|
 | `minimal` | review (blocking) |
-| `standard` | review (blocking), security (blocking) — independent, neither waits for the other |
+| `standard` | review (blocking), then security (blocking), which starts after the review passes |
 | `custom` | none — you define every stage |
 
 ---
