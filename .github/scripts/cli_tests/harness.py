@@ -18,6 +18,9 @@ from stagr import cli  # noqa: E402
 
 failures: list[str] = []
 
+AGENTIC_DIRECTORY = Path(".agentic")
+CONFIG_FILE_PATH = AGENTIC_DIRECTORY / "config.yml"
+
 EXPECTED_DOGFOOD_WORKFLOW_PATHS = (
     ".github/workflows/stage-review.yml",
     ".github/workflows/stage-security.yml",
@@ -52,9 +55,9 @@ def dogfood_project(mutate_config: Callable[[dict[str, Any]], None] | None = Non
     """
     with tempfile.TemporaryDirectory() as temporary_directory:
         project_root = Path(temporary_directory)
-        shutil.copytree(REPOSITORY_ROOT / ".agentic", project_root / ".agentic")
+        shutil.copytree(REPOSITORY_ROOT / AGENTIC_DIRECTORY, project_root / AGENTIC_DIRECTORY)
         if mutate_config is not None:
-            config_path = project_root / ".agentic" / "config.yml"
+            config_path = project_root / CONFIG_FILE_PATH
             config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
             mutate_config(config)
             config_path.write_text(yaml.safe_dump(config), encoding="utf-8")

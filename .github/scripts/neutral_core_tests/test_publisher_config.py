@@ -133,7 +133,8 @@ def test_derive_publisher_config_normalizes_app_id_to_string() -> None:
 
     from_integer = derive_publisher_config(_config_with_publisher({"app_id": 99001}))
     from_string = derive_publisher_config(_config_with_publisher({"app_id": "99001"}))
-    assert from_integer.app_id == "99001" and isinstance(from_integer.app_id, str)
+    assert from_integer.app_id == "99001"
+    assert isinstance(from_integer.app_id, str)
     assert from_integer == from_string
 
 

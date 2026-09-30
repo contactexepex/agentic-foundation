@@ -9,7 +9,7 @@ from __future__ import annotations
 import enum
 import hashlib
 import os
-import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -85,15 +85,17 @@ def _assert_target_is_safe(project_root: Path, relative_path: str) -> None:
 
 
 def _write_atomically(target_path: Path, content_bytes: bytes) -> None:
+    """Write next to the target, then rename over it, so a reader never sees a half-written file.
+
+    The temporary file is created exclusively ("xb": it refuses an existing file or symlink) and with
+    the mode any ordinary new file gets, so the result is a normal repository file (no chmod here).
+    """
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        dir=target_path.parent, prefix=f".{target_path.name}.", suffix=".tmp"
-    )
+    temporary_path = target_path.with_name(f".{target_path.name}.{uuid.uuid4().hex[:8]}.tmp")
     try:
-        with os.fdopen(file_descriptor, "wb") as temporary_file:
+        with open(temporary_path, "xb") as temporary_file:
             temporary_file.write(content_bytes)
-        os.chmod(temporary_name, 0o644)
-        os.replace(temporary_name, target_path)
+        os.replace(temporary_path, target_path)
     except BaseException:
-        Path(temporary_name).unlink(missing_ok=True)
+        temporary_path.unlink(missing_ok=True)
         raise

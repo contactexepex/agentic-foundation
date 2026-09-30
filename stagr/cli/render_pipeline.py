@@ -74,12 +74,13 @@ def find_dormant_routing_warnings(raw_config: dict[str, Any]) -> tuple[str, ...]
     fast_path_config = (raw_config.get("routing") or {}).get("fast_path") or {}
     is_disabled = fast_path_config.get("enabled", True) is False
     has_routing_keys = "globs" in fast_path_config or "stages" in fast_path_config
+    warnings: list[str] = []
     if is_disabled and has_routing_keys:
-        return (
+        warnings.append(
             "V-S11: dormant route configuration: routing.fast_path is disabled but 'globs' or "
-            "'stages' are present; they will not be evaluated",
+            "'stages' are present; they will not be evaluated"
         )
-    return ()
+    return tuple(warnings)
 
 
 def load_render_inputs(project_root: Path) -> RenderInputs:

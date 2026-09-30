@@ -231,8 +231,10 @@ def test_parse_config_syntax_error_reports_position_but_never_config_text() -> N
         except ConfigSyntaxError as error:
             message = str(error)
             assert "sk-secret-abc123" not in message, f"{label}: the pasted secret leaked: {message}"
-            assert "line 4" in message and "column" in message, f"{label}: no position in: {message}"
-            assert error.__cause__ is None and error.__suppress_context__, f"{label}: parser error chained"
+            assert "line 4" in message, f"{label}: no line number in: {message}"
+            assert "column" in message, f"{label}: no column number in: {message}"
+            assert error.__cause__ is None, f"{label}: the parser error is chained as the cause"
+            assert error.__suppress_context__, f"{label}: the parser error is shown as context"
         else:
             raise AssertionError(f"{label}: expected ConfigSyntaxError")
 

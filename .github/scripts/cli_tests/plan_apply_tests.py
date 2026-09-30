@@ -4,12 +4,14 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import stat
 from pathlib import Path
 from typing import Any, Callable
 
 import yaml
 
 from .harness import (
+    CONFIG_FILE_PATH,
     EXPECTED_DOGFOOD_WORKFLOW_PATHS,
     REPOSITORY_ROOT,
     check,
@@ -154,11 +156,11 @@ def test_plan_and_apply_reject_invalid_configs_identically() -> None:
 
 def test_missing_and_unparseable_config_files_are_rejected() -> None:
     with dogfood_project() as project_root:
-        (project_root / ".agentic" / "config.yml").write_text("version: [unclosed", encoding="utf-8")
+        (project_root / CONFIG_FILE_PATH).write_text("version: [unclosed", encoding="utf-8")
         for command in ("plan", "apply"):
             exit_code, _, stderr = run_cli([command, "--root", str(project_root)])
             check(exit_code == 1 and stderr.startswith("error: "), f"{command}: invalid YAML exits 1 with an error")
-        (project_root / ".agentic" / "config.yml").unlink()
+        (project_root / CONFIG_FILE_PATH).unlink()
         for command in ("plan", "apply"):
             exit_code, _, stderr = run_cli([command, "--root", str(project_root)])
             check(exit_code == 1 and "config file not found" in stderr, f"{command}: a missing config exits 1 and says so")
@@ -171,11 +173,24 @@ def test_yaml_errors_never_echo_config_text() -> None:
     )
     for yaml_text in pasted_secret_yaml_cases:
         with dogfood_project() as project_root:
-            (project_root / ".agentic" / "config.yml").write_text("version: 2\n" + yaml_text, encoding="utf-8")
+            (project_root / CONFIG_FILE_PATH).write_text("version: 2\n" + yaml_text, encoding="utf-8")
             for command in ("plan", "apply"):
                 exit_code, stdout, stderr = run_cli([command, "--root", str(project_root)])
                 check(exit_code == 1 and "line 4" in stderr, f"{command}: a YAML syntax error exits 1 and names the line")
                 check("sk-secret-abc123" not in stdout + stderr, f"{command}: a pasted secret is never echoed from a YAML error")
+
+
+def test_written_files_have_the_mode_of_an_ordinary_new_file() -> None:
+    with dogfood_project() as project_root:
+        run_cli(["apply", "--root", str(project_root)])
+        ordinary_file = project_root / "ordinary.txt"
+        ordinary_file.write_text("x", encoding="utf-8")
+        ordinary_mode = stat.S_IMODE(ordinary_file.stat().st_mode)
+        for workflow_path in EXPECTED_DOGFOOD_WORKFLOW_PATHS:
+            written_mode = stat.S_IMODE((project_root / workflow_path).stat().st_mode)
+            check(written_mode == ordinary_mode, f"apply: {workflow_path} has the normal new-file mode, not a private temp-file mode")
+        leftovers = [path.name for path in (project_root / ".github" / "workflows").iterdir() if path.name.endswith(".tmp")]
+        check(leftovers == [], "apply: no temporary file is left behind")
 
 
 def test_disabled_stage_gets_no_workflow() -> None:
@@ -244,6 +259,7 @@ PLAN_APPLY_TESTS = (
     test_plan_and_apply_reject_invalid_configs_identically,
     test_missing_and_unparseable_config_files_are_rejected,
     test_yaml_errors_never_echo_config_text,
+    test_written_files_have_the_mode_of_an_ordinary_new_file,
     test_disabled_stage_gets_no_workflow,
     test_dormant_routing_keys_warn_on_both_commands,
     test_changed_file_is_reported_and_rewritten,
