@@ -31,8 +31,8 @@ def parse_config(config_path: Path) -> dict[str, Any]:
     Opens ``config_path``, parses it as YAML, enforces that ``version`` is the
     integer ``2`` (V-S02), and returns the raw config dict.  The returned dict
     is the unmodified result of ``yaml.safe_load`` — no defaults are applied,
-    no schema validation is performed, and no ``extends`` resolution happens
-    here.  Those steps belong to the render pipeline.
+    and no schema validation is performed here.  Those steps belong to the
+    render pipeline.
 
     Args:
         config_path: Absolute or relative ``Path`` to the config file.  The

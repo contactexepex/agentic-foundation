@@ -4,8 +4,8 @@ name: Security Review
 stage_type: security
 version: 1
 # Provider-, model-, backend-, and language-agnostic. No secrets, no vendor
-# assumptions. Rendered per repo; override any section via the skills registry
-# (skills.<id>.extends) or an org/team base config.
+# assumptions. Rendered per repo; to customize, copy this file to
+# .agentic/skills/<id>/SKILL.md in your repo and edit the copy.
 ---
 
 # Security Review
