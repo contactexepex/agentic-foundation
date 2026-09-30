@@ -15,7 +15,7 @@ acceptance criteria, each with a test.
 | A6 | V-E02 names the missing private-key secret, and c/d become `SKIP` | Unit: key flag `false`; assert name, and c/d blocked |
 | A7 | V-E02 lists each missing or too-weak permission | Unit: installed permissions lack `checks: write`; assert it is listed |
 | A8 | In the pipeline and central contexts a missing required input is an ERROR, never a silent SKIP | Unit: unset flag (pipeline), unset token (central) |
-| A9 | V-E04 warns on `owner`-only roles | Unit |
+| A9 | V-E04 warns on an empty `trusted_roles` and on `owner`-only roles, and stays silent for the default roles | Unit: `[]`, `[owner]`, and the default list; assert WARN, WARN, no warning |
 | A10 | Exit code is 0 with no ERROR, else 1; secret values never appear in output | Unit: sentinel secret value absent from stdout/stderr |
 | A11 | Declared artifact permissions match the docs table | Test compares the renderer's union to `docs/CONFIGURATION.md` |
 | A12 | Optional probes: with `STAGR_PLATFORM_TOKEN`, V-E03 and V-E04 report ERROR/WARN from a fake client; without it, both `SKIP` and exit code is unaffected | Unit (fake client, with and without token) |
