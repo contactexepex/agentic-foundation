@@ -60,11 +60,10 @@ def validate_skill_file_existence(
                 f"V-S06: stage '{stage_id}' references skill '{skill_id}' "
                 f"but the expected file does not exist: {expected_skill_file}"
             )
-        skills_base = project_root / ".agentic" / "skills"
         try:
             real_file = expected_skill_file.resolve()
             # Use project_root.resolve() as the trusted anchor and append the skills path
-            # lexically.  If skills_base.resolve() were used instead, a symlink at
+            # lexically.  If the skills directory itself were resolved instead, a symlink at
             # .agentic/skills would make both real_file and real_skills_base resolve into
             # the same external directory, defeating the confinement check entirely.
             real_skills_base = project_root.resolve() / ".agentic" / "skills"

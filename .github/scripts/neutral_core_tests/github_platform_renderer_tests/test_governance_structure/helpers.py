@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from neutral_core_tests.github_platform_renderer_tests.helpers import (
     TEST_PUBLISHER_APP_ID,
-    TEST_PUBLISHER_PRIVATE_KEY_SECRET,
     build_renderer,
     build_stage,
 )

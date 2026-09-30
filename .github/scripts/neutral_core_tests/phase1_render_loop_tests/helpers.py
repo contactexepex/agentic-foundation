@@ -59,7 +59,7 @@ def build_execution_plan(stage_id: str, secret_aliases: tuple = ()):
 
     return ExecutionPlan(
         stage_id=stage_id,
-        invocation=Invocation(kind=InvocationKind.API_CALL),
+        invocation=Invocation(kind=InvocationKind.CI_COMPONENT),
         gate_disposition=GateDispositionSpec(
             kind=GateDispositionKind.ALWAYS_PASS,
             selector="always",

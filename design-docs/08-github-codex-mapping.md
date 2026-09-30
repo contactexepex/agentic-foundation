@@ -218,7 +218,7 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
 - **Rejected at render time** (`stagr apply` fails; nothing weaker is generated): evidence kinds
   other than `REVIEW_RESULT` and `COMMENT_MATCH`; evidence that is not head-bound or has no
   `produced_by`; `invocation_correlation`; and plans with no evidence whose invocation finishes
-  asynchronously (`PR_COMMENT`, `WORKFLOW_DISPATCH`).
+  asynchronously (`PR_COMMENT`).
 - **Events without a pull request** (`workflow_dispatch`, `issues`) publish no signal.
 - **Invocation and idempotency (`PR_COMMENT` backends).** The `execute` job has one step,
   "Invoke backend (idempotent)", that runs the same runtime in `invoke` mode. In this order it
@@ -319,7 +319,7 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   and is invoked normally. This narrows the recovery rule in `06-runtime-boundary.md`, which
   allows the sweep to re-post.
 - **Other invocation kinds.** The GitHub renderer renders only `PR_COMMENT`. A backend whose plan
-  needs another kind (`CI_COMPONENT`, `API_CALL`, `WORKFLOW_DISPATCH`) is rejected by V-S08
+  needs another kind (`CI_COMPONENT`) is rejected by V-S08
   (`07-validation.md`). The Claude Code implement backend uses `CI_COMPONENT`, so `implement`
   stages cannot be rendered on GitHub yet.
 - **Stagr App permissions** used at run time: Checks (write), Pull requests (read) and Issues

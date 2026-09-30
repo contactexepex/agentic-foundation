@@ -133,8 +133,6 @@ Invocation {
 | Value | Semantics | Platform notes |
 |---|---|---|
 | `PR_COMMENT` | Post a comment on the PR to trigger the backend | GitHub: `gh pr comment` via trusted-user PAT |
-| `API_CALL` | Call the provider's API directly from a CI step | Backend-specific HTTP call |
-| `WORKFLOW_DISPATCH` | Trigger a CI workflow by name/id | GitHub: `workflow_dispatch` event |
 | `CI_COMPONENT` | Insert a native CI component (Action, GitLab component, etc.) | **Platform-dependent by design.** Validation catches incompatibilities at render time. |
 | `RUN_COMMANDS` | Run the stage's commands in a CI job with no credentials and no secrets (`commands` executor) | GitHub: the untrusted work job of the stage workflow |
 | `READ_RESULT` | Read a named result from a named producer (`observed` executor); starts nothing | GitHub: a job that reads Check Runs |
@@ -159,10 +157,9 @@ StageResultProvenance {
 }
 ```
 
-`StageResultSignalKind` values on GitHub V1: `CHECK_RUN` (required — authenticated App
-identity), `WORKFLOW_OUTPUT`. `COMMIT_STATUS` is available as a fallback only for
-platforms where Check Runs do not exist; on GitHub V1 it must not be used for
-`StageResultSignal` because it is forgeable by any `statuses: write` actor.
+`StageResultSignalKind` has one value, `CHECK_RUN` (authenticated App identity). A commit
+status is never used for `StageResultSignal` because it is forgeable by any
+`statuses: write` actor.
 
 `provenance.publisherIdentity` is used by the governance artifact to verify the signal
 came from the expected publisher before trusting its conclusion. On GitHub, this is the

@@ -5,7 +5,6 @@ import hashlib
 import os
 import re
 import stat
-from pathlib import Path
 from typing import Any, Callable
 
 import yaml
@@ -58,7 +57,7 @@ def use_backend_the_platform_cannot_run(config: dict[str, Any]) -> None:
     config["stages"][0]["provider"] = "anthropic"
 
 
-def use_platform_without_renderer(config: dict[str, Any]) -> None:
+def use_unsupported_platform(config: dict[str, Any]) -> None:
     config["platform"]["type"] = "gitlab"
 
 
@@ -82,7 +81,7 @@ INVALID_CONFIG_CASES: tuple[tuple[str, Callable[[dict[str, Any]], None], str], .
     ("unknown dependency (V-S05)", add_unknown_dependency, "missing-stage"),
     ("missing skill file (V-S06)", point_at_missing_skill, "no-such-skill"),
     ("backend the platform cannot run (V-S08)", use_backend_the_platform_cannot_run, "V-S08"),
-    ("platform without a renderer", use_platform_without_renderer, "has no renderer"),
+    ("platform without a renderer", use_unsupported_platform, "does not conform to schema"),
     ("no enabled stage", disable_every_stage, "no enabled stage"),
 )
 

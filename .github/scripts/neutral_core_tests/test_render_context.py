@@ -5,13 +5,9 @@ from __future__ import annotations
 def test_render_context_construction() -> None:
     """RenderContext constructs with all required fields; no StageResultSpec[] field."""
     from stagr.core.models import (
-        DiscussionPolicy,
-        FastPathPolicy,
         MergePolicy,
         NormalizedStage,
-        PathMatchSpec,
         RenderContext,
-        RouteStageMap,
         RoutingPolicy,
         TrustPolicy,
     )

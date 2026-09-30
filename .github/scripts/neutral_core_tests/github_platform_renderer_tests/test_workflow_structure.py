@@ -13,7 +13,7 @@ from neutral_core_tests.github_platform_renderer_tests.helpers import (
     build_renderer,
     build_stage,
 )
-from stagr.core.enums import StageGate, StageTrigger
+from stagr.core.enums import StageTrigger
 from stagr.core.models import SecretRef
 
 

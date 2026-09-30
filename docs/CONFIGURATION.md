@@ -62,7 +62,7 @@ blocks only to take finer control. See
 # Minimal config — the profile expands to a stage graph.
 version: 2
 profile: standard
-platform: { type: github, default_branch: main, publisher: { app_id: 123456 } }
+platform: { type: github, publisher: { app_id: 123456 } }
 ```
 
 ### `profile`
@@ -73,8 +73,7 @@ platform: { type: github, default_branch: main, publisher: { app_id: 123456 } }
 ### `platform`
 | Field | Meaning |
 |---|---|
-| `type` | `github` \| `gitlab` \| `azure_devops` \| `bitbucket` \| `gitea` \| `other`. Selects the renderer. Only the GitHub renderer exists today. |
-| `default_branch` | Trunk branch change-requests target. Default `main`. |
+| `type` | `github`. Selects the renderer. Only the GitHub renderer exists today, so `github` is the only accepted value. Default `github`. |
 | `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). Default `true`. |
 | `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. Default `owner`, `member`, `collaborator`. |
 | `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
@@ -158,7 +157,7 @@ same `id` overrides). Each stage is one agent. Two providers have a default back
 | Field | Meaning |
 |---|---|
 | `id` | **Required.** Unique stage id (`^[a-z0-9][a-z0-9-_]*$`), e.g. `review`, `security`. |
-| `type` | **Required.** `review` \| `security` \| `build` \| `test` \| `deploy` \| `custom` \| `implement`. |
+| `type` | **Required.** `review` \| `security` \| `build` \| `test` \| `custom` \| `implement`. |
 | `enabled` | `false` to keep a stage defined but off. Default `true`. |
 | `provider` | **The primary knob.** `anthropic` runs Claude Code; `openai` runs Codex. Omit to inherit `defaults.provider`. |
 | `backend` | Optional. The tool that performs the stage, as a plain string. Omit it: the default follows the provider (`anthropic` → `claude-code-action`, `openai` → `codex`). |

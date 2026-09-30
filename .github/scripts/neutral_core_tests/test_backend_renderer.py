@@ -22,7 +22,7 @@ def _build_minimal_execution_plan():
     )
     from stagr.core.enums import GateDispositionKind, InvocationKind
 
-    invocation = Invocation(kind=InvocationKind.API_CALL)
+    invocation = Invocation(kind=InvocationKind.CI_COMPONENT)
     gate_disposition = GateDispositionSpec(
         kind=GateDispositionKind.ALWAYS_PASS,
         selector="always",

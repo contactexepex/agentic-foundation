@@ -97,9 +97,8 @@ def test_pr_comment_invocation_needs_the_resolved_trusted_commenter_secret() -> 
 
 def test_other_invocation_kinds_render_without_an_invocation_document() -> None:
     plan, stage = build_codex_plan()
-    for kind in (InvocationKind.WORKFLOW_DISPATCH, InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
-        other_plan = dataclasses.replace(plan, invocation=Invocation(kind=kind))
-        assert _build_document(other_plan, stage)["invocation"] is None
+    other_plan = dataclasses.replace(plan, invocation=Invocation(kind=InvocationKind.CI_COMPONENT))
+    assert _build_document(other_plan, stage)["invocation"] is None
 
 
 # ---- run time: the embedded configuration is re-validated ----
@@ -107,7 +106,7 @@ def test_other_invocation_kinds_render_without_an_invocation_document() -> None:
 
 def test_runtime_rejects_an_invocation_it_cannot_perform_exactly() -> None:
     valid = {"kind": "pr_comment", "body": "@codex review", "leaseMinutes": 30}
-    _expect_runtime_rejection({**valid, "kind": "api_call"}, "Unsupported invocation kind")
+    _expect_runtime_rejection({**valid, "kind": "ci_component"}, "Unsupported invocation kind")
     _expect_runtime_rejection({**valid, "body": " "}, "non-empty body")
     _expect_runtime_rejection({**valid, "body": 3}, "non-empty body")
     for invalid in (0, -1, runtime.MAX_LEASE_MINUTES + 1, True, "30", 1.5, None):

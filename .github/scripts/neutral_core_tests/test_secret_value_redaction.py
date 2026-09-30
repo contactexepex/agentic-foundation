@@ -8,7 +8,6 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from neutral_core_tests.harness import REPO_ROOT  # noqa: F401  (sets up sys.path)
 from neutral_core_tests.test_publisher_config import _config_with_publisher
 from stagr.core.config_validation import describe_schema_error, validate_config
 from stagr.core.errors import ConfigSchemaError

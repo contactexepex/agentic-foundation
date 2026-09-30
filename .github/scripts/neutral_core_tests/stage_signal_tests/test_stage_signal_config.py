@@ -18,12 +18,8 @@ from stagr.core.enums import (
     StageKind,
 )
 from stagr.core.models import (
-    CorrelationSpec,
-    EvidenceSpec,
-    FindingScopeSpec,
     GateDispositionSpec,
     Invocation,
-    TrustPolicy,
 )
 from stagr.platforms.github.stage_signal_config import build_stage_signal_config
 
@@ -149,16 +145,16 @@ def test_finding_author_must_be_a_github_login() -> None:
 
 def test_asynchronous_invocation_without_evidence_is_rejected() -> None:
     stage = build_stage()
-    for kind in (InvocationKind.PR_COMMENT, InvocationKind.WORKFLOW_DISPATCH):
-        plan = dataclasses.replace(build_execution_plan(), invocation=Invocation(kind=kind))
-        _expect_rejection(plan, stage, "no EvidenceSpec")
+    plan = dataclasses.replace(
+        build_execution_plan(), invocation=Invocation(kind=InvocationKind.PR_COMMENT))
+    _expect_rejection(plan, stage, "no EvidenceSpec")
 
 
 def test_synchronous_invocation_without_evidence_is_accepted_and_needs_no_wakeups() -> None:
     stage = build_stage()
-    for kind in (InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
-        plan = dataclasses.replace(build_execution_plan(), invocation=Invocation(kind=kind))
-        assert not _build(plan, stage).has_asynchronous_evidence
+    plan = dataclasses.replace(
+        build_execution_plan(), invocation=Invocation(kind=InvocationKind.CI_COMPONENT))
+    assert not _build(plan, stage).has_asynchronous_evidence
 
 
 def test_explicit_pass_marker_requires_a_selector_and_evidence() -> None:

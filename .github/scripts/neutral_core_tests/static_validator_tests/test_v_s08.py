@@ -43,7 +43,7 @@ def test_v_s08_raises_for_unsupported_invocation_kind() -> None:
     )
 
     # Platform supports only PR_COMMENT — CI_COMPONENT is not in the set.
-    supported_kinds = frozenset({InvocationKind.PR_COMMENT, InvocationKind.API_CALL})
+    supported_kinds = frozenset({InvocationKind.PR_COMMENT})
 
     try:
         validate_platform_invocation_compatibility((stage,), registry, supported_kinds)

@@ -26,7 +26,6 @@ object") it determines what handles the stage.
 | `SECURITY` | Security-focused review. Same completion semantics as REVIEW. Always an `agent` stage. The `standard` profile makes it depend on REVIEW. |
 | `BUILD` | Compile/package step. Completes when the build finishes; conclusion is PASS only when the build succeeds. Never an `agent` stage. |
 | `TEST` | Automated test run. Completes when tests finish; conclusion is PASS only when all tests pass. Never an `agent` stage. |
-| `DEPLOY` | Deployment step. Environment-specific semantics. |
 | `CUSTOM` | Operator-defined. With an `agent` executor its semantics come from the referenced skill; with a `commands` or `observed` executor, from those commands or that observed result. |
 | `IMPLEMENT` | Agentic implementation step. An AI agent (e.g., Claude Code, Codex) reads the task and produces code changes. Completes when the agent finishes its implementation run. Unlike `REVIEW` and `SECURITY`, findings are not expected — the output is a commit or PR update, not a report. |
 

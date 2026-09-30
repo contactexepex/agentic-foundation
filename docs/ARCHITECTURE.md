@@ -5,7 +5,7 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 **any SCM platform**, and **any language**.
 
 > **Scope note.** The contract described here is **generic** — it can express any stage type
-> (`implement`, `review`, `security`, `build`, `test`, `deploy`, `custom`). stagr's
+> (`implement`, `review`, `security`, `build`, `test`, `custom`). stagr's
 > **product scope**, however, is the **development lane** (approved story → merged PR). Planning
 > and CD/deploy are delivered by **separate sibling toolkits** that reuse this same contract, not
 > by stagr's reference lane. The contract's reach across the toolkit family is wider than
@@ -18,7 +18,7 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 
 A repository's agentic pipeline is an **ordered, extensible graph of stages**. Each
 **stage is one agent** in the SDLC/STLC — `implement`, `review`, `security`, `build`, `test`,
-`deploy`, or `custom` — bound to:
+or `custom` — bound to:
 
 - a **provider + model** (the knob — `anthropic` or `openai` today; mix per stage),
 - a **backend** (the executor/tool; derived from the provider, overridable),

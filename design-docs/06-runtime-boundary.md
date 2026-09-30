@@ -334,9 +334,8 @@ On GitHub V1:
   `StageResultSpec.provenance.publisherIdentity` rendered into the governance artifact
   at render time. A check run from an unexpected App or workflow is rejected.
 
-The `StageResultSignalKind` values: `CHECK_RUN` (required on GitHub V1 — authenticated
-App identity), `WORKFLOW_OUTPUT`, `COMMIT_STATUS` (only for platforms where Check Runs
-do not exist — not permitted on GitHub V1).
+`StageResultSignalKind` has one value, `CHECK_RUN` (authenticated App identity). A commit
+status is not permitted on GitHub V1.
 
 ---
 

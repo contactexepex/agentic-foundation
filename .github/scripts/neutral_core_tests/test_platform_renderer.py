@@ -39,7 +39,7 @@ def _build_minimal_execution_plan():
 
     return ExecutionPlan(
         stage_id="test-stage",
-        invocation=Invocation(kind=InvocationKind.API_CALL),
+        invocation=Invocation(kind=InvocationKind.CI_COMPONENT),
         gate_disposition=GateDispositionSpec(
             kind=GateDispositionKind.ALWAYS_PASS,
             selector="always",

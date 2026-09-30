@@ -10,9 +10,9 @@ here, at ``stagr apply`` time, instead of degrading into a weaker check at run t
 - evidence kinds other than the comment-based ``REVIEW_RESULT`` and ``COMMENT_MATCH``;
 - evidence that is not head-bound, has an unknown ``sha_field``, or lacks ``produced_by``;
 - ``FindingScopeSpec.invocation_correlation`` (GitHub V1 has no reliable binding for it);
-- a plan without evidence whose invocation completes asynchronously (``PR_COMMENT`` or
-  ``WORKFLOW_DISPATCH``): nothing could ever prove it finished, and reporting PASS after merely
-  posting the request would be a false signal;
+- a plan without evidence whose invocation completes asynchronously (``PR_COMMENT``): nothing
+  could ever prove it finished, and reporting PASS after merely posting the request would be a
+  false signal;
 - a ``PR_COMMENT`` invocation (issue #205) without a non-empty ``params["body"]``, without the
   ``TRUSTED_COMMENTER_TOKEN`` secret it must be posted with, or with a ``params["lease_minutes"]``
   that is not an integer from 1 to ``MAX_LEASE_MINUTES``. The lease defaults to 30 minutes.
@@ -57,7 +57,7 @@ _STAGE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _APP_ID_PATTERN = re.compile(r"^[0-9]{1,20}$")
 
 # Invocations that run to completion inside the execute job, so the job's own outcome is the proof.
-_SYNCHRONOUS_INVOCATION_KINDS = frozenset({InvocationKind.CI_COMPONENT, InvocationKind.API_CALL})
+_SYNCHRONOUS_INVOCATION_KINDS = frozenset({InvocationKind.CI_COMPONENT})
 
 # The "Code Review" row of the Codex review-summary table; see the runtime's REVIEW_RESULT handling.
 _REVIEW_SUMMARY_SHA_FIELD = "review_summary_sha"
@@ -283,7 +283,7 @@ def _reject_unprovable_completion(stage: NormalizedStage, plan: ExecutionPlan) -
     raise ValueError(
         f"Stage '{stage.id}': a {plan.invocation.kind.name} invocation completes asynchronously "
         f"but the plan declares no EvidenceSpec, so nothing could prove it finished. Declare "
-        f"evidence, or use a synchronous invocation (CI_COMPONENT or API_CALL)."
+        f"evidence, or use a synchronous invocation (CI_COMPONENT)."
     )
 
 

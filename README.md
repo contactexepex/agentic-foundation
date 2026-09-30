@@ -24,7 +24,7 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design and
 ## Flexible by design
 
 **Stages are agents; anything plugs in.** A pipeline is an ordered, extensible graph of stages. Each
-stage binds a **role/type** (implement, review, security, build, test, deploy, custom) to a
+stage binds a **role/type** (implement, review, security, build, test, custom) to a
 **provider + model**; the coding tool is derived from the provider — `anthropic` runs Claude Code,
 `openai` runs Codex:
 
@@ -46,9 +46,8 @@ one through a precedence chain — **stage model › `defaults.models.<provider>
 fails loudly if unresolved — no hidden fallback) — so *providing a model overrides the default*, and
 omitting it inherits.
 
-**Any platform.** `platform.type` (github | gitlab | azure_devops | bitbucket | gitea) selects a
-renderer that maps the same contract to that system (PR↔MR, roles, required checks). GitHub is the
-only renderer today; others follow.
+**Any platform.** `platform.type` selects a renderer that maps the same contract to that system
+(PR↔MR, roles, required checks). `github` is the only value and renderer today; others follow.
 
 **Compose, don't reinvent.** New tools plug in through one seam: a stage's optional `backend` override
 wraps a mature OSS agent (OpenHands, PR-Agent, SWE-agent) or a custom adapter — roadmap today, added

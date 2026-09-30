@@ -50,8 +50,7 @@ profile: custom
 # Platform declaration. Identifies the target CI/CD platform and its settings.
 # Required. The renderer uses this to select the correct PlatformRenderer.
 platform:
-  type: github              # target platform id (e.g. github, gitlab, bitbucket)
-  default_branch: main      # branch the governance artifact targets for merges
+  type: github              # target platform id (github is the only one today)
   trusted_roles:            # AuthorRole[] for TrustPolicy
     - owner
     - member
@@ -202,7 +201,6 @@ version: 2
 profile: standard
 platform:
   type: github
-  default_branch: main
 build:
   preset: maven
 ```

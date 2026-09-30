@@ -19,8 +19,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "type": { "enum": ["github", "gitlab", "azure_devops", "bitbucket", "gitea", "other"], "default": "github" },
-        "default_branch": { "type": "string", "minLength": 1, "default": "main" },
+        "type": { "enum": ["github"], "default": "github" },
         "same_repo_only": { "type": "boolean", "default": true },
         "trusted_roles": {
           "type": "array",
@@ -143,7 +142,7 @@
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-_]*$", "description": "Unique stage id, e.g. review, security." },
         "type": {
-          "enum": ["review", "security", "build", "test", "deploy", "custom", "implement"],
+          "enum": ["review", "security", "build", "test", "custom", "implement"],
           "description": "What kind of work the stage does. Mirrors the StageKind enum of the neutral core."
         },
         "enabled": { "type": "boolean", "default": true },

@@ -56,11 +56,6 @@ def downstream_config_document(**overrides: Any) -> dict[str, Any]:
     return document
 
 
-def build_downstream_config(**overrides: Any) -> runtime.StageRuntimeConfig:
-    return runtime.StageRuntimeConfig.from_json_text(
-        json.dumps(downstream_config_document(**overrides)))
-
-
 def build_stage_signal_check_run(
     stage_id: str,
     state: str,

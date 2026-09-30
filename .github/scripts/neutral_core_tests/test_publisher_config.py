@@ -36,7 +36,7 @@ def _config_with_publisher(publisher: Any) -> dict[str, Any]:
     return {
         "version": 2,
         "profile": "standard",
-        "platform": {"type": "github", "default_branch": "main", "publisher": publisher},
+        "platform": {"type": "github", "publisher": publisher},
         "defaults": {"provider": "anthropic", "models": {"anthropic": {"default": "c"}}},
     }
 

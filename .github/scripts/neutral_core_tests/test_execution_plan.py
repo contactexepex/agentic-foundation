@@ -23,7 +23,7 @@ def test_invocation_params_deep_immutable() -> None:
     from types import MappingProxyType
 
     nested = Invocation(
-        kind=InvocationKind.WORKFLOW_DISPATCH,
+        kind=InvocationKind.CI_COMPONENT,
         params={
             "options": {"retries": 3, "flags": ["--verbose", "--fail-fast"]},
             "tags": ["ci", "deploy"],
@@ -54,7 +54,7 @@ def test_invocation_params_deep_immutable() -> None:
 
     # Dict inside a tuple is also frozen (tuple elements are recursed)
     tuple_of_dicts = Invocation(
-        kind=InvocationKind.WORKFLOW_DISPATCH,
+        kind=InvocationKind.CI_COMPONENT,
         params={"x": ({"mutable": 1},)},
     )
     assert isinstance(tuple_of_dicts.params["x"], tuple), \
