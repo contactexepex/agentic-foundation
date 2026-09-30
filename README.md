@@ -92,7 +92,7 @@ being rebuilt (see [docs/CLI.md](docs/CLI.md)).
    is not on PyPI yet, so install it from the repository's source archive — pip/pipx download and
    build it with no `git` required:
    ```bash
-   pipx install "https://github.com/contactexepex/agentic-foundation/archive/refs/heads/main.tar.gz"
+   pipx install "https://github.com/exepex/agentic-foundation/archive/refs/heads/main.tar.gz"
    # once published this becomes: pipx install stagr
    ```
    For a reproducible, auditable install, pin the URL to a commit SHA (or a release tag) instead of
@@ -100,7 +100,7 @@ being rebuilt (see [docs/CLI.md](docs/CLI.md)).
 2. Run `stagr help` to see the available commands.
 3. In your target repo, write `.agentic/config.yml` by hand, and copy the two starter skill folders,
    `code-review` and `security-review`, from
-   [`stagr/templates/skills/`](https://github.com/contactexepex/agentic-foundation/tree/main/stagr/templates/skills)
+   [`stagr/templates/skills/`](https://github.com/exepex/agentic-foundation/tree/main/stagr/templates/skills)
    into `.agentic/skills/` (they are also inside the installed package). Every stage's skill must exist
    there, or `plan` fails with V-S06. The full field reference, provider→secret mapping, and
    troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.

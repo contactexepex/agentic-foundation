@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/contactexepex/agentic-foundation/install/config.schema.json",
+  "$id": "https://github.com/exepex/agentic-foundation/install/config.schema.json",
   "title": "agentic-foundation repository configuration (v2)",
   "description": "Schema for .agentic/config.yml — a platform-neutral contract for a graph of agent stages. It lists exactly the keys the neutral pipeline reads; a key that is not listed here does nothing. Keys that are not part of the contract at the top level (for example operator tooling such as `deploy:`) are ignored, never rejected. Inside a Stagr key (`platform`, `defaults`, `stages`, ...) an unknown key is an error. Secrets are referenced by NAME only; values never live here. See docs/CONFIGURATION.md.",
   "type": "object",
