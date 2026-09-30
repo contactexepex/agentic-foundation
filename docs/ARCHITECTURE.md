@@ -47,7 +47,7 @@ The toolkit is deliberately split so each concern can change without disturbing 
 | **2. Provider adapters** | Talk to a model vendor (Claude / OpenAI / Gemini / local / gateway). Give true provider-agnosticism. | `providers`, `defaults.models` |
 | **3. Agent tools** | Execute a stage. The tool is derived from the provider (`anthropic` → Claude Code, `openai` → Codex); roadmap adapters wrap other OSS agents. | `stages[].provider` (or `stages[].backend` to pin) |
 | **4. Platform/SCM adapters** | Render the neutral pipeline into a concrete CI system and normalize concepts (PR↔MR, roles, checks). | `platform` |
-| **5. CLI** | Today only `stagr help`. Planned: `plan` (list the files a config produces), `apply` (write them), `init`, `doctor`. | — |
+| **5. CLI** | Today: `help`, `plan` (list the files a config produces) and `apply` (write them). Planned: `init`, `doctor`. | — |
 
 The **contract never names a language, a vendor SDK, or a CI system directly** — those
 live in layers 2–4, so a repo swaps any of them by editing config, not workflows.
@@ -170,7 +170,7 @@ Profile expansions:
   provider/backend/model resolution, and the stage graph.
 - **M2 — GitHub renderer (current):** per-stage, routing, and governance (merge-gate) workflows built
   from the graph. The renderer returns artifacts and never writes files.
-- **M3 — CLI:** `plan` and `apply` (issues #201, #202), `doctor` (issue #203), then `init`. Today the
-  only command is `help`.
+- **M3 — CLI (in progress):** `help`, `plan` and `apply` are done (issues #201, #202); `doctor`
+  (issue #203) and `init` are next.
 - **M4 — more backends & platforms:** OpenHands/SWE-agent/PR-Agent adapters; `claude-code-cli`
   backend; GitLab and Azure DevOps renderers.

@@ -16,8 +16,8 @@ Its value is **integration, governance, and portability** — never agent capabi
 
 > **Status (today):** the supported platform is **GitHub**. The GitHub renderer builds a workflow per
 > stage, a routing workflow, and a governance (merge-gate) workflow, but only for stages started by a
-> pull-request comment — today the Codex `review` and `security` stages. It only builds the files;
-> the `plan` and `apply` commands that list and write them are planned. **Other stage types**
+> pull-request comment — today the Codex `review` and `security` stages. `stagr plan` lists
+> those files and `stagr apply` writes them; `init` and `doctor` are planned. **Other stage types**
 > (implement, build, test, deploy, custom) and **other platforms** (GitLab, Bitbucket, Azure DevOps, …)
 > are the roadmap in §7. This
 > one-sentence identity and Sections 2–6 describe the target this roadmap converges on, not

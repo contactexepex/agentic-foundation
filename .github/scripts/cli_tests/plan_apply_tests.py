@@ -164,6 +164,20 @@ def test_missing_and_unparseable_config_files_are_rejected() -> None:
             check(exit_code == 1 and "config file not found" in stderr, f"{command}: a missing config exits 1 and says so")
 
 
+def test_yaml_errors_never_echo_config_text() -> None:
+    pasted_secret_yaml_cases = (
+        "providers:\n  openai:\n    api_key_secret: sk-secret-abc123: oops\n",
+        "providers:\n  openai:\n    api_key_secret: !sk-secret-abc123 value\n",
+    )
+    for yaml_text in pasted_secret_yaml_cases:
+        with dogfood_project() as project_root:
+            (project_root / ".agentic" / "config.yml").write_text("version: 2\n" + yaml_text, encoding="utf-8")
+            for command in ("plan", "apply"):
+                exit_code, stdout, stderr = run_cli([command, "--root", str(project_root)])
+                check(exit_code == 1 and "line 4" in stderr, f"{command}: a YAML syntax error exits 1 and names the line")
+                check("sk-secret-abc123" not in stdout + stderr, f"{command}: a pasted secret is never echoed from a YAML error")
+
+
 def test_disabled_stage_gets_no_workflow() -> None:
     with dogfood_project(disable_security_stage) as project_root:
         run_cli(["apply", "--root", str(project_root)])
@@ -229,6 +243,7 @@ PLAN_APPLY_TESTS = (
     test_plan_matches_what_apply_writes,
     test_plan_and_apply_reject_invalid_configs_identically,
     test_missing_and_unparseable_config_files_are_rejected,
+    test_yaml_errors_never_echo_config_text,
     test_disabled_stage_gets_no_workflow,
     test_dormant_routing_keys_warn_on_both_commands,
     test_changed_file_is_reported_and_rewritten,

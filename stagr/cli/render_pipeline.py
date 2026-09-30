@@ -88,9 +88,9 @@ def load_render_inputs(project_root: Path) -> RenderInputs:
     Raises:
         ConfigError: the config file is missing, the publisher block is missing or invalid, the
             platform has no renderer, or a stage's provider or backend cannot be resolved.
-        ConfigVersionError, ConfigSchemaError, StaticValidationError, ValueError: from the front
-            door (V-S01 to V-S06) and the renderer checks (V-S07 to V-S09).
-        yaml.YAMLError: the file is not valid YAML.
+        ConfigSyntaxError, ConfigVersionError, ConfigSchemaError, StaticValidationError,
+            ValueError: from the front door (YAML syntax, V-S01 to V-S06) and the renderer checks
+            (V-S07 to V-S09).
     """
     config_path = project_root / CONFIG_RELATIVE_PATH
     if not config_path.is_file():

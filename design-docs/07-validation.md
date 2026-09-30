@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Validation Checklist
 
-**Status:** Design phase — not yet implemented
+**Status:** Static checks V-S01 to V-S09, V-S11 and V-S14 are implemented and run in `stagr plan` and
+`stagr apply`. V-S15 (check stages) and the environment checks (`stagr doctor`) are not implemented yet.
 
 ---
 

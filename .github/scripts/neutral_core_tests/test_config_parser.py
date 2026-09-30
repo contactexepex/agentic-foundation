@@ -211,6 +211,32 @@ def test_parse_config_error_message_names_found_version() -> None:
         config_path.unlink(missing_ok=True)
 
 
+PASTED_SECRET_YAML_CASES = (
+    # The first is the reviewer's example; the second makes PyYAML quote the text in its message.
+    ("mapping values are not allowed", "providers:\n  openai:\n    api_key_secret: sk-secret-abc123: oops\n"),
+    ("constructor for the tag", "providers:\n  openai:\n    api_key_secret: !sk-secret-abc123 value\n"),
+)
+
+
+def test_parse_config_syntax_error_reports_position_but_never_config_text() -> None:
+    """A YAML syntax error names line and column only; a pasted secret is never echoed."""
+    from stagr.core.config_parser import parse_config
+    from stagr.core.errors import ConfigSyntaxError
+
+    for label, yaml_text in PASTED_SECRET_YAML_CASES:
+        config_path = Path(tempfile.mkdtemp()) / "config.yml"
+        config_path.write_text("version: 2\n" + yaml_text, encoding="utf-8")
+        try:
+            parse_config(config_path)
+        except ConfigSyntaxError as error:
+            message = str(error)
+            assert "sk-secret-abc123" not in message, f"{label}: the pasted secret leaked: {message}"
+            assert "line 4" in message and "column" in message, f"{label}: no position in: {message}"
+            assert error.__cause__ is None and error.__suppress_context__, f"{label}: parser error chained"
+        else:
+            raise AssertionError(f"{label}: expected ConfigSyntaxError")
+
+
 CONFIG_PARSER_TESTS: list = [
     test_parse_config_dogfood_config_succeeds,
     test_parse_config_returns_full_config_dict,
@@ -221,4 +247,5 @@ CONFIG_PARSER_TESTS: list = [
     test_parse_config_raises_config_version_error_for_float_version,
     test_parse_config_raises_config_version_error_for_bool_version,
     test_parse_config_error_message_names_found_version,
+    test_parse_config_syntax_error_reports_position_but_never_config_text,
 ]

@@ -116,7 +116,7 @@ GitHub App ID; `stagr doctor` checks the config and lists the secret names to cr
 
 ```
 stagr/                                 the installable package
-stagr/cli/                             the `stagr` command (only `help` today)
+stagr/cli/                             the `stagr` command (`help`, `plan`, `apply` today)
 stagr/core/                            the neutral core: config validation, normalization, stage graph,
                                        backend renderers (renderers/)
 stagr/platforms/github/                the GitHub renderer
@@ -153,8 +153,8 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 
 > Status: **neutral core + GitHub renderer, dogfooded.** The platform-neutral stage-graph schema,
 > profiles, provider/backend/model resolution, and the GitHub renderer (per-stage, routing, and
-> governance workflows) are in place, alongside the toolkit's own live Claude+Codex automation. Next:
-> the `plan`/`apply`/`init`/`doctor` commands, more stage types, more platform renderers, and the
+> governance workflows) and the `stagr plan` / `stagr apply` commands are in place, alongside the
+> toolkit's own live Claude+Codex automation. Next: the `init`/`doctor` commands, more stage types, more platform renderers, and the
 > front-door skill (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).
 
 ## License

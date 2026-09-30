@@ -13,7 +13,7 @@ GitHub first**, and **name the agent-backend seam now, ship one GitHub-native ba
 | Backends | `codex` (review/security) renders on GitHub; `claude-code-action` (implement) has a backend renderer but cannot be rendered on GitHub yet | Names the **agent-backend seam** (cloud/CLI as future adapters) |
 | Governance | no budget or guardrail keys in the contract | **[target]** loop caps, cost ceiling, circuit breaker, and **escalation** terminal states — not yet rendered |
 | Audit | decision events **in scope but not emitted** (no emitter ships) | First-class **decision record + provenance** stream and orchestrator seam — all **[target]** |
-| Onboarding | per-repo config written by hand; the CLI has only `help` — `plan`/`apply` (#201, #202), `init`, and `doctor` (#203) are planned | **Org-scoped** provisioning + **org-default/per-repo override** |
+| Onboarding | per-repo config written by hand; the CLI offers `help`, `plan` and `apply` — `init` and `doctor` (#203) are planned | **Org-scoped** provisioning + **org-default/per-repo override** |
 | Platforms | GitHub renderer | Neutrality kept as a **contract principle**; more renderers later |
 
 ## Phase 1 — Harden the GitHub dev lane (now)

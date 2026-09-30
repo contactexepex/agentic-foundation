@@ -10,8 +10,6 @@ import argparse
 import sys
 from pathlib import Path
 
-import yaml
-
 from stagr.core.backend_renderer_registry import BackendRendererNotFoundError
 from stagr.core.models import ConfigError
 
@@ -19,13 +17,13 @@ from .artifact_files import ArtifactEntry, ArtifactWriteError, classify_artifact
 from .render_pipeline import load_render_inputs, render_artifacts
 
 # Every way the shared pipeline reports a bad config or an unwritable target. ValueError covers
-# ConfigVersionError, ConfigSchemaError, StaticValidationError and the renderers' own rejections.
+# ConfigSyntaxError, ConfigVersionError, ConfigSchemaError, StaticValidationError and the renderers'
+# own rejections.
 PIPELINE_FAILURES = (
     ValueError,
     ConfigError,
     BackendRendererNotFoundError,
     ArtifactWriteError,
-    yaml.YAMLError,
     OSError,
 )
 
