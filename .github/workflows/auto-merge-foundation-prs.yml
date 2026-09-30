@@ -353,7 +353,8 @@ jobs:
             # reporting on this repo, so do NOT block on Sonar's ABSENCE — but ENFORCE it whenever a
             # `sonarqubecloud` check IS present: a present check that is not a clean success blocks the
             # merge (`neutral`/`skipped` are not a passing Quality Gate). Self-restoring once analysis
-            # reports; re-tighten to require presence then (see .agentic/config.yml modules.sonar).
+            # reports; re-tighten to require presence then. (Long term the Sonar result becomes an observed
+            # check stage of the neutral pipeline: design-docs/09-check-stages.md.)
             # Count Sonar runs that are NOT a clean success (any incomplete run, or a completed run
             # whose conclusion is not `success` — `neutral`/`skipped`/`failure`/etc.). Requiring one
             # success is not enough: a success alongside a separate neutral/skipped run must still

@@ -15,7 +15,7 @@ def make_normalized_stage(
         id=stage_id,
         kind=StageKind.REVIEW,
         provider=provider,
-        backend="generic",
+        backend="codex",
         skill=None,
         gate=StageGate(gate),
         triggers=(StageTrigger.PR_OPENED,),
@@ -23,20 +23,9 @@ def make_normalized_stage(
     )
 
 
-def make_config(
-    auto_merge: bool | None = None,
-    sonar: bool | None = None,
-    require_resolved: bool | None = None,
-) -> dict:
+def make_config(require_resolved: bool | None = None) -> dict:
     """Build a minimal raw config dict for use in merge-policy tests."""
     config: dict = {}
-    if auto_merge is not None or sonar is not None:
-        modules: dict = {}
-        if auto_merge is not None:
-            modules["auto_merge"] = auto_merge
-        if sonar is not None:
-            modules["sonar"] = sonar
-        config["modules"] = modules
     if require_resolved is not None:
         config["merge"] = {"discussions": {"require_resolved": require_resolved}}
     return config

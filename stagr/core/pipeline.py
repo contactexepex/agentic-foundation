@@ -19,25 +19,34 @@ from __future__ import annotations
 
 from typing import Any
 
+from .backend_names import DEFAULT_BACKEND_BY_PROVIDER
 from .dag import build_and_validate_dag
 from .defaults import resolve_defaults
 from .enums import StageGate, StageKind, StageTrigger
-from .models import NormalizedStage
-from .normalize import expand_profile_defaults, filter_disabled_stages
-from ..render.constants import BACKEND_GENERIC, PROVIDER_TOOL
+from .models import ConfigError, NormalizedStage
+from .normalize import DEFAULT_PROFILE_NAME, expand_profile_defaults, filter_disabled_stages
 
 
 def _resolve_backend(stage: dict[str, Any]) -> str:
     """Return the backend string for a fully-resolved stage dict.
 
-    Uses the stage's explicit ``backend`` when set; otherwise derives it from
-    the ``PROVIDER_TOOL`` mapping.  Falls back to ``BACKEND_GENERIC`` when the
-    provider is absent from the mapping and no explicit backend is given.
+    Uses the stage's explicit ``backend`` when set; otherwise the provider's default backend
+    from ``DEFAULT_BACKEND_BY_PROVIDER``.
+
+    Raises:
+        ConfigError: when the stage pins no backend and its provider has no default backend.
     """
     if "backend" in stage:
         return str(stage["backend"])
-    provider: str | None = stage.get("provider")
-    return PROVIDER_TOOL.get(provider, BACKEND_GENERIC) if provider else BACKEND_GENERIC
+    provider: str = stage["provider"]
+    default_backend = DEFAULT_BACKEND_BY_PROVIDER.get(provider)
+    if default_backend is None:
+        raise ConfigError(
+            f"stage '{stage.get('id', '<unknown>')}': provider '{provider}' has no default backend; "
+            f"set the stage's backend explicitly (providers with a default: "
+            f"{sorted(DEFAULT_BACKEND_BY_PROVIDER)})"
+        )
+    return default_backend
 
 
 def _resolve_gate(stage: dict[str, Any]) -> StageGate:
@@ -108,33 +117,16 @@ def _resolve_stage_kind(raw_type: str | None, stage_id: str) -> StageKind:
         )
 
 
-def _extract_model_string(model_value: Any, stage_id: str) -> str | None:
+def _extract_model_string(model_value: Any) -> str | None:
     """Return a plain model string from a raw stage model value, or None.
 
-    A model value that is already a string is returned as-is.  A
-    ``modelBinding`` dict without ``tiers`` returns its ``default`` string.
-
-    A binding that contains ``tiers`` is NOT silently collapsed: ``resolve_defaults``
-    (#181) deliberately preserves such bindings so a downstream tier-selection step
-    can choose the right model string.  ``NormalizedStage.model`` is ``str | None``
-    and cannot represent an unresolved tier binding, so encountering one here means
-    the pipeline was invoked before tier-selection was applied.  A ``ValueError`` is
-    raised so the caller receives a clear signal rather than silently losing the
-    operator's tier configuration.
-
-    Raises:
-        ValueError: when ``model_value`` is a ``modelBinding`` dict containing a
-            ``tiers`` key (unresolved tier binding).
+    A model value that is already a string is returned as-is.  A ``modelBinding`` dict
+    returns its ``default`` string.  Anything else (or an empty string) is ``None``,
+    which means the backend decides.
     """
     if isinstance(model_value, str):
         return model_value or None
     if isinstance(model_value, dict):
-        if "tiers" in model_value:
-            raise ValueError(
-                f"stage '{stage_id}': model binding contains 'tiers' and cannot be "
-                "normalized to str|None — tier-selection must run before NormalizedStage "
-                "construction.  Resolve or remove the tier binding first."
-            )
         default = model_value.get("default")
         return default if isinstance(default, str) and default else None
     return None
@@ -170,8 +162,24 @@ def _stage_dict_to_normalized(stage: dict[str, Any]) -> NormalizedStage:
         gate=_resolve_gate(stage),
         triggers=_resolve_triggers(stage),
         dependencies=tuple(stage.get("depends_on") or []),
-        model=_extract_model_string(stage.get("model"), stage_id),
+        model=_extract_model_string(stage.get("model")),
     )
+
+
+def expand_active_stages(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the raw stage dicts that are active: profile expanded, disabled stages removed.
+
+    This is steps 1 and 2 of ``normalize_config``.  Static checks that work on raw stage
+    dicts (for example V-S06) use it so they see the same stage set the pipeline normalizes.
+
+    Raises:
+        ValueError: from ``expand_profile_defaults`` when the profile name is unrecognised,
+            a stage is missing its ``id``, or duplicate ids are present.
+    """
+    profile_name: str = config.get("profile") or DEFAULT_PROFILE_NAME
+    explicit_stages: list[dict[str, Any]] = list(config.get("stages") or [])
+    expanded_stages = expand_profile_defaults(profile_name, explicit_stages)
+    return filter_disabled_stages(expanded_stages)
 
 
 def normalize_config(config: dict[str, Any]) -> tuple[NormalizedStage, ...]:
@@ -209,12 +217,9 @@ def normalize_config(config: dict[str, Any]) -> tuple[NormalizedStage, ...]:
         StaticValidationError: from ``build_and_validate_dag`` when a dependency
             reference is unresolvable (V-S05) or a cycle is detected (V-S04).
     """
-    profile_name: str = config.get("profile") or "custom"
-    explicit_stages: list[dict[str, Any]] = list(config.get("stages") or [])
     defaults_cfg: dict[str, Any] | None = config.get("defaults")
 
-    expanded_stages = expand_profile_defaults(profile_name, explicit_stages)
-    active_stages = filter_disabled_stages(expanded_stages)
+    active_stages = expand_active_stages(config)
     resolved_stages = resolve_defaults(active_stages, defaults_cfg)
     ordered_stages = build_and_validate_dag(resolved_stages)
 

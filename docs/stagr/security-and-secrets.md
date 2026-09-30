@@ -18,8 +18,8 @@ Distinct machine principals stay isolated even though one team owns them:
 - **Fork PRs never drive the privileged automation** — the agent, review, and merge lanes run only
   for trusted `author_association` on same-repo branches, and a fork PR never reaches a **secret or a
   write/publisher/merge token**. (**Stated honestly:** the shipped `validate.yml` triggers on
-  `pull_request`, so it *does* run CI — checkout + `build.commands` — for a fork PR. That runs under
-  GitHub's **restricted fork token** with **no secrets**, but the fork's `build.commands` can read the
+  `pull_request`, so it *does* run CI — checkout + the repo's build commands — for a fork PR. That runs under
+  GitHub's **restricted fork token** with **no secrets**, but the fork's build commands can read the
   **read-scoped `GITHUB_TOKEN`** in that job; hardening the build against even the read token is a
   consideration. So "forks drive nothing" means the privileged lanes, not Validate/CI.)
 
@@ -36,7 +36,7 @@ scoped to the stage:
   agent's output cannot exercise a broad token directly.
 - No stage is granted a capability "just in case."
 
-**Current state [shipped], stated honestly — neither shipped agent lane is read-only today:**
+**Current state, stated honestly (this repository's hand-written workflows; Stagr does not render an implementer yet) — neither agent lane is read-only today:**
 
 - The **Claude implementer job** runs `claude-code-action` **with `contents: write` and
   `pull-requests: write`** on the same job — no buffered-output / separately-scoped apply step.
@@ -66,8 +66,7 @@ can push to the default branch or call the merge API** — the "work on a featur
   inclusion stays disabled unless explicitly justified.
 - **Org-scoped by default.** Keys live as **organization/environment secrets** shared to selected
   repos, so onboarding a repo needs no per-repo secret setup
-  ([onboarding-and-config.md](onboarding-and-config.md)). Non-secret provider metadata
-  (`base_url`, `api_version`, `deployment`) may live in config; credentials never do.
+  ([onboarding-and-config.md](onboarding-and-config.md)). Credentials never live in config.
 
 ## Execution stays on the user's side of the line
 

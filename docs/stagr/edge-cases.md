@@ -9,8 +9,8 @@ behavioural fixture with a stubbed platform API).
 
 - **Blocked** = merge is not possible; PR is not ready.
 - **Escalate** = stop automation, apply `human-merge`, notify, record a decision event.
-- **Ready** = all gate predicates pass; PR awaits human approval (or auto-merge if the module is
-  on).
+- **Ready** = all gate predicates pass; PR awaits human approval (or auto-merge, a **[target]**
+  lane).
 
 ## 1. Eligibility
 
@@ -21,7 +21,7 @@ behavioural fixture with a stubbed platform API).
 | Base is not the default branch | **Blocked** (out of the gate's scope) |
 | Untrusted author | Automation does not run; **Blocked** |
 | `human-merge` label present | Hard stop for the **auto-merge lane** only; does **not** block human-lane readiness (a human may still merge) |
-| PR changes a `merge.protected_paths` file (default `.github/workflows/**`, `.agentic/**`) | **Control-plane guard**: left for a human — never auto-merged |
+| PR changes a protected file (default `.github/workflows/**`, `.agentic/**`) | **Control-plane guard**: left for a human — never auto-merged |
 | Merge conflict (`mergeable=false`) | **Blocked** (fail-closed) |
 | Behind / not clean (`mergeable_state != clean`: behind, blocked, unstable, dirty) | **Blocked** |
 | Mergeability still computing (`mergeable=null`) | **Blocked** (fail-closed until GitHub reports `true`) |
@@ -37,7 +37,7 @@ behavioural fixture with a stubbed platform API).
 | Findings persist after the iteration cap | **Escalate** (stop looping) |
 | Fix reintroduces a prior finding (oscillation) | Circuit breaker trips → **Escalate** |
 | Review never returns / backend error | Fail-closed **Blocked**; retry within cap; then **Escalate** |
-| Code + security review would run concurrently | Security is **deferred** until code review converges (never concurrent) |
+| Code + security review would run concurrently | **[target]** Security is **deferred** until code review converges (never concurrent); this repository's hand-written workflows do this today, the `standard` profile leaves the stages independent |
 
 ## 3. Checks, statuses, and reruns
 
@@ -50,7 +50,7 @@ behavioural fixture with a stubbed platform API).
 | Old-head success, new head has no result | **Blocked** (SHA-bound) |
 | Same-named check from the **wrong app** | Not matched (name+app-id identity) → requirement unmet → **Blocked** |
 | PR deletes/renames `validate.yml` so no failing check exists | Trusted workflow-run check for the head is absent → **Blocked** |
-| Unrelated failing check-run not in the configured list | The gate's **separate check-run scan** catches it → **Blocked** (the combined commit status does **not** include Checks-API runs, so the check-run scan is what covers this; the list is not an allowlist) |
+| Unrelated failing check-run not in the required set | The gate's **separate check-run scan** catches it → **Blocked** (the combined commit status does **not** include Checks-API runs, so the check-run scan is what covers this; the required set is not an allowlist) |
 | Integration/perf/custom stage red | **Blocked** |
 | A stage hangs past its timeout | Times out → its check not green → **Blocked** → **Escalate** |
 
@@ -76,7 +76,7 @@ behavioural fixture with a stubbed platform API).
 | Attempt to reach a credential from an untrusted stage | Principal isolation + least privilege → no access |
 | Sentinel injected into PR title/body/branch/author | Must never reach the build/publish step or a credential (data-flow test) |
 
-## 6. Budgets & limits — **[target]** (budgets ship `enabled: false`; not enforced today)
+## 6. Budgets & limits — **[target]** (no budget keys exist; not enforced today)
 
 | Case | Behaviour **[target]** |
 |---|---|
@@ -97,17 +97,17 @@ behavioural fixture with a stubbed platform API).
 
 | Case | Behaviour |
 |---|---|
-| Invalid config | `validate_config()` fails at render time (schema → coherence → templating safety) — never renders a broken/unsafe workflow |
-| `${{ }}` injected into an operator-controlled field | Templating-safety validator rejects it |
-| Config targets an unsupported schema version | Rejected with a migration message (`doctor`) |
-| Required secret absent (by name) | `doctor` lists the **required secret names** but does **not** detect absence (no env probe **[target]**); an unconfigured secret passes `doctor` and fails only when the workflow runs — verifying existence is manual today. The model-consuming stage then fails loud rather than guessing |
+| Invalid config | `validate_config()` fails before rendering (schema → publisher block → profile → dependency refs and cycles → provider/backend resolution → skill files) — never renders from a broken config |
+| `${{ }}` injected into a secret-name or stage-id field | The schema pattern rejects it |
+| Config targets an unsupported schema version | Rejected by the schema (only `version: 2` is accepted) |
+| Required secret absent (by name) | Nothing checks that a named secret exists **[target]**: `stagr doctor` (planned, issue #203) will list the **required secret names**, but an environment probe is not planned yet. A missing secret fails only when the workflow runs — verifying existence is manual. The model-consuming stage then fails loud rather than guessing |
 | Unresolved model on a model-consuming backend | Fail loud; never guess a version (Codex supplies its own model, so the rule does not apply to it) |
 
 ## 9. Fully positive path
 
 | Case | Behaviour |
 |---|---|
-| Trusted same-repo PR; CI green; code review converged & clean; security + SAST clean; integration/perf/custom green; zero open threads; no changes requested — all on the current head | **Ready** → human approves and merges (or `auto_merge` module merges) → merge event + decision record emitted → CD/orchestrator pick it up |
+| Trusted same-repo PR; CI green; code review converged & clean; security + SAST clean; integration/perf/custom green; zero open threads; no changes requested — all on the current head | **Ready** → human approves and merges (or the auto-merge lane merges, **[target]**) → merge event + decision record emitted → CD/orchestrator pick it up |
 
 ## Test-coverage rule
 

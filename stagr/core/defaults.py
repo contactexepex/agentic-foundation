@@ -8,20 +8,15 @@ and ``model`` fields are resolved against ``defaults`` from the operator config.
 
 1. ``provider``: if the stage has no ``provider`` key, apply ``defaults.provider``.
 2. ``backend``: if the stage has no ``backend`` key, apply ``defaults.backend`` (when present).
-3. ``model``: if the stage has no ``model`` key, look up
-   ``defaults.models[resolved_provider]``.  If that binding contains ``tiers``,
-   the full binding is applied (deep-copied) so the downstream tier-selection step
-   can pick the right model string; otherwise its ``default`` string is applied.
-   If the stage already has a ``model`` key that is a ``modelBinding`` object
-   (per the config schema ``stage.model → modelBinding``), a binding that has only
-   a ``default`` key (no ``tiers``) is normalized to that plain string.  A binding
-   that contains ``tiers`` — whether or not it also has ``default`` — is preserved
-   unchanged so the downstream tier-selection step can use the full binding.
+3. ``model``: if the stage has no ``model`` key, apply the ``default`` string of
+   ``defaults.models[resolved_provider]``.  If the stage already has a ``model`` key that is a
+   ``modelBinding`` object (per the config schema ``stage.model → modelBinding``), it is
+   normalized to its ``default`` string.
 
 After resolution, every stage must have a non-empty ``provider``; stages that still
 lack one raise ``ConfigError``.  The absence of ``backend`` is **not** an error at
-this layer — per-provider backend defaults are registered in the BackendRenderer
-registry and applied in a later normalization step.
+this layer — the provider's default backend (``backend_names.DEFAULT_BACKEND_BY_PROVIDER``)
+is applied in a later normalization step.
 
 **Vocabulary layer:** operates in the raw M1 config vocabulary (``depends_on``, not
 ``dependencies``; string literals for gate values, not enum instances).
@@ -36,45 +31,28 @@ from typing import Any
 from .models import ConfigError
 
 
-def _resolve_model_binding(binding: dict[str, Any]) -> dict[str, Any] | str | None:
-    """Return the normalized value from a modelBinding dict.
-
-    A binding with ``tiers`` is returned unchanged for downstream tier-selection.
-    A binding with only ``default`` returns that string.  All other cases return ``None``.
-    """
-    if "tiers" in binding:
-        return binding
-    return binding.get("default")
-
-
 def _apply_model_field(
     resolved_stage: dict[str, Any],
     default_model_map: dict[str, Any],
 ) -> None:
     """Resolve the ``model`` field on a stage dict in-place.
 
-    When the stage has no ``model``, the provider-default binding is applied.
-    When the stage carries an explicit ``modelBinding`` dict, it is normalized:
-    a binding without ``tiers`` is collapsed to its ``default`` string; one with
-    ``tiers`` is left unchanged for the downstream tier-selection step.
+    When the stage has no ``model``, the provider's default model string is applied.
+    When the stage carries an explicit ``modelBinding`` dict, it is collapsed to its
+    ``default`` string.
     """
     if "model" not in resolved_stage:
         resolved_provider: str | None = resolved_stage.get("provider")
         if resolved_provider is None:
             return
-        provider_cfg: dict[str, Any] = default_model_map.get(resolved_provider) or {}
-        model_value = _resolve_model_binding(provider_cfg)
-        if model_value is None:
-            return
-        if isinstance(model_value, dict):
-            resolved_stage["model"] = copy.deepcopy(model_value)
-        else:
-            resolved_stage["model"] = model_value
+        provider_binding: dict[str, Any] = default_model_map.get(resolved_provider) or {}
+        default_model = provider_binding.get("default")
+        if default_model is not None:
+            resolved_stage["model"] = default_model
     elif isinstance(resolved_stage["model"], dict):
-        model_value = _resolve_model_binding(resolved_stage["model"])
-        if isinstance(model_value, str):
-            resolved_stage["model"] = model_value
-        # binding with tiers: preserve unchanged for downstream tier selection
+        default_model = resolved_stage["model"].get("default")
+        if isinstance(default_model, str):
+            resolved_stage["model"] = default_model
 
 
 def resolve_defaults(
@@ -89,8 +67,7 @@ def resolve_defaults(
       ``defaults_cfg.get("provider")``.
     - ``backend``: if the stage has no ``backend`` key, apply
       ``defaults_cfg.get("backend")``.
-    - ``model``: resolved via :func:`_apply_model_field` — see its docstring for the
-      tiers-preservation rules.
+    - ``model``: resolved via :func:`_apply_model_field`.
 
     A stage that explicitly sets a field keeps its own value; this function never
     overrides a field the operator declared (even if its value is ``None``).

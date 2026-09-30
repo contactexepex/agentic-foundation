@@ -81,7 +81,7 @@ build:
 | `install`, `build`, `lint`, `typecheck` | `build` | in this order; the first failing command fails the stage |
 | `install`, `test` | `unit-test` | stages share nothing, so it installs again; `test` must build what it needs |
 
-`build.commands.build` (compile or package) is new. Its default per preset:
+`build.commands.build` (compile or package) has a default per preset:
 
 | Preset | `build.commands.build` default |
 |---|---|
@@ -94,8 +94,8 @@ build:
 | `dotnet` | `dotnet build --no-restore` |
 | `custom` | none; the operator sets every command |
 
-An empty command is skipped. The `install`, `lint` and `test` defaults are the existing preset
-values.
+An empty command is skipped. Each preset also supplies its `install`, `lint`, `typecheck` and `test`
+defaults (work item A).
 
 Extra check stages use `stages:`:
 
@@ -195,7 +195,7 @@ Rules (each is a test):
 | E1 | The work unit never receives the publisher credential. Eligibility and publish hold it and never check out or run pull-request content. |
 | E2 | The work unit receives **no secrets**. Its repository token is read-only and is not stored in the checked-out workspace. |
 | E3 | The result is the platform's own outcome of the work unit — never an output, artifact, log line, comment or status the executed code could write. |
-| E4 | The job definition comes from the trusted base branch, so a pull request cannot rewrite the job that judges it in the same run. A pull request that changes `.agentic/**` or a generated workflow already needs a human (`merge.protected_paths`, `human-merge`). |
+| E4 | The job definition comes from the trusted base branch, so a pull request cannot rewrite the job that judges it in the same run. A change to `.agentic/**` or to a generated workflow therefore takes effect only after it is merged. |
 | E5 | Managed stages run only for authors in `TrustPolicy.trustedRoles` on same-repository branches. Fork pull requests never run them and therefore never pass them. |
 | E6 | The work unit has a timeout, runs on an ephemeral runner, renders no cache steps, and receives commands as data (environment variable or file), never spliced into script text. |
 | E7 | Every third-party action or image Stagr renders is pinned to an immutable identifier. |
@@ -258,7 +258,7 @@ the producer *starts* matters: a producer that re-runs a check after an earlier 
 the signal from `PASS` to `RUNNING` at the start of the re-run, not at its end. Because the job
 only reads and derives, running it again is always safe, so a missed event is corrected by the
 next run. SonarCloud is an observed stage
-like any other, and an absent result blocks; there is no `modules.sonar`.
+like any other, and an absent result blocks.
 
 ## 7. Merge gate
 
@@ -266,7 +266,7 @@ No new rule. The gate needs every blocking stage to be `COMPLETED` + `PASS` for 
 head, published by the Stagr publisher identity, plus zero unresolved review discussions. A
 blocking stage that is missing, `PENDING`, `RUNNING`, `COMPLETED` + `FAILED` or in state
 `FAILED` blocks the merge. Advisory stages are reported and ignored. Managed and observed stages
-are treated identically. The external-gate rule for `modules.sonar` is deleted.
+are treated identically.
 
 ## 8. Platform neutrality
 
@@ -335,11 +335,11 @@ These edits ship in the same pull request as this document, so no document contr
 | Document | Change |
 |---|---|
 | `00-overview.md` | List this document |
-| `01-neutral-config-contract.md` | `build:` is a recognized Stagr key; stage keys `commands`, `timeout_minutes`, `observe`; remove `modules.sonar` |
+| `01-neutral-config-contract.md` | `build:` is a recognized Stagr key; stage keys `commands`, `timeout_minutes`, `observe` |
 | `02-canonical-stage-model.md` | `NormalizedStage` carries an `executor`; dependency semantics (wait, no failure propagation); gate default; `standard` profile is the four-stage baseline |
 | `03-provider-backend-model.md` | Provider, backend and model belong to the agent executor only |
 | `04-render-time-architecture.md` | Phase 1 dispatches on the executor; new `InvocationKind` values `RUN_COMMANDS` and `READ_RESULT` |
-| `05-governance-and-trust.md` | Remove "External gates (V1)" and the merge-gate condition that uses it |
+| `05-governance-and-trust.md` | An external check is an observed stage; it needs no separate merge-gate condition |
 | `06-runtime-boundary.md` | A new attempt of a check stage may replace any result; reconciliation never does. `WORKFLOW_RESULT` is the work unit's outcome, `CHECK_RESULT` the observed result |
 | `07-validation.md` | New static check V-S15 for the config rules of section 2 |
 | `08-github-codex-mapping.md` | The review order is a declared dependency instead of a "bug"; a failed dependency makes a stage wait instead of fail |
@@ -389,11 +389,9 @@ Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline, and
   rule.
 - Test: fake-CLI cases for red, fixed, transient error and repeated wake-ups.
 
-**E. Observed stages and `modules.sonar` removal.**
+**E. Observed stages.**
 - Done when: an observed stage behaves exactly as section 6 and runs on pull request events,
-  the producer's created, re-requested and completed events and a schedule; `modules.sonar` and
-  `merge.required_status_checks` (the same purpose, already keyed by name and numeric App id) are
-  gone from the schema, the neutral policy code, the dogfood config and the docs; the GitHub
+  the producer's created, re-requested and completed events and a schedule; the GitHub
   renderer rejects a producer that is not a numeric App id.
 - Test: a vector per row of the section 6 table plus a wrong-producer case; a producer re-run
   after `PASS` turns the signal to `RUNNING` when the re-run starts; governance interop.

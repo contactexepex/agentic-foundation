@@ -6,7 +6,6 @@ def test_render_context_construction() -> None:
     """RenderContext constructs with all required fields; no StageResultSpec[] field."""
     from stagr.core.models import (
         DiscussionPolicy,
-        ExternalGate,
         FastPathPolicy,
         MergePolicy,
         NormalizedStage,
@@ -19,7 +18,6 @@ def test_render_context_construction() -> None:
     from stagr.core.enums import (
         AuthorRole,
         ForkPolicy,
-        MergeMode,
         StageGate,
         StageKind,
         StageTrigger,
@@ -42,7 +40,6 @@ def test_render_context_construction() -> None:
     )
     routing = RoutingPolicy(fast_path=None)
     merge = MergePolicy(
-        mode=MergeMode.AUTO,
         blocking_stage_ids=("review",),
         require_head_bound=True,
     )
@@ -65,13 +62,12 @@ def test_render_context_construction() -> None:
 def test_render_context_is_immutable() -> None:
     """RenderContext is frozen — mutation raises."""
     from stagr.core.models import MergePolicy, RenderContext, RoutingPolicy, TrustPolicy
-    from stagr.core.enums import AuthorRole, ForkPolicy, MergeMode
+    from stagr.core.enums import AuthorRole, ForkPolicy
 
     ctx = RenderContext(
         stages=(),
         routing_policy=RoutingPolicy(fast_path=None),
         merge_policy=MergePolicy(
-            mode=MergeMode.MANUAL,
             blocking_stage_ids=(),
             require_head_bound=True,
         ),

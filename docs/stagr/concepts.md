@@ -9,17 +9,16 @@ leans on, plus the one genuinely new concept — the **agent-backend seam**.
 
 A **stage** is one unit of the dev lane, bound to:
 
-- a **type** — one of the contract's accepted values **[shipped]**: `plan`, `implement`,
-  `security`, `test`, `integration-test`, `review`, `docs`, `release`, `custom`. The dev lane uses
-  `implement`, `review`, `security`, `test`, `integration-test`, and `custom`. There is **no
-  `code-review`/`security-review`/`performance-test` type**: the friendly name is the stage **`id`**
-  (e.g. an `id: code-review` stage of `type: review`, an `id: security-review` stage of
-  `type: security`), and performance testing is a `test` or `custom` stage. This doc uses the
-  `id`-style names in prose; the `type` is always one of the values above.
+- a **type** — one of the contract's accepted values **[shipped]**: `implement`, `review`,
+  `security`, `build`, `test`, `deploy`, `custom`. The dev lane uses `implement`, `review`,
+  `security`, `build`, `test`, and `custom`. There is **no
+  `code-review`/`security-review`/`integration-test`/`performance-test` type**: the friendly name is
+  the stage **`id`** (e.g. an `id: code-review` stage of `type: review`, an `id: security-review`
+  stage of `type: security`), and integration or performance testing is a `test` or `custom` stage.
+  This doc uses the `id`-style names in prose; the `type` is always one of the values above.
 - a **provider + model** (the knob; resolved most-specific-first — see `ARCHITECTURE.md` §4),
 - a **backend** (the executor; see the seam below),
-- one or more **triggers** (issue label, PR opened/updated, comment command, push, schedule,
-  manual dispatch),
+- one or more **triggers** **[shipped]**: `pr_opened`, `pr_updated`, `issue_labeled`, `manual`,
 - a **gate** (see below),
 - **dependencies** (`depends_on`) that define the graph edges and therefore the order.
 
@@ -32,8 +31,7 @@ Every stage is fully described by *when it runs* (trigger) and *what its result 
 This keeps one generic abstraction for all stage kinds:
 
 - **Trigger** — the event that starts the stage. A PR-centric stage triggers on
-  `pull_request` events; a story-centric stage triggers on an issue label; a sweep triggers on
-  schedule.
+  `pull_request` events; a story-centric stage triggers on an issue label.
 - **Gate** — how the stage's outcome affects the merge:
   - **advisory** — emits **no required status check** of its own, so its outcome never adds a merge
     requirement. It is *not* a guarantee of "cannot affect readiness": an advisory **review** can
@@ -50,25 +48,24 @@ This keeps one generic abstraction for all stage kinds:
 A **backend** is the executor that actually runs a stage's agent. stagr derives it from the
 provider and lets a stage pin or swap it **by name** — the *agent-backend seam*.
 
-`backend.name` is a **closed enum [shipped]**: `generic`, `claude-code-action`, `openhands`,
-`pr-agent`, `codex`, `swe-agent`, `custom`, `claude-code-cli`.
+`backend` is a plain string **[shipped]**. Omit it and the provider picks the backend
+(`anthropic` → `claude-code-action`, `openai` → `codex`). Validation (V-S07) rejects a backend that
+has no registered backend renderer.
 
 | Backend | Wraps | Harness kind | Status |
 |---|---|---|---|
-| `claude-code-action` | Anthropic Claude Code | GitHub-native (Actions) | **[shipped]** — implement |
+| `claude-code-action` | Anthropic Claude Code | GitHub-native (Actions) | backend renderer **[shipped]**; the GitHub renderer cannot render an `implement` stage yet (validation V-S08 rejects it) **[target]** |
 | `codex` | OpenAI Codex | GitHub-native (Actions + Codex app) | **[shipped]** — code review, security review |
-| `generic`, `openhands`, `pr-agent`, `swe-agent`, `custom` | provider-agnostic runner / OSS agents / any action | varies | enum-accepted for forward-compat, **not rendered [target]** |
-| `claude-code-cli` | Claude Code CLI-in-runner adapter | CLI-in-runner | enum-accepted (follows the `*-cli` pattern, mirrors `claude-code-action`), **not rendered [Phase 3 target]** |
+| `openhands`, `pr-agent`, `swe-agent`, provider-agnostic runners | OSS agents / any action | varies | **not available [target]** — no backend renderer yet |
+| `claude-code-cli` | Claude Code CLI-in-runner adapter | CLI-in-runner | **not available [Phase 3 target]** |
 
-The **seam pattern** exists now (a stage names a backend; the enum + `provider→tool` derivation is
-in the schema). But because the enum is **closed**, adding a cloud/CLI backend later is a **new
-adapter template *plus* adding its name to the `backend.name` enum — a backward-compatible schema
-addition, never a renderer rewrite** (this is the "a new backend is a renderer, never a rewrite"
-charter principle, honest about the small schema step it needs). The seam also carries a hard
-invariant **[target for the implementer]**: a backend should always run on the user's side of the
-line — in their CI runner, or by dispatching to a provider's cloud — never inside a stagr-hosted
-process. See [security-and-secrets.md](security-and-secrets.md) for where the shipped implementer
-does not yet meet the isolation half of this.
+The **seam pattern** exists now (a stage names a backend; the `provider→backend` default is in the
+core). Adding a cloud/CLI backend later is **one new backend renderer registered in the core — never
+a renderer rewrite** (this is the "a new backend is a renderer, never a rewrite" charter principle).
+The seam also carries a hard invariant **[target for the implementer]**: a backend should always run
+on the user's side of the line — in their CI runner, or by dispatching to a provider's cloud — never
+inside a stagr-hosted process. See [security-and-secrets.md](security-and-secrets.md) for where the
+hand-written implementer does not yet meet the isolation half of this.
 
 > The demo binds `implement`→`claude-code-action` and the reviews→`codex`. That is the
 > **default reference binding, not an identity**: stagr is not Codex or Claude; it is the seam
@@ -80,9 +77,10 @@ A merged PR reaches the default branch through exactly one of two lanes:
 
 - **Human lane (default).** The gate makes the PR *ready*; a human performs the merge. This is
   the default for every repo.
-- **Foundation / auto-merge lane (opt-in module).** A fail-closed gate merges automatically once
-  the PR is provably ready. Off by default; a team enables the `auto_merge` module and configures
-  its own rules. A `human-merge` label is always a hard stop, even with auto-merge on.
+- **Foundation / auto-merge lane [target].** A fail-closed gate merges automatically once
+  the PR is provably ready. Stagr does not provide it today; this repository's own hand-written
+  workflow (`auto-merge-foundation-prs.yml`) does it for this repository only. A `human-merge` label
+  is always a hard stop, even with auto-merge on.
 
 See [governance-and-limits.md](governance-and-limits.md) for the lane rules and
 [trust-and-correctness.md](trust-and-correctness.md) for what "provably ready" means.

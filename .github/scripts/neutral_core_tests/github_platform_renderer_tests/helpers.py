@@ -6,7 +6,6 @@ from stagr.core.enums import (
     ForkPolicy,
     GateDispositionKind,
     InvocationKind,
-    MergeMode,
     StageGate,
     StageKind,
     StageTrigger,
@@ -82,7 +81,6 @@ def build_render_context(stage: NormalizedStage) -> RenderContext:
         stages=(stage,),
         routing_policy=RoutingPolicy(fast_path=None),
         merge_policy=MergePolicy(
-            mode=MergeMode.AUTO,
             blocking_stage_ids=(stage.id,),
             require_head_bound=True,
             discussion_policy=DiscussionPolicy(require_resolved=False),

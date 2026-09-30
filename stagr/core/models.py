@@ -18,7 +18,6 @@ from .enums import (
     ForkPolicy,
     GateDispositionKind,
     InvocationKind,
-    MergeMode,
     StageGate,
     StageKind,
     StageResultConclusion,
@@ -383,28 +382,12 @@ class DiscussionPolicy:
 
 
 @dataclass(frozen=True)
-class ExternalGate:
-    """V1 external gate: an observed check run not managed by Stagr.
-
-    V1 semantics: when the check run is present on the current head SHA, it
-    must be in the required terminal conclusion; when absent, it is tolerated
-    (fail-open). Provenance verification is V2 scope.
-    """
-
-    check_run_name: str
-    required_presence: str    # "when_present" (V1 fixed)
-    required_conclusion: str  # "success" (V1 fixed)
-
-
-@dataclass(frozen=True)
 class MergePolicy:
     """Merge eligibility requirements. Derived at normalization time; never re-derived at run time."""
 
-    mode: MergeMode
     blocking_stage_ids: tuple[str, ...]
     require_head_bound: bool              # always True in V1
     discussion_policy: DiscussionPolicy | None = None
-    external_gates: tuple[ExternalGate, ...] = ()
 
 
 # ---------------------------------------------------------------------------

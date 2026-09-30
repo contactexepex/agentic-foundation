@@ -110,7 +110,7 @@ def test_publisher_schema_rejects_unknown_keys() -> None:
 
 
 def test_publisher_schema_absent_block_stays_valid() -> None:
-    """A config without platform.publisher (the legacy lane) still validates."""
+    """A config without platform.publisher still validates against the schema (the block is optional)."""
     assert not _schema_errors(_config_without_publisher())
 
 
@@ -222,54 +222,54 @@ def test_derive_publisher_config_raises_for_unknown_key_and_non_mapping() -> Non
 
 
 # ---------------------------------------------------------------------------
-# Front door (render.validate_config) and shipped configs
+# Front door (validate_config) and shipped configs
 # ---------------------------------------------------------------------------
 
 def test_publisher_front_door_accepts_valid_and_absent_block() -> None:
-    """render.validate_config accepts a valid publisher block and a config with none."""
-    from stagr import render
+    """validate_config accepts a valid publisher block and a config with none."""
+    from stagr.core.config_validation import validate_config
 
-    render.validate_config(_config_with_publisher({"app_id": 99001}))
-    render.validate_config(_config_without_publisher())
+    validate_config(_config_with_publisher({"app_id": 99001}))
+    validate_config(_config_without_publisher())
 
 
 def test_publisher_front_door_rejects_what_schema_misses() -> None:
     """A trailing-newline secret name passes the schema's `$` anchor but is rejected at the front door."""
-    from stagr import render
+    from stagr.core.config_validation import validate_config
+    from stagr.core.models import ConfigError
 
     for publisher in ({"app_id": 1, "private_key_secret": "STAGR_KEY\n"}, {"app_id": "1\n"}):
         assert not _schema_errors(_config_with_publisher(publisher)), "documents the schema gap"
         try:
-            render.validate_config(_config_with_publisher(publisher))
-        except render.RenderError as error:
+            validate_config(_config_with_publisher(publisher))
+        except ConfigError as error:
             assert "platform.publisher" in str(error), str(error)
         else:
-            raise AssertionError(f"expected RenderError for {publisher!r}")
+            raise AssertionError(f"expected ConfigError for {publisher!r}")
 
 
 def test_publisher_front_door_reports_schema_violation() -> None:
-    """A key-looking secret value is rejected with a RenderError pointing at the offending field."""
-    from stagr import render
+    """A key-looking secret value is rejected with a ConfigSchemaError pointing at the offending field."""
+    from stagr.core.config_validation import validate_config
+    from stagr.core.errors import ConfigSchemaError
 
     try:
-        render.validate_config(_config_with_publisher({"app_id": 1, "private_key_secret": "-----BEGIN KEY-----"}))
-    except render.RenderError as error:
+        validate_config(_config_with_publisher({"app_id": 1, "private_key_secret": "-----BEGIN KEY-----"}))
+    except ConfigSchemaError as error:
         assert "platform/publisher/private_key_secret" in str(error), str(error)
         return
-    raise AssertionError("expected RenderError")
+    raise AssertionError("expected ConfigSchemaError")
 
 
-def test_publisher_shipped_configs_still_validate() -> None:
-    """The dogfood config and the scaffold template validate and carry no publisher block."""
-    from stagr import render
+def test_publisher_shipped_config_still_validates() -> None:
+    """The dogfood config validates through the front door and carries no publisher block."""
+    from stagr.core.config_validation import validate_config
 
     dogfood_path = Path(REPO_ROOT) / ".agentic" / "config.yml"
-    template_path = Path(REPO_ROOT) / "stagr" / "templates" / "config" / "agentic.config.yml.tmpl"
-    for config_path in (dogfood_path, template_path):
-        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        assert "publisher" not in config["platform"], f"{config_path.name} must not invent an App ID"
-        assert not _schema_errors(config), f"{config_path.name} must validate against the schema"
-    render.validate_config(yaml.safe_load(dogfood_path.read_text(encoding="utf-8")), project_root=Path(REPO_ROOT))
+    config = yaml.safe_load(dogfood_path.read_text(encoding="utf-8"))
+    assert "publisher" not in config["platform"], "the dogfood config must not invent an App ID"
+    assert not _schema_errors(config), "the dogfood config must validate against the schema"
+    validate_config(config, project_root=Path(REPO_ROOT))
 
 
 PUBLISHER_CONFIG_TESTS = [
@@ -291,5 +291,5 @@ PUBLISHER_CONFIG_TESTS = [
     test_publisher_front_door_accepts_valid_and_absent_block,
     test_publisher_front_door_rejects_what_schema_misses,
     test_publisher_front_door_reports_schema_violation,
-    test_publisher_shipped_configs_still_validate,
+    test_publisher_shipped_config_still_validates,
 ]

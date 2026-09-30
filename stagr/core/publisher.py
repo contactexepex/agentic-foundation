@@ -9,9 +9,8 @@ The publisher is the Stagr GitHub App that publishes Stagr-owned platform signal
   holding the App private key (never the key itself). Defaults to
   ``STAGR_APP_PRIVATE_KEY``.
 
-The whole block is optional in the config schema: a config without it keeps the
-legacy lane working unchanged. ``derive_publisher_config`` is called only by code
-that needs the publisher, and raises ``ConfigError`` when it is missing or invalid.
+The whole block is optional in the config schema. ``derive_publisher_config`` is called only by
+code that needs the publisher, and raises ``ConfigError`` when it is missing or invalid.
 """
 from __future__ import annotations
 

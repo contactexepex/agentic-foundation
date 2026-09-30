@@ -55,12 +55,11 @@ def test_filter_disabled_stages_does_not_mutate_input() -> None:
 
 
 def test_filter_disabled_stages_dogfood_config() -> None:
-    """The implement-codex stage (enabled: false) is excluded from the dogfood config.
+    """The dogfood config's active stages are exactly its two enabled review stages.
 
-    This test exercises the real pipeline entry point (``expand_stages``) rather
-    than calling ``filter_disabled_stages`` directly, so it validates the actual
-    call path used at render time: profile expansion → merge → disabled-stage
-    removal → backend defaults.
+    This test exercises the real pipeline entry point (``expand_active_stages``) rather
+    than calling ``filter_disabled_stages`` directly, so it validates the actual call path:
+    profile expansion → merge → disabled-stage removal.
     """
     from pathlib import Path
 
@@ -73,29 +72,24 @@ def test_filter_disabled_stages_dogfood_config() -> None:
     with config_path.open() as config_file:
         raw_cfg = yaml.safe_load(config_file)
 
-    from stagr.render.stages import expand_stages
+    from stagr.core.pipeline import expand_active_stages
 
-    active_stages = expand_stages(raw_cfg)
-
-    active_ids = {stage["id"] for stage in active_stages}
-    assert "implement-codex" not in active_ids, (
-        "implement-codex has enabled: false and must be excluded from the active stage set"
+    active_ids = [stage["id"] for stage in expand_active_stages(raw_cfg)]
+    assert active_ids == ["review", "security"], (
+        f"dogfood config must declare exactly the review and security stages, got {active_ids}"
     )
-    assert "implement-claude" in active_ids
-    assert "review" in active_ids
 
 
 def test_filter_disabled_stages_disables_profile_provided_stage() -> None:
     """An operator enabled:false override correctly suppresses a profile-provided stage.
 
-    The render-layer standard profile includes a ``security`` stage.  When the
-    operator config adds ``{id: security, type: security, enabled: false}``, the
-    merged entry has ``enabled: false`` and ``filter_disabled_stages`` (called
-    inside ``expand_stages`` after merging) must exclude it.  This demonstrates
-    Option B semantics: filtering runs AFTER profile expansion and override
+    The standard profile includes a ``security`` stage.  When the operator config adds
+    ``{id: security, type: security, enabled: false}``, the merged entry has
+    ``enabled: false`` and ``filter_disabled_stages`` (called inside ``expand_active_stages``
+    after merging) must exclude it.  Filtering runs AFTER profile expansion and override
     merging, so the operator can suppress any profile-provided stage by id.
     """
-    from stagr.render.stages import expand_stages
+    from stagr.core.pipeline import expand_active_stages
 
     cfg: dict = {
         "profile": "standard",
@@ -103,13 +97,12 @@ def test_filter_disabled_stages_disables_profile_provided_stage() -> None:
             {"id": "security", "type": "security", "enabled": False},
         ],
     }
-    active_stages = expand_stages(cfg)
+    active_stages = expand_active_stages(cfg)
 
     active_ids = {stage["id"] for stage in active_stages}
     assert "security" not in active_ids, (
         "security stage has enabled: false after operator override merge and must be excluded"
     )
-    assert "implement" in active_ids
     assert "review" in active_ids
 
 

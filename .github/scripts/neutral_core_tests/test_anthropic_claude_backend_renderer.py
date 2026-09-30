@@ -146,7 +146,7 @@ def test_anthropic_renderer_protocol_conformance() -> None:
 
 def test_anthropic_renderer_provider_and_backend() -> None:
     """renderer.provider == 'anthropic' and renderer.backend matches the dogfood config value."""
-    from stagr.render.constants import BACKEND_CLAUDE_ACTION
+    from stagr.core.backend_names import BACKEND_CLAUDE_CODE_ACTION as BACKEND_CLAUDE_ACTION
 
     renderer = _build_renderer()
 

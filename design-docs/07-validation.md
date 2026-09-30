@@ -28,15 +28,21 @@ that fails `plan` also fails `apply`.
 
 Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifacts.
 
+`validate_config` in `stagr/core/config_validation.py` is the front door for V-S01 to V-S06:
+schema, publisher block, profile, dependency references, cycles, and skill files. Today the
+only CLI command is `stagr help`; `stagr plan` and `stagr apply` (issues #201, #202) and
+`stagr doctor` (issue #203) are planned and will call this validation. The repository's own CI
+check is `python .github/scripts/validate_config.py`.
+
 ### V-S01 — Config schema validity
 
 All required fields are present; all field values are recognized enum members or valid
 strings. Unrecognized top-level keys are silently ignored — operators may co-locate
 non-Stagr configuration (e.g., `deploy:`) alongside the Stagr contract in
 `.agentic/config.yml`. Stagr validates only its own recognized key namespace: `version`,
-`profile`, `platform`, `defaults`, `routing`, `modules`, `stages`, `providers`, and `build`.
-Any other top-level key is not read, not validated, and does not produce an error or
-warning. See `01-neutral-config-contract.md` for the full list of recognized keys.
+`profile`, `platform`, `defaults`, `providers`, `stages`, `routing`, `merge` and, once
+`09-check-stages.md` is built, `build`. Any other top-level key is not read, not validated,
+and does not produce an error or warning. Unknown keys inside a Stagr key are errors. See `01-neutral-config-contract.md` for the full list of recognized keys.
 
 ### V-S02 — Schema version support
 
@@ -79,15 +85,11 @@ When `routing.fast_path.enabled: true`, the stage set declared for each route
 (`stages.fast` and `stages.normal`) must be dependency-closed: for every stage S in the
 set, all of S's transitive dependencies are also in the set.
 
-### V-S10 — MergePolicy non-empty blocking stages
-
-When `modules.auto_merge: true`, `MergePolicy.blockingStageIds` must be non-empty. A
-merge gate with no blocking stages is trivially satisfied and almost certainly a
-misconfiguration.
-
 ### V-S11 — Routing policy consistency
 
-When `routing.fast_path.enabled: false`, the presence of `match.paths` or `stages` keys
+To be re-implemented on the neutral pipeline (with `stagr plan` and `stagr apply`).
+
+When `routing.fast_path.enabled: false`, the presence of `globs` or `stages` keys
 is **allowed but produces a warning** ("dormant route configuration — fast_path is
 disabled; routing keys are present but will not be evaluated"). This is not a static
 error. Operators may intentionally keep a routing config dormant (e.g., preparing for
@@ -95,6 +97,8 @@ future activation without enabling it yet), and treating it as an error would fo
 unnecessary edits when toggling `enabled`.
 
 ### V-S12 — Secret alias resolution
+
+To be re-implemented on the neutral pipeline (with `stagr plan` and `stagr apply`).
 
 All `SecretRef.alias` values declared by the BackendRenderer for each stage are
 resolvable: either an explicit mapping exists in provider configuration, or the alias
@@ -158,6 +162,12 @@ will cause every PR to be skipped.
 ---
 
 ## Notes
+
+**V-S10 is obsolete.** It guarded an auto-merge setting that the schema does not have. There is
+no check with that number.
+
+**V-S11 and V-S12 are not implemented yet.** They will be built on the neutral pipeline in the
+`stagr plan` and `stagr apply` work.
 
 **V-S13 (NON_BLOCKING dependency warning) has been removed.** `NON_BLOCKING` controls
 merge-gate participation, not what conclusion a stage can produce. A `NON_BLOCKING`

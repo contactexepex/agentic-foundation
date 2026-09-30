@@ -94,9 +94,8 @@ def test_codex_renderer_security_stage_evidence_success_condition_is_match_found
 def test_codex_renderer_security_stage_evidence_selector_is_verified_marker() -> None:
     """SECURITY stage EvidenceSpec.selector is the compound completed-marker expression.
 
-    Empirically grounded: auto-merge.yml.tmpl and gate_behavior.py both require the
-    marker prefix AND "status":"completed" — a marker with status="running" must not
-    satisfy MATCH_FOUND (gate_behavior.py: "gate: a security review still running blocks").
+    The selector requires the marker prefix AND "status":"completed" — a marker with
+    status="running" must not satisfy MATCH_FOUND.
     The compound selector encodes both requirements: marker prefix + status=completed.
     """
     renderer = build_renderer()

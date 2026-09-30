@@ -42,8 +42,7 @@ No mature, high-contributor OSS project provides a **drop-in, config-driven cont
 - binds **any provider/model per stage** (mix vendors and frontier models freely);
 - **composes** the agents above as pluggable **backends** instead of reinventing them;
 - renders to **any SCM platform** (GitHub/GitLab/Azure DevOps/…);
-- adds **deterministic model tiering**, **fast-path routing**, a **fail-closed auto-merge gate**,
-  **layered org→team→repo config**, **budgets**, **guardrails**, and **observability** — all
+- adds **deterministic fast-path routing** and a **fail-closed merge gate** — both
   configurable, nothing hardcoded.
 
 The nearest commercial analog to the layered-governance idea is **Qodo's Rule System (beta)** —

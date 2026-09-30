@@ -7,9 +7,9 @@ guarantees in the pipeline — not advice an agent may choose to follow.
 ## Budgets & cost governance
 
 Agents re-review on every push and fix in a loop; unbounded, that burns tokens and money
-(providers are increasingly usage-billed). The contract carries a `budgets` block **[shipped]**, but
-it is **`enabled: false` by default** — so today an unconfigured repo has **no enforced cap**. The
-enforcement below is **[target]** ([roadmap.md](roadmap.md)):
+(providers are increasingly usage-billed). The contract has **no budget keys** today, so an
+unconfigured repo has **no enforced cap**. The enforcement below is **[target]**
+([roadmap.md](roadmap.md)):
 
 - **Per-PR review-iteration cap** **[target]** — a maximum number of review→fix cycles per PR.
 - **Cost ceiling** **[target]** — an optional per-PR (and per-stage) budget; exceeding it stops the
@@ -19,8 +19,8 @@ enforcement below is **[target]** ([roadmap.md](roadmap.md)):
 
 **Target contract:** budgets are honoured by the rendered wiring so a stage cannot silently exceed
 its budget, and where a limit is not configured a **safe finite default** applies (never
-"unlimited"). **Today:** budgets are opt-in and default-disabled — operators must **not** assume
-paid calls are bounded until the finite-default enforcement lands. Closing this is a Phase-1
+"unlimited"). **Today:** nothing bounds paid calls — operators must **not** assume they are bounded
+until the finite-default enforcement lands. Closing this is a Phase-1
 roadmap item.
 
 ## Failure, stuck, and escalation semantics
@@ -49,28 +49,29 @@ reaches the default branch through exactly one lane:
 ### Human lane — the default
 
 Human approval is **required** to merge, and stagr's job is to make the PR *provably ready* and then
-stop. **Important dependency, stated plainly:** with `modules.auto_merge` disabled, **stagr renders
-no merge-gate workflow and provisions no branch protection** — so "cannot merge without approval /
+stop. **Important dependency, stated plainly:** **stagr does not merge and provisions no branch
+protection** — so "cannot merge without approval /
 bypass is impossible" is **only true if an external ruleset enforces it** (required checks + required
 approvals on the default branch). On a repo without that ruleset, an authorized user could merge
 without satisfying predicates 1–7. Provisioning and verifying that ruleset is therefore an
 **onboarding invariant** ([onboarding-and-config.md](onboarding-and-config.md)), not something the
 shipped human lane guarantees on its own.
 
-### Auto-merge lane — opt-in module only
+### Auto-merge lane — opt-in, **[target]**
 
-A team may enable the `auto_merge` module to let a fail-closed gate merge automatically once the
-PR is provably ready — **bypassing human approval by explicit configuration**. Rules:
+Stagr does not merge today, and the contract has no auto-merge keys. The design lets a team opt in
+to a fail-closed gate that merges automatically once the PR is provably ready — **bypassing human
+approval by explicit configuration**. (This repository's own hand-written workflow,
+`auto-merge-foundation-prs.yml`, does this for this repository only; it is not a Stagr feature.)
+Rules of the design:
 
-- **Off by default.** Nothing auto-merges unless a team turns the module on.
-- **Configurable controls.** **[shipped]** today the `auto_merge` module exposes the module toggle,
-  the **merge method**, **protected paths**, and the **required-checks** set. Richer
-  **selectors** (auto-merge only for certain branches / labels / authors / conditions) are
-  **[target]** — the contract has no fields for them yet ([roadmap.md](roadmap.md)); do not assume a
-  labelled/branch-scoped auto-merge trigger is expressible today.
+- **Off by default.** Nothing auto-merges unless a team turns it on.
+- **Configurable controls [target].** The merge method, protected paths, and selectors (auto-merge
+  only for certain branches / labels / authors / conditions) are not in the contract yet
+  ([roadmap.md](roadmap.md)).
 - **`human-merge` is always a hard stop** — even with auto-merge on, the label blocks the
   automatic merge.
-- **Control-plane guard** — a PR that changes a `merge.protected_paths` file (default
+- **Control-plane guard** — a PR that changes a protected file (by default
   `.github/workflows/**` and `.agentic/**`) is never auto-merged; it is left for a human, so the gate
   and toolkit config cannot be changed by an auto-merged PR.
 - **Same fail-closed gate.** Auto-merge uses the identical readiness predicate as the human lane

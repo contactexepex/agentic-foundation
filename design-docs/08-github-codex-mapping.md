@@ -29,8 +29,8 @@ and defines what the correct implementation looks like.
 | `TrustPolicy.trustedRoles` | `author_association` ∈ `["OWNER","MEMBER","COLLABORATOR"]` |
 | `TrustPolicy.requireSameRepo` | `head.repo.full_name == GITHUB_REPOSITORY` check |
 | `TrustPolicy.humanMergeLabel` | `human-merge` label |
-| `MergePolicy.mode = AUTO` | Auto-merge via `auto-merge-foundation-prs.yml` |
-| `MergePolicy.mode = MANUAL` | `human-merge` label present → gate stops |
+| Foundation lane (merge when all gate conditions hold) | Auto-merge via `auto-merge-foundation-prs.yml` |
+| Human-gated lane | `human-merge` label present → gate stops |
 
 ---
 
@@ -60,9 +60,10 @@ stages:
     depends_on: [review]      # starts after the code review has passed
 ```
 
-The `standard` profile declares this dependency (`09-check-stages.md`, section 10). It is
-this repository's contract (`AGENTS.md`, `CLAUDE.md`: code review and security review run in
-sequence) written into the config, where the renderer can enforce it.
+The target `standard` profile declares this dependency (`09-check-stages.md`, section 10), so
+the renderer can enforce it. Until then the `standard` profile and this repository's own
+`.agentic/config.yml` leave the two reviews independent; the "in sequence" rule of `AGENTS.md`
+and `CLAUDE.md` applies only to this repository's hand-written review process.
 
 ### What the current implementation does
 
@@ -317,8 +318,10 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   reopen, `ready_for_review`, or a manual re-run of the workflow). A new push starts a new head
   and is invoked normally. This narrows the recovery rule in `06-runtime-boundary.md`, which
   allows the sweep to re-post.
-- **Other invocation kinds.** Only `PR_COMMENT` is posted by the runtime. `CI_COMPONENT`,
-  `API_CALL` and `WORKFLOW_DISPATCH` keep placeholder steps that invoke nothing, as before.
+- **Other invocation kinds.** The GitHub renderer renders only `PR_COMMENT`. A backend whose plan
+  needs another kind (`CI_COMPONENT`, `API_CALL`, `WORKFLOW_DISPATCH`) is rejected by V-S08
+  (`07-validation.md`). The Claude Code implement backend uses `CI_COMPONENT`, so `implement`
+  stages cannot be rendered on GitHub yet.
 - **Stagr App permissions** used at run time: Checks (write), Pull requests (read) and Issues
   (read).
 

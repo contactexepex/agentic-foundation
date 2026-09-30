@@ -17,12 +17,11 @@ from neutral_core_tests.merge_test_helpers import (
 # ---------------------------------------------------------------------------
 
 def test_merge_policy_dogfood_config() -> None:
-    """Dogfood config + blocking stages → blockingStageIds == {'review', 'security'}, mode == AUTO."""
+    """Dogfood config + its two blocking stages → blockingStageIds == {'review', 'security'}."""
     from pathlib import Path
     import yaml  # noqa: PLC0415
     from neutral_core_tests.harness import REPO_ROOT
     from stagr.core.policy import derive_merge_policy, derive_trust_policy
-    from stagr.core.enums import MergeMode
 
     config_path = Path(REPO_ROOT) / ".agentic" / "config.yml"
     with config_path.open() as config_file:
@@ -32,8 +31,7 @@ def test_merge_policy_dogfood_config() -> None:
 
     review_stage = make_normalized_stage("review", gate="blocking")
     security_stage = make_normalized_stage("security", gate="blocking")
-    implement_stage = make_normalized_stage("implement-claude", gate="non_blocking")
-    normalized_stages = (implement_stage, review_stage, security_stage)
+    normalized_stages = (review_stage, security_stage)
 
     policy = derive_merge_policy(raw_config, normalized_stages, trust_policy)
 
@@ -43,17 +41,6 @@ def test_merge_policy_dogfood_config() -> None:
     )
     assert len(policy.blocking_stage_ids) == 2, (
         f"Expected exactly 2 blocking stage ids, got {policy.blocking_stage_ids}"
-    )
-    assert policy.mode == MergeMode.AUTO, (
-        f"Dogfood config has auto_merge: true, expected AUTO, got {policy.mode}"
-    )
-    assert len(policy.external_gates) == 1, (
-        f"Dogfood config has sonar: true; expected exactly 1 external gate, "
-        f"got {len(policy.external_gates)}"
-    )
-    assert policy.external_gates[0].check_run_name == "sonarqubecloud", (
-        f"Expected dogfood external gate check_run_name='sonarqubecloud', "
-        f"got {policy.external_gates[0].check_run_name!r}"
     )
 
 
@@ -67,7 +54,7 @@ def test_merge_policy_blocking_stages_included() -> None:
 
     blocking_stage = make_normalized_stage("check", gate="blocking")
     policy = derive_merge_policy(
-        make_config(auto_merge=False),
+        make_config(),
         (blocking_stage,),
         make_trust_policy(),
     )
@@ -83,7 +70,7 @@ def test_merge_policy_non_blocking_excluded() -> None:
 
     non_blocking_stage = make_normalized_stage("implement", gate="non_blocking")
     policy = derive_merge_policy(
-        make_config(auto_merge=False),
+        make_config(),
         (non_blocking_stage,),
         make_trust_policy(),
     )
@@ -101,7 +88,7 @@ def test_merge_policy_empty_stages_produces_empty_blocking_ids() -> None:
     from stagr.core.policy import derive_merge_policy
 
     policy = derive_merge_policy(
-        make_config(auto_merge=False),
+        make_config(),
         (),
         make_trust_policy(),
     )
@@ -121,7 +108,7 @@ def test_merge_policy_mixed_gates_only_blocking_included() -> None:
     normalized_stages = (blocking_a, non_blocking, blocking_b)
 
     policy = derive_merge_policy(
-        make_config(auto_merge=False),
+        make_config(),
         normalized_stages,
         make_trust_policy(),
     )
@@ -133,33 +120,4 @@ def test_merge_policy_mixed_gates_only_blocking_included() -> None:
     )
     assert len(policy.blocking_stage_ids) == 2, (
         f"Expected exactly 2 blocking ids, got {policy.blocking_stage_ids}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Schema enforcement
-# ---------------------------------------------------------------------------
-
-def test_merge_policy_unknown_module_key_raises_schema_error() -> None:
-    """modules.unknown_flag: true → jsonschema.ValidationError (additionalProperties: false)."""
-    import json
-    from pathlib import Path
-    import jsonschema
-    from neutral_core_tests.harness import REPO_ROOT
-
-    schema_path = Path(REPO_ROOT) / "stagr" / "config.schema.json"
-    with schema_path.open() as schema_file:
-        loaded_schema = json.load(schema_file)
-
-    invalid_config = {"version": 2, "modules": {"unknown_flag": True}}
-
-    raised_validation_error = False
-    try:
-        jsonschema.validate(instance=invalid_config, schema=loaded_schema)
-    except jsonschema.ValidationError:
-        raised_validation_error = True
-
-    assert raised_validation_error, (
-        "modules.unknown_flag: true must raise jsonschema.ValidationError; "
-        "the schema declares additionalProperties: false for the modules object"
     )

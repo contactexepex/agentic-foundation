@@ -35,10 +35,8 @@ Evidence kinds by stage kind:
   comment (``codex-pull-request-review-summary``):
   ``<!-- codex-security-review:v1 {"blockingSeverityThreshold":"P0",
   "headSha":"<full40>","status":"completed"} -->``
-  The marker format is empirically documented in ``auto-merge.yml.tmpl`` and
-  ``gate_behavior.py`` (the authoritative detection paths used by the deployed
-  auto-merge gate). ``gate_behavior.py`` explicitly tests that
-  ``status="running"`` blocks the gate.
+  The marker format is as observed on Codex review-summary comments; a marker with
+  ``status="running"`` must never count as completion.
 
   Compound selector convention: the ``selector`` field for COMMENT_MATCH
   evidence on the Codex backend is a space-separated compound expression.
@@ -53,8 +51,8 @@ Evidence kinds by stage kind:
 
 Gate disposition: ``NO_OPEN_THREADS`` with ``FindingScopeSpec(created_by=
 "chatgpt-codex-connector[bot]", head_sha=True, invocation_correlation=None)``
-for both stage kinds. The security marker format (empirically verified in
-``gate_behavior.py``) is ``{"blockingSeverityThreshold":"P0","headSha":"...","status":"..."}``
+for both stage kinds. The security marker format (as observed on Codex review-summary
+comments) is ``{"blockingSeverityThreshold":"P0","headSha":"...","status":"..."}``
 — there is no findings or verdict field; ``status=completed`` proves the review
 finished, not that it passed cleanly. ``NO_OPEN_THREADS`` is therefore the
 correct conservative disposition for SECURITY as well as REVIEW.
@@ -71,6 +69,7 @@ PlatformRenderer is invoked.
 """
 from __future__ import annotations
 
+from stagr.core.backend_names import BACKEND_CODEX, PROVIDER_OPENAI
 from stagr.core.enums import (
     EvidenceKind,
     EvidenceSuccessCondition,
@@ -109,8 +108,7 @@ _CODEX_REVIEW_SUMMARY_SELECTOR = "codex-pull-request-review-summary"
 _REVIEW_SUMMARY_SHA_FIELD = "review_summary_sha"
 
 # Machine-readable marker embedded by Codex inside the review-summary comment
-# when the security review completes. Format (empirically observed in
-# auto-merge.yml.tmpl and gate_behavior.py, the authoritative detection paths):
+# when the security review completes. Format (as observed on Codex review-summary comments):
 #   <!-- codex-security-review:v1 {"blockingSeverityThreshold":"P0",
 #        "headSha":"<full40>","status":"completed"} -->
 #
@@ -118,16 +116,15 @@ _REVIEW_SUMMARY_SHA_FIELD = "review_summary_sha"
 # is the marker prefix; subsequent key=value tokens are JSON field requirements
 # evaluated by the PlatformRenderer against the parsed marker JSON. Both the
 # marker prefix and status=completed must be present for MATCH_FOUND to succeed.
-# A marker with status="running" must not satisfy MATCH_FOUND (gate_behavior.py
-# line: "gate: a security review still running blocks").
+# A marker with status="running" must not satisfy MATCH_FOUND.
 _CODEX_SECURITY_REVIEW_MARKER_SELECTOR = "codex-security-review:v1 status=completed"
 
 # The JSON field within the codex-security-review:v1 blob that carries the
 # full 40-character head SHA of the reviewed commit.
 _SECURITY_REVIEW_MARKER_SHA_FIELD = "headSha"
 
-# Authoritative Codex bot GitHub login (empirically grounded in gate_behavior.py line 24:
-# CODEX = "chatgpt-codex-connector[bot]"). Used to scope NO_OPEN_THREADS to findings
+# Authoritative Codex bot GitHub login (empirically grounded in the deployed gate's
+# CODEX_BOT_LOGIN: chatgpt-codex-connector[bot]). Used to scope NO_OPEN_THREADS to findings
 # posted by the Codex reviewer identity, excluding other actors' comments.
 _CODEX_BOT_IDENTITY = "chatgpt-codex-connector[bot]"
 
@@ -142,8 +139,8 @@ class OpenAICodexBackendRenderer:
     other stage kind.
     """
 
-    provider: str = "openai"
-    backend: str = "codex"
+    provider: str = PROVIDER_OPENAI
+    backend: str = BACKEND_CODEX
 
     def render(self, stage: NormalizedStage) -> ExecutionPlan:
         """Produce an ExecutionPlan for the given review or security stage.

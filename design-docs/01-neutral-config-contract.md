@@ -21,7 +21,7 @@ The config declares:
   performs it
 - **Stage governance** — when a stage runs, whether it blocks merge, and which other
   stages it depends on
-- **Pipeline policy** — routing (fast-path rules) and module flags (auto-merge)
+- **Pipeline policy** — routing (fast-path rules) and the merge rule for review discussions
 
 The config does **not** contain:
 
@@ -76,17 +76,17 @@ defaults:
 routing:
   fast_path:
     enabled: false          # true enables a bypass lane for trivial changes
-    match:
-      paths:                # glob patterns; required when enabled: true
-        - "docs/**"
-        - "*.md"
+    globs:                  # glob patterns for the FAST route
+      - "docs/**"
+      - "*.md"
     stages:
       fast:   []            # stage ids that run on the FAST route
       normal: []            # stage ids that run on the NORMAL route (all eligible stages)
 
-# Module flags enable optional Stagr-managed or Stagr-observed components.
-modules:
-  auto_merge: true          # enable the auto-merge governance component
+# Merge policy. The merge gate's blocking stages come from each stage's `gate`.
+merge:
+  discussions:
+    require_resolved: true  # every open review discussion must be resolved before merge
 
 # What "green" means for this repository: the commands of the build and unit-test
 # stages (see 09-check-stages.md). A preset fills every command it can.
@@ -100,7 +100,7 @@ stages:
     type: review            # StageKind (see canonical-stage-model.md)
     provider: openai        # API/credential provider id
     backend: codex          # invocation mechanism (defaults per provider)
-    # model: gpt-4o         # optional; omit to use the backend's default
+    # model: { default: gpt-4o }   # optional; omit to use the backend's default
     skill: code-review      # skill id → .agentic/skills/<id>/SKILL.md
     gate: blocking          # blocking | advisory (default blocking)
     triggers:               # StageTrigger[]: when this stage runs
@@ -157,22 +157,19 @@ the model of `02-canonical-stage-model.md`. This table is the only place the two
 | `commands`, `timeout_minutes` | `CommandsExecutor` |
 | `observe: { check, producer }` | `ObservedExecutor` |
 
-### Module flags
+### The schema is the key list
 
-The `modules:` key enables optional Stagr-managed components. All flags default to
-`false`. Recognized V1 module flags:
+`stagr/config.schema.json` lists exactly the keys the neutral pipeline reads, and nothing
+else. The top-level keys are `version`, `profile`, `platform`, `defaults`, `providers`,
+`stages`, `routing` and `merge`. An external check such as SonarCloud is an observed stage
+(`09-check-stages.md`), not a separate key.
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `auto_merge` | `false` | Enables the auto-merge governance component. The governance artifact merges automatically when all merge gate conditions are satisfied. |
+Unknown keys inside a Stagr key are validation errors. The "silently ignored" rule applies
+only to unknown **top-level** keys (see "Non-Stagr keys" below); it does not extend to
+sub-fields of a Stagr key.
 
-An external check such as SonarCloud is not a module: it is an observed stage
-(`09-check-stages.md`).
-
-Sub-fields of `modules:` not listed above are unrecognized and produce a validation
-error. The "silently ignored" rule for unrecognized keys applies only to unknown
-**top-level** keys (see "Non-Stagr keys" below); it does not extend to sub-fields of
-a recognized Stagr namespace.
+`backend` is a plain string. When it is omitted, the default comes from the stage's
+provider (`anthropic` → `claude-code-action`, `openai` → `codex`).
 
 ### Non-Stagr keys
 
@@ -188,8 +185,8 @@ deploy:
 ```
 
 Stagr validates only the keys it defines (`version`, `profile`, `platform`, `defaults`,
-`routing`, `modules`, `stages`, `providers`, and `build`). Any unrecognized top-level key is
-silently ignored by `stagr plan` and `stagr apply`. This lets operators co-locate other
+`providers`, `stages`, `routing`, `merge`, and, once `09-check-stages.md` is built, `build`).
+Any unrecognized top-level key is silently ignored by `stagr plan` and `stagr apply`. This lets operators co-locate other
 tooling configuration in `.agentic/config.yml` without breaking Stagr validation.
 
 ---
@@ -208,8 +205,6 @@ platform:
   default_branch: main
 build:
   preset: maven
-modules:
-  auto_merge: true
 ```
 
 When `backend` is omitted on an agent stage, the renderer applies the default backend for the given
