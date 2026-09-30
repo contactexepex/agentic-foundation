@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .plan_apply import add_project_root_argument, cmd_apply, cmd_plan
+
 
 def _subparser_choices(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
     for action in parser._actions:  # noqa: SLF001 — argparse exposes subparsers only here
@@ -34,6 +36,18 @@ def build_parser() -> argparse.ArgumentParser:
     help_parser = subparsers.add_parser("help", help="show help for all commands, or `stagr help <command>`")
     help_parser.add_argument("topic", nargs="?", help="a command name to describe in detail")
     help_parser.set_defaults(func=cmd_help)
+
+    plan_parser = subparsers.add_parser(
+        "plan", help="validate the config and list the files apply would write; writes nothing"
+    )
+    add_project_root_argument(plan_parser)
+    plan_parser.set_defaults(func=cmd_plan)
+
+    apply_parser = subparsers.add_parser(
+        "apply", help="validate the config and write the generated files"
+    )
+    add_project_root_argument(apply_parser)
+    apply_parser.set_defaults(func=cmd_apply)
     return parser
 
 

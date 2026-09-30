@@ -28,7 +28,7 @@ Some things are genuinely repo-specific and cannot be fully centralized:
 - **Which optional stages** that repo opts into (integration/perf/custom) and any per-repo
   overrides.
 
-**Workflow-file setup [target]:** once `stagr apply` exists (issue #202), each repo runs it to write
+**Workflow-file setup [shipped]:** each repo runs `stagr apply` to write
 the rendered workflow files and the operator **commits them into that repo** — so committing
 generated workflow files *is* a per-repo step. Removing it via **org-injected required/reusable workflows** (so no
 workflow files live in the repo) is **[target]** (Phase 2). There is no per-repo **agent or key**
@@ -55,8 +55,8 @@ re-vendoring) needs a provisioning re-sync step or an authenticated resolver
 
 ## The onboarding CLI
 
-See [`../CLI.md`](../CLI.md) for the authoritative command reference. **Today the only command is
-`stagr help`.** The onboarding commands are **[target]**, being rebuilt on the neutral core:
+See [`../CLI.md`](../CLI.md) for the authoritative command reference. **Today the commands are
+`stagr help`, `stagr plan` and `stagr apply`.** `init` and `doctor` are **[target]**, being rebuilt on the neutral core:
 
 - **`stagr init`** — a later step: propose a starting `.agentic/config.yml`, and ask for the GitHub
   App ID.
@@ -65,11 +65,13 @@ See [`../CLI.md`](../CLI.md) for the authoritative command reference. **Today th
   environment — it will not check whether those secrets actually exist, or whether the merge
   gate/ruleset is installed. Verifying secrets and rulesets is a **manual** onboarding step;
   automated environment probes are **[target]**.
-- **`stagr plan`** (issue #201) — dry run: list exactly the files `apply` **would** write.
-- **`stagr apply`** (issue #202) — **writes those same files into the working tree**. The operator
+- **`stagr plan`** **[shipped]** — dry run: list exactly the files `apply` **would** write, with
+  sizes and hashes. Writes nothing.
+- **`stagr apply`** **[shipped]** — **writes those same files into the working tree**. The operator
   then **commits the generated files and opens their own PR**. `apply` performs **no Git or GitHub
-  action itself** — there is **no auto-opened bootstrap PR** — and never hand-merges. Removing files
-  that are no longer rendered will be its own story.
+  action itself** — there is **no auto-opened bootstrap PR** — and never hand-merges. It never
+  deletes files; removing files that are no longer rendered will be its own story. Both commands run
+  one shared pipeline (`stagr/cli/render_pipeline.py`), so they cannot disagree.
 
 ## Config versioning
 

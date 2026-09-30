@@ -76,7 +76,7 @@ platform: { type: github, default_branch: main }
 | `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). Default `true`. |
 | `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. Default `owner`, `member`, `collaborator`. |
 | `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
-| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. Required whenever the generated pipeline needs the publisher. |
+| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. **Required by `stagr plan` and `stagr apply`**: the generated workflows publish their check runs as this App. |
 | `publisher.private_key_secret` | Optional, used with `publisher`. The **name** of the repository secret that holds the App's private key. Default `STAGR_APP_PRIVATE_KEY`. Never the key itself. |
 | `labels.human_merge` | A change-request with this label is **never** merged automatically (a human keeps merge authority). Default `human-merge`. |
 

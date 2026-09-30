@@ -13,7 +13,7 @@ merge request is opened for human review.
 ## What it is (and is not)
 
 - **Is:** a platform-neutral **config contract** + per-platform renderers + pluggable agent
-  backends + a CLI (only `stagr help` today; `plan`, `apply`, `init`, and `doctor` are planned) + a
+  backends + a CLI (`help`, `plan` and `apply` today; `init` and `doctor` are planned) + a
   Claude Code skill front door (planned). Provider-, model-, platform-, and language-agnostic.
 - **Is not:** an agent (it *composes* mature OSS agents), a deployment system, a runtime, or anything
   tied to one language, one AI vendor, or one Git host.
@@ -84,7 +84,7 @@ can bend the toolkit to how they deploy and host:
 
 ## Quickstart
 
-Only the install and `stagr help` work today; the commands that generate and check a pipeline are
+The install, `stagr help`, `stagr plan` and `stagr apply` work today; `init` and `doctor` are still
 being rebuilt (see [docs/CLI.md](docs/CLI.md)).
 
 1. **Install the CLI** (needs only Python 3.10+; see [docs/CLI.md](docs/CLI.md) for options). `stagr`
@@ -99,11 +99,11 @@ being rebuilt (see [docs/CLI.md](docs/CLI.md)).
 2. Run `stagr help` to see the available commands.
 3. Write `.agentic/config.yml` by hand in your target repo. The full field reference, provider→secret
    mapping, and troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
+4. Run `stagr plan` in the repo root to validate the config and list the files it produces (nothing is
+   written), then `stagr apply` to write those same files under `.github/workflows/`.
 
-**Planned commands** (not available yet): `stagr plan` lists the files a config would produce and
-`stagr apply` writes those same files (issues #201, #202); `stagr init` creates a starting config and
-will ask for the GitHub App ID; `stagr doctor` checks the config and lists the secret names to create
-(issue #203).
+**Planned commands** (not available yet): `stagr init` creates a starting config and will ask for the
+GitHub App ID; `stagr doctor` checks the config and lists the secret names to create (issue #203).
 
 > **What exists today:** the neutral core validates a config, expands the profile, resolves
 > providers, backends, and models, and builds the stage graph. The GitHub renderer turns that graph

@@ -29,9 +29,10 @@ that fails `plan` also fails `apply`.
 Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifacts.
 
 `validate_config` in `stagr/core/config_validation.py` is the front door for V-S01 to V-S06:
-schema, publisher block, profile, dependency references, cycles, and skill files. Today the
-only CLI command is `stagr help`; `stagr plan` and `stagr apply` (issues #201, #202) and
-`stagr doctor` (issue #203) are planned and will call this validation. The repository's own CI
+schema, publisher block, profile, dependency references, cycles, and skill files.
+`stagr/cli/render_pipeline.py` (`load_render_inputs`) runs it, then V-S07 to V-S09 and V-S11;
+`stagr plan` and `stagr apply` both call that one function. `stagr doctor` (issue #203) is planned
+and will call it too. The repository's own CI
 check is `python .github/scripts/validate_config.py`.
 
 ### V-S01 — Config schema validity
@@ -87,7 +88,7 @@ set, all of S's transitive dependencies are also in the set.
 
 ### V-S11 — Routing policy consistency
 
-To be re-implemented on the neutral pipeline (with `stagr plan` and `stagr apply`).
+Implemented in `find_dormant_routing_warnings`; `plan` and `apply` print the warning on stderr.
 
 When `routing.fast_path.enabled: false`, the presence of `globs` or `stages` keys
 is **allowed but produces a warning** ("dormant route configuration — fast_path is
@@ -98,7 +99,9 @@ unnecessary edits when toggling `enabled`.
 
 ### V-S12 — Secret alias resolution
 
-To be re-implemented on the neutral pipeline (with `stagr plan` and `stagr apply`).
+Holds by construction, so it has no separate check: the Phase 1 resolver falls back to "the alias
+is the secret name" when no mapping exists (`stagr/core/render_loop.py`), so an alias is never
+unresolvable.
 
 All `SecretRef.alias` values declared by the BackendRenderer for each stage are
 resolvable: either an explicit mapping exists in provider configuration, or the alias
@@ -166,8 +169,8 @@ will cause every PR to be skipped.
 **V-S10 is obsolete.** It guarded an auto-merge setting that the schema does not have. There is
 no check with that number.
 
-**V-S11 and V-S12 are not implemented yet.** They will be built on the neutral pipeline in the
-`stagr plan` and `stagr apply` work.
+**V-S12 has no separate check.** The resolver's convention fallback means every alias resolves;
+see V-S12 above.
 
 **V-S13 (NON_BLOCKING dependency warning) has been removed.** `NON_BLOCKING` controls
 merge-gate participation, not what conclusion a stage can produce. A `NON_BLOCKING`

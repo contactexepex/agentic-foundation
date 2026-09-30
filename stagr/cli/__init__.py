@@ -1,9 +1,13 @@
 """stagr — the agentic-foundation control plane CLI.
 
 The command line is being rebuilt on the neutral core (`stagr/core/`) and the platform
-renderers (`stagr/platforms/`). Until `stagr plan` and `stagr apply` land, the only command is:
+renderers (`stagr/platforms/`). The commands:
 
     stagr help     # list commands, or `stagr help <command>` / `stagr <command> help`
+    stagr plan     # validate the config and list the files it produces; writes nothing
+    stagr apply    # validate the config and write those same files
+
+`plan` and `apply` share one pipeline (`render_pipeline.py`) and differ only in the last step.
 
 Design invariants for every command:
   * No network. No secret VALUE is ever read, printed, or logged — only secret NAMES.
