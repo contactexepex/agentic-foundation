@@ -29,9 +29,8 @@ providers:
       TRUSTED_COMMENTER_TOKEN: REMEDIATION_TOKEN
 
 stages:
-  # The two reviews are independent stages: neither waits for the other. (Running the two Codex
-  # reviews one after the other is a rule of this repository's own hand-written review process
-  # in AGENTS.md; it is not part of the contract this file declares.)
+  # The security review waits for the code review, as in the `standard` profile: running the two
+  # Codex reviews one after the other is the rule in AGENTS.md.
 
   # Reviewer: Codex code review (via @codex review), gates the PR.
   - id: review
@@ -48,6 +47,7 @@ stages:
     skill: security-review
     gate: blocking
     triggers: [pr_opened, pr_updated]
+    depends_on: [review]
 
 # What "green" means for this repo (language-agnostic; here: validate the contract). Not part of
 # the schema yet, so it is ignored today; design-docs/09-check-stages.md makes it the home of the

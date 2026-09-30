@@ -60,10 +60,8 @@ stages:
     depends_on: [review]      # starts after the code review has passed
 ```
 
-The target `standard` profile declares this dependency (`09-check-stages.md`, section 10), so
-the renderer can enforce it. Until then the `standard` profile and this repository's own
-`.agentic/config.yml` leave the two reviews independent; the "in sequence" rule of `AGENTS.md`
-and `CLAUDE.md` applies only to this repository's hand-written review process.
+The `standard` profile declares this dependency (`09-check-stages.md`, section 10), and so does
+this repository's own `.agentic/config.yml`, so the renderer enforces it.
 
 ### What the current implementation does
 

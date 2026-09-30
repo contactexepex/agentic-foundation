@@ -103,7 +103,7 @@ _PROFILE_STAGE_DEFAULTS: dict[str, list[dict[str, Any]]] = {
             "skill": "security-review",
             "gate": "blocking",
             "triggers": ["pr_opened", "pr_updated"],
-            "depends_on": [],
+            "depends_on": ["review"],
         },
     ],
     "custom": [],

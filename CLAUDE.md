@@ -48,8 +48,8 @@ review runs immediately; never hand-merge it. The PR description states the task
 criteria, what changed and why, checks run with results, and assumptions or open questions. **Every
 PR is sent to Codex for code + security review; findings block the merge as unresolved threads** (see
 "Codex review handoff"). Code and security review run in sequence, never concurrently: the code review
-iterates per push, then a single security review runs as the final pre-merge step (this is how this
-repository's own hand-written review process runs, not a rule of the Stagr contract). The gate requires a
+iterates per push, then a single security review runs as the final pre-merge step (the `standard`
+profile declares the same order: `security` depends on `review`). The gate requires a
 head-bound *code* review AND a head-bound *security* review to have completed, plus zero unresolved
 threads. The fast-path lane is disabled for this repository (`.agentic/config.yml` →
 `routing.fast_path.enabled: false`), so every PR — documentation included — goes through Codex review;
