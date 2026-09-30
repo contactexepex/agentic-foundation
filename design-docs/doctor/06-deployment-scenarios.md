@@ -12,13 +12,15 @@ chooses who supplies them and where doctor runs.
 
 | Check | Needs | Can run in the repo's own pipeline | Can run in a central platform workflow |
 |---|---|:-:|:-:|
-| V-E01 secrets present | The repo's own `secrets` context | Yes | **No** (a central workflow sees only its own secrets) |
-| V-E02 App key, install, permissions | The repo's secrets and the App key | Yes | **No** (same reason) |
-| V-E03 workflow permissions (optional) | `STAGR_PLATFORM_TOKEN` | Yes, if the token is present | Yes (set `GITHUB_REPOSITORY` per target repo) |
+| V-E01 secrets present | Flags from the repo's `secrets` context, **or** `STAGR_PLATFORM_TOKEN` to list names (D10) | Yes (flags) | Yes (API listing) |
+| V-E02a-b App ID, key secret present | Same as V-E01 | Yes | Yes |
+| V-E02c-d App installed, permissions | The App key | Yes | **No** (the key is not held centrally) |
+| V-E03 workflow permissions (optional) | `STAGR_PLATFORM_TOKEN` | Yes, if the token is present | Yes (`--repo` per target repo) |
 | V-E04 trusted roles (optional) | `STAGR_PLATFORM_TOKEN` | Yes, if the token is present | Yes |
 
-So in a separated setup the split is natural: the **author's pipeline** checks secrets and the App; the
-**platform team** checks org and role settings.
+So in a separated setup the **platform team** can check secrets, org settings and roles centrally, and only
+the App install and permissions check must run in the **author's pipeline**, because it needs the App key.
+A central run prints `not verified: V-E02c, V-E02d` so nobody mistakes it for a full check.
 
 ## Scenarios
 
@@ -46,8 +48,10 @@ The exact minimum permissions for V-E03 and V-E04 must be confirmed (F6, F7 in
 ## Failure rules for the optional probes
 
 - No token: `SKIP (no STAGR_PLATFORM_TOKEN)`.
-- Token present but GitHub answers 401, 403 or 404 (too little access, or the endpoint is missing on an
+- Optional probes (V-E03, V-E04): token present but GitHub answers 401, 403 or 404 (too little access, or the endpoint is missing on an
   older Enterprise Server): `SKIP (token lacks access)` with the status code. Not an ERROR.
+- In a central run, failing to list secrets (401, 403, 404) is an ERROR, because the listing is the only
+  source for V-E01.
 - Only a positive finding is reported as ERROR or WARN (for example "no collaborator holds a trusted
   role").
 - Settings can be enforced at repo, org or enterprise level. The probe reports the effective value it
@@ -58,7 +62,5 @@ The exact minimum permissions for V-E03 and V-E04 must be confirmed (F6, F7 in
 - **Secrets kept outside GitHub** (for example fetched from Vault through OIDC). The generated
   workflows read `${{ secrets.NAME }}`, so V-E01 is correct for what Stagr generates. Vault support
   would be a separate feature.
-- **Central secret-name listing.** A platform token could list a repo's secret names through the API so
-  V-E01 can also run centrally. Deferred; revisit if a real need appears.
 - **Secrets held in a GitHub environment.** The doctor job must declare that environment to see them,
   and may then wait for its approval rules. Note this in the runbook; no special support.

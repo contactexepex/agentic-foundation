@@ -17,6 +17,9 @@ acceptance criteria, each with a test.
 | A8 | Missing required `--ci` input is an ERROR, never a silent SKIP | Unit: unset flag in `--ci` |
 | A9 | V-E04 warns on `owner`-only roles | Unit |
 | A10 | Exit code is 0 with no ERROR, else 1; secret values never appear in output | Unit: sentinel secret value absent from stdout/stderr |
+| A14 | Source selection: flags present uses flags; no flags plus token uses the API; neither is an ERROR; some-but-not-all flags names the missing one | Unit (fake env and fake client) |
+| A15 | Central run: missing secret named from API listing, including an org secret not shared with the repo; listing 401/403/404 is an ERROR | Unit (fake client) |
+| A16 | Central run prints `not verified: V-E02c, V-E02d` and exits 0 when everything else passes | Unit |
 | A11 | Declared artifact permissions match the docs table | Test compares the renderer's union to `docs/CONFIGURATION.md` |
 | A12 | Optional probes: with `STAGR_PLATFORM_TOKEN`, V-E03 and V-E04 report ERROR/WARN from a fake client; without it, both `SKIP` and exit code is unaffected | Unit (fake client, with and without token) |
 | A13 | A probe that gets 401, 403 or 404 reports `SKIP` with the status code, never ERROR; only a positive finding is ERROR/WARN | Unit (fake client returning each status) |
@@ -35,7 +38,7 @@ acceptance criteria, each with a test.
 
 ## Verify GitHub facts first
 
-Before code, confirm F1 to F7 (including the minimum token permissions for F6 and F7) ([01](01-constraints.md)). If F3 fails, V-E02 c/d need a different App
+Before code, confirm F1 to F9 (including the minimum token permissions for F6 and F7) ([01](01-constraints.md)). If F3 fails, V-E02 c/d need a different App
 signal and the owner decides again. If F1 fails, V-E01 needs a different presence signal.
 
 ## Docs to update with the implementation

@@ -37,7 +37,10 @@ positive finding from a probe is an ERROR or WARN ([06](06-deployment-scenarios.
 - **Requirement:** every secret env name in every stage's `required_secrets` (after alias resolution).
 - **Local:** `SKIP`; the names and stages go in the checklist.
 - **`--ci`:** read presence flags (D4). Each missing secret is an ERROR naming the secret and the stage.
-- **Why flags, not the API:** listing secrets needs admin, and `GITHUB_TOKEN` cannot do it (F2). The
+- **`--ci`, central run (D10):** when no `STAGR_HAS_*` flag is set and `STAGR_PLATFORM_TOKEN` is present, doctor
+  lists the target repo's secret names and the org secrets available to it (F8) and compares them to the
+  requirement. Failure to list (401, 403, 404) is an ERROR, because this is the only source for the check.
+- **Why flags in the repo pipeline, not the API:** listing secrets needs admin, and `GITHUB_TOKEN` cannot do it (F2). The
   `secrets` context already answers "does it exist?" for repo, environment and org secrets (F1).
 
 ### V-E02 — Publisher App
@@ -50,6 +53,10 @@ Four sub-checks, reported as separate lines:
 | **b. Private-key secret present** (`platform.publisher.private_key_secret`) | `SKIP` | presence flag; ERROR names the secret |
 | **c. App installed** | `SKIP` | `GET /repos/{r}/installation` with an App JWT (F3); `404` is an ERROR naming the App ID |
 | **d. Permissions sufficient** | `SKIP` | compare `installation.permissions` to the required union; ERROR lists each missing or too-weak permission |
+
+In a central run, b is answered from the secrets API (D10). c and d need the App key, which a central run
+does not hold, so they `SKIP (needs the App key; runs in the repo pipeline)` and the summary says they were
+not verified.
 
 If b fails, c and d are `SKIP` (blocked). Levels order `read < write < admin`; installed must be at least
 the required level.

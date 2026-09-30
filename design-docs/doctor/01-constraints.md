@@ -28,6 +28,8 @@ These shape the design. They come from our understanding of GitHub's behavior an
 | F4 | `actions/create-github-app-token` does not report the granted permissions | Why doctor signs its own JWT (D3) |
 | F5 | The generated workflows mint the App token without `permission-*` inputs, so the token carries every permission the installation has | D5: the required set is not in the artifacts today |
 | F6 | With an elevated token, `GET /repos/{r}/actions/permissions/workflow` and the repo or org Actions permissions endpoints return the default workflow permissions and allowed actions. A classic token needs `repo`; the fine-grained and App permission needed is **not yet confirmed** | V-E03 optional probe |
+| F8 | With an elevated token, the repo secrets list and the org secrets available to a repo are readable and return names only, never values (confirmed by GitHub docs). The minimum fine-grained or App permission is **not yet confirmed** | V-E01, V-E02b in a central run |
+| F9 | The default `GITHUB_*` variables in a workflow cannot be overwritten, so a central workflow cannot point `GITHUB_REPOSITORY` at another repo | Why `--repo` exists (D10) |
 | F7 | With write, maintain or admin access, `GET /repos/{r}/collaborators` returns each collaborator's highest role from any source (repo, team, org, enterprise) (GitHub docs). Minimum fine-grained or App permission not yet confirmed | V-E04 optional probe |
 
 ## Out of scope

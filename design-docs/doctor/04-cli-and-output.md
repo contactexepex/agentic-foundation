@@ -6,10 +6,11 @@ Part of the [doctor design set](README.md). Checks are defined in [03](03-valida
 
 ```
 stagr doctor [--root PATH]          # local: offline, no credentials
-stagr doctor --ci [--root PATH]     # CI: live checks, expects the inputs below
+stagr doctor --ci [--root PATH] [--repo OWNER/NAME]   # CI: live checks, expects the inputs below
 ```
 
-`--root` matches `plan` and `apply`. There is no `--strict` or `--json`; add them only when a real need
+`--root` matches `plan` and `apply`. `--repo` defaults to `GITHUB_REPOSITORY`. A central workflow passes it
+per target repo, because the default `GITHUB_*` variables cannot be overwritten (F9). There is no `--strict` or `--json`; add them only when a real need
 appears.
 
 ## `--ci` inputs
@@ -19,9 +20,19 @@ appears.
 | `STAGR_HAS_<SECRET_NAME>` = `true`/`false` | workflow: `${{ secrets.NAME != '' }}` | V-E01, V-E02 key present. Flag only, never the value |
 | `STAGR_DOCTOR_APP_KEY` | workflow: `${{ secrets.<private_key_secret> }}` | V-E02 JWT (D3) |
 | `STAGR_PLATFORM_TOKEN` (optional) | workflow: `${{ secrets.STAGR_PLATFORM_TOKEN }}` | V-E03 and V-E04 live probes. Absent or lacking access: they `SKIP`. Where it comes from: [06](06-deployment-scenarios.md) |
-| `GITHUB_REPOSITORY`, `GITHUB_API_URL` | provided by Actions; a central platform workflow sets `GITHUB_REPOSITORY` per target repo | which repo and GitHub instance to query |
+| `GITHUB_REPOSITORY`, `GITHUB_API_URL` | provided by Actions; `--repo` overrides the repo for a central run | which repo and GitHub instance to query |
 
-A missing required input in `--ci` is an ERROR that names it. `STAGR_PLATFORM_TOKEN` is the only optional input.
+**Which source answers V-E01 and V-E02b (D10):**
+
+| Inputs present | Source | Use |
+|---|---|---|
+| At least one `STAGR_HAS_*` flag | Flags | Repo pipeline. A required flag that is missing is an ERROR naming it. The App key is required |
+| No flags, `STAGR_PLATFORM_TOKEN` set | Secrets API | Central run. V-E02c/d are `SKIP` (need the App key) |
+| Neither | none | ERROR: no presence flags and no platform token |
+
+So `STAGR_PLATFORM_TOKEN` is optional in the repo pipeline (it only enables V-E03/V-E04) and required in a
+central run. Every V-E01 and V-E02b line prints its source (`flags` or `API`), and a central run ends with
+`not verified: V-E02c, V-E02d`, so a skipped App check is never silent.
 
 ## Output
 
