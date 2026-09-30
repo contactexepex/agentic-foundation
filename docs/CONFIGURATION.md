@@ -52,15 +52,17 @@ The schema lists exactly the keys the toolkit reads; a key that is not listed do
   the same file.
 
 **Simple by default, advanced when you want it.** A runnable config needs a `version` (always `2`), a
-`profile` (default `standard`, which expands to a stage graph), and a `platform` (defaults to GitHub).
-That is a few lines; add `stages` and other blocks only to take finer control. See
+`profile` (default `standard`, which expands to a stage graph), a `platform` (defaults to GitHub), and
+`platform.publisher.app_id`, the ID of your Stagr GitHub App, which `stagr plan` and `stagr apply`
+require (see [Publisher](#publisher-stagr-github-app)). That is a few lines; add `stages` and other
+blocks only to take finer control. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
 
 ```yaml
 # Minimal config — the profile expands to a stage graph.
 version: 2
 profile: standard
-platform: { type: github, default_branch: main }
+platform: { type: github, default_branch: main, publisher: { app_id: 123456 } }
 ```
 
 ### `profile`
@@ -239,8 +241,11 @@ If you ever see a secret value in a log or comment, treat it as compromised and 
    `stages` only for finer control. Put each `skill` a stage names at `.agentic/skills/<id>/SKILL.md`;
    the starter skills are under `stagr/templates/skills/`.
 2. Create the secrets your providers need (section 2) in your CI/SCM secret store.
-3. Generating the workflows into `.github/workflows/` is done by `stagr plan` and `stagr apply`. They
-   are planned and do not exist yet; see [CLI.md](CLI.md).
+3. Create the Stagr GitHub App and its private-key secret, and put the App's ID in
+   `platform.publisher.app_id` ([Publisher](#publisher-stagr-github-app)).
+4. Run `stagr plan` to validate the config and list the workflow files it produces (it writes
+   nothing), then `stagr apply` to write them into `.github/workflows/`. Commit the result. See
+   [CLI.md](CLI.md).
 
 ---
 

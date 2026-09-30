@@ -60,8 +60,9 @@ provider/backend/language-agnostic) are the content; a stage points at one with 
 [skills](docs/ARCHITECTURE.md#3a-skills--content-vs-wiring).
 
 **Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
-(`minimal`/`standard`/`custom`; `minimal` and `standard` expand to a default stage graph), and a
-`platform`. An `anthropic` stage (Claude Code) also needs a model binding
+(`minimal`/`standard`/`custom`; `minimal` and `standard` expand to a default stage graph), a
+`platform`, and `platform.publisher.app_id` (the ID of your Stagr GitHub App, which `stagr plan` and
+`stagr apply` need). An `anthropic` stage (Claude Code) also needs a model binding
 (`defaults.models.anthropic`, or a per-stage model); an `openai` stage (Codex) supplies its own.
 Model resolution is fail-loud — no hidden default. Still a few lines; define `stages` only for finer
 control.
