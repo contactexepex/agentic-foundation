@@ -63,7 +63,7 @@ contract layer**: a stage names a **provider**, and the toolkit derives the codi
 
 | Backend (tool) | Wraps | Derived from | Status |
 |---|---|---|---|
-| `codex` | OpenAI Codex | `openai` | rendered on GitHub: review, security |
+| `codex` | OpenAI Codex | `openai` | shipped (what renders: section 8) |
 | `claude-code-cli` | Anthropic's Claude Code (CLI runner) | — (override only) | roadmap |
 | `openhands` | OpenHands issue resolver | — | roadmap |
 | `swe-agent` | SWE-agent | — | roadmap |

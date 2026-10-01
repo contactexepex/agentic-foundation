@@ -15,7 +15,7 @@
     },
 
     "platform": {
-      "description": "The SCM/CI platform this repo lives on. The contract is platform-neutral; a per-platform renderer maps it to that system's pipeline. Only the GitHub renderer exists today.",
+      "description": "The SCM/CI platform this repo lives on. The contract is platform-neutral; a per-platform renderer maps it to that system's pipeline. Which renderers exist today is in docs/ARCHITECTURE.md, section 8.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

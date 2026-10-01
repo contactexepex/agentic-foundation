@@ -125,8 +125,8 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
   (`auto-merge-foundation-prs.yml`) merges provably-ready PRs; the conditions and the `human-merge`
   stop are set in `AGENTS.md`, "Merge lanes". All of these workflows are hand-written for this repository; none is a Stagr feature.
 
-> Status: **neutral core + GitHub renderer, dogfooded.** What exists today and what comes next is in
-> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), section 8.
+> **Status:** what exists today and what comes next is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+> section 8.
 
 ## License
 
