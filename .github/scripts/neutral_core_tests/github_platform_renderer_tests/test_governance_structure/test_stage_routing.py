@@ -147,7 +147,6 @@ def test_governance_route_publisher_authentication_rejects_forged_app() -> None:
             human_merge_label="human-merge",
         ),
         platform="github",
-        config_version="2",
     )
     result_specs = (
         StageResultSpec(
@@ -202,7 +201,6 @@ def test_non_blocking_stage_call_has_or_true_suffix() -> None:
             human_merge_label="human-merge",
         ),
         platform="github",
-        config_version="2",
     )
     result_specs = (
         StageResultSpec(
@@ -256,7 +254,6 @@ def test_unrouted_stage_absent_from_generated_script() -> None:
             human_merge_label="human-merge",
         ),
         platform="github",
-        config_version="2",
     )
     # "orphan" stage is blocking but absent from both routes.fast and routes.normal
     orphan_selector = "stagr/orphan"
@@ -320,7 +317,6 @@ def test_stage_check_run_query_uses_filter_all() -> None:
             human_merge_label="human-merge",
         ),
         platform="github",
-        config_version="2",
     )
     result_specs = (
         StageResultSpec(

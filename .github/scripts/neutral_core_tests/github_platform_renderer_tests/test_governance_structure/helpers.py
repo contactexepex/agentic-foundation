@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from neutral_core_tests.github_platform_renderer_tests.helpers import (
     TEST_PUBLISHER_APP_ID,
-    TEST_PUBLISHER_PRIVATE_KEY_SECRET,
     build_renderer,
     build_stage,
 )
@@ -75,6 +74,5 @@ def _render_governance_to_string(
             human_merge_label="human-merge",
         ),
         platform="github",
-        config_version="2",
     )
     return renderer.render_governance(specs, context).content

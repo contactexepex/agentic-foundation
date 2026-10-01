@@ -151,7 +151,7 @@ def test_plan_without_evidence_is_rejected() -> None:
 
 def test_invocation_kinds_other_than_pr_comment_are_rejected() -> None:
     stage = build_stage()
-    for kind in (InvocationKind.WORKFLOW_DISPATCH, InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
+    for kind in (InvocationKind.CI_COMPONENT,):
         plan = dataclasses.replace(build_execution_plan(), invocation=Invocation(kind=kind))
         _expect_rejection(plan, stage, "can only wire a PR_COMMENT invocation")
 

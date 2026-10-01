@@ -76,7 +76,7 @@ INVALID_CONFIG_CASES: tuple[tuple[str, Callable[[dict[str, Any]], None], str], .
     ("unknown config key", add_unknown_key, "does not conform to schema"),
     ("unknown dependency (V-S05)", add_unknown_dependency, "missing-stage"),
     ("missing skill file (V-S06)", point_at_missing_skill, "no-such-skill"),
-    ("platform without a renderer", use_platform_without_renderer, "has no renderer"),
+    ("platform without a renderer", use_platform_without_renderer, "platform/type"),
     ("no enabled stage", disable_every_stage, "no enabled stage"),
 )
 

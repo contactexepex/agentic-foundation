@@ -317,7 +317,7 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   and is invoked normally. This narrows the recovery rule in `06-runtime-boundary.md`, which
   allows the sweep to re-post.
 - **Other invocation kinds.** The GitHub renderer renders only `PR_COMMENT`. A backend whose plan
-  needs another kind (`CI_COMPONENT`, `API_CALL`, `WORKFLOW_DISPATCH`) is rejected by V-S08
+  needs another kind (`CI_COMPONENT`) is rejected by V-S08
   (`07-validation.md`), and the renderer itself refuses it.
 - **Stagr App permissions** used at run time: Checks (write), Pull requests (read) and Issues
   (read).

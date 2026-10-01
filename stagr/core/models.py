@@ -407,5 +407,4 @@ class RenderContext:
     routing_policy: RoutingPolicy
     merge_policy: MergePolicy
     trust_policy: TrustPolicy
-    platform: str          # e.g. "github", "gitlab" — plain string, no enum
-    config_version: str
+    platform: str

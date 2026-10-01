@@ -106,7 +106,7 @@ class GitHubPlatformRenderer:
     """
 
     # Only the invocation kinds the stage workflow really performs are declared. A backend whose
-    # plan uses another kind (CI_COMPONENT, API_CALL, WORKFLOW_DISPATCH) is rejected by V-S08
+    # plan uses another kind (CI_COMPONENT) is rejected by V-S08
     # instead of being rendered as a workflow that would report PASS without doing the work.
     SUPPORTED_INVOCATION_KINDS: frozenset[InvocationKind] = frozenset({
         InvocationKind.PR_COMMENT,

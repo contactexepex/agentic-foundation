@@ -9,11 +9,6 @@ config may hold a pasted secret.
 
 ``ConfigSchemaError`` is raised by ``validate_config`` when the config does not conform to
 ``stagr/config.schema.json``.
-
-``SecretAliasResolutionError`` is raised during the Phase 1 rendering loop. It
-is distinct from normalization-time errors (``ConfigError``,
-``StaticValidationError`` in models.py) because it occurs after the normalized
-stage graph has been validated.
 """
 from __future__ import annotations
 
@@ -52,17 +47,4 @@ class ConfigSchemaError(ValueError):
 
     The message lists every violation as ``<path>: <problem>``; the value of a
     ``*_secret`` field is never included (see ``describe_schema_error``).
-    """
-
-
-class SecretAliasResolutionError(Exception):
-    """Raised when a SecretRef alias has no mapping in provider_config.
-
-    The Phase 1 alias resolution step looks up each SecretRef.alias in
-    ``provider_config["providers"][<provider>]["secrets"][<alias>]``. When
-    an alias is absent from that mapping, this error is raised before the
-    PlatformRenderer is called for the affected stage.
-
-    The error message names the stage, the provider, and the unresolvable alias
-    so the operator can correct their provider configuration.
     """

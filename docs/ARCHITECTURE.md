@@ -4,20 +4,13 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 **easy for newcomers** yet **granular for experts**, across **any provider/model**,
 **any SCM platform**, and **any language**.
 
-> **Scope note.** The contract described here is **generic** — it can express any stage type
-> (`review`, `security`, `build`, `test`, `deploy`, `custom`). stagr's
-> **product scope**, however, is the **development lane** (approved story → merged PR). Planning
-> and CD/deploy are delivered by **separate sibling toolkits** that reuse this same contract, not
-> by stagr's reference lane. The contract's reach across the toolkit family is wider than
-> stagr's own span.
-
 ---
 
 ## 1. Mental model: a pipeline is a graph of stages
 
 A repository's agentic pipeline is an **ordered, extensible graph of stages**. Each
-**stage is one agent** in the SDLC/STLC — `review`, `security`, `build`, `test`, `deploy`, or
-`custom` — bound to:
+**stage is one agent** in the SDLC/STLC, of one of the
+[stage types](CONFIGURATION.md#stages-optional--the-agent-graph), bound to:
 
 - a **provider + model** (the knob — `openai` today; mix per stage as providers are added),
 - a **backend** (the executor/tool; derived from the provider, overridable),
@@ -146,7 +139,7 @@ and `stages` in [CONFIGURATION.md](CONFIGURATION.md).
 
 - **What renders today:** GitHub is the only platform, and only stages whose backend is started by a
   pull-request comment render — today the Codex `review` and `security` stages. Other stage types
-  (build, test, deploy, custom) are declared and validated but not rendered yet.
+  (build, test, custom) are declared and validated but not rendered yet.
 
 - **M1 — contract layer and neutral core (current):** schema, config validation, profiles,
   provider/backend/model resolution, and the stage graph.

@@ -9,7 +9,6 @@ profile: custom
 
 platform:
   type: github
-  default_branch: main
   trusted_roles: [owner, member, collaborator]
   labels:
     human_merge: human-merge          # foundation gate hard-stop

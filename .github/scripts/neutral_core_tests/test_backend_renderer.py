@@ -6,6 +6,10 @@ and absence of platform-specific fields in ExecutionPlan.
 from __future__ import annotations
 
 import dataclasses
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from stagr.core.models import ExecutionPlan, NormalizedStage
 
 
 # ---------------------------------------------------------------------------
@@ -22,7 +26,7 @@ def _build_minimal_execution_plan():
     )
     from stagr.core.enums import GateDispositionKind, InvocationKind
 
-    invocation = Invocation(kind=InvocationKind.API_CALL)
+    invocation = Invocation(kind=InvocationKind.CI_COMPONENT)
     gate_disposition = GateDispositionSpec(
         kind=GateDispositionKind.ALWAYS_PASS,
         selector="always",
@@ -63,7 +67,7 @@ class _StubBackendRenderer:
     provider: str = "anthropic"
     backend: str = "claude"
 
-    def render(self, stage: "NormalizedStage") -> "ExecutionPlan":  # noqa: F821
+    def render(self, stage: "NormalizedStage") -> "ExecutionPlan":
         return _build_minimal_execution_plan()
 
 

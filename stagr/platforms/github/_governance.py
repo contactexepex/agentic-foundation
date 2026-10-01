@@ -239,13 +239,13 @@ def _build_stage_evaluation_call_lines(
             if in_fast and in_normal:
                 lines.append(eval_call + "\n")
             elif in_fast:
-                lines.append(f'if [[ "${{current_route}}" == "FAST" ]]; then\n')
+                lines.append('if [[ "${current_route}" == "FAST" ]]; then\n')
                 lines.append(f'  {eval_call}\n')
-                lines.append(f'fi\n')
+                lines.append('fi\n')
             elif in_normal:
-                lines.append(f'if [[ "${{current_route}}" == "NORMAL" ]]; then\n')
+                lines.append('if [[ "${current_route}" == "NORMAL" ]]; then\n')
                 lines.append(f'  {eval_call}\n')
-                lines.append(f'fi\n')
+                lines.append('fi\n')
             else:
                 pass  # stage not applicable to either route; skip
     return "".join(lines)

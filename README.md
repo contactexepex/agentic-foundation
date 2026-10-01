@@ -23,8 +23,8 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design and
 ## Flexible by design
 
 **Stages are agents; anything plugs in.** A pipeline is an ordered, extensible graph of stages. Each
-stage binds a **role/type** (review, security, build, test, deploy, custom) to a
-**provider + model**; the coding tool is derived from the provider — `openai` runs Codex:
+stage binds a **role/type** ([stage types](docs/CONFIGURATION.md#stages-optional--the-agent-graph))
+to a **provider + model**; the coding tool is derived from the provider — `openai` runs Codex:
 
 | Stage | Provider | Model | Tool (derived) |
 |---|---|---|---|

@@ -20,7 +20,6 @@ class StageKind(str, Enum):
     SECURITY = "security"
     BUILD = "build"
     TEST = "test"
-    DEPLOY = "deploy"
     CUSTOM = "custom"
 
 
@@ -75,28 +74,15 @@ class InvocationKind(str, Enum):
 
     # Post a comment on the PR to trigger the backend.
     PR_COMMENT = "pr_comment"
-    # Call the provider's API directly from a CI step.
-    API_CALL = "api_call"
-    # Trigger a CI pipeline/workflow by name or id (workflow_dispatch on GitHub Actions,
-    # pipeline triggers on GitLab CI, etc.). Value matches the neutral-core M2 contract.
-    WORKFLOW_DISPATCH = "workflow_dispatch"
     # Insert a native CI component (Action, GitLab component, etc.).
     # Platform-dependent; validated at render time.
     CI_COMPONENT = "ci_component"
 
 
 class StageResultSignalKind(str, Enum):
-    """Platform-native signal mechanism a stage execution artifact uses to publish its result.
-
-    On GitHub V1, CHECK_RUN is required for StageResultSignal. COMMIT_STATUS
-    must NOT be used on GitHub V1 — it is forgeable by any statuses:write actor.
-    COMMIT_STATUS is available only as a fallback on platforms where Check Runs
-    do not exist.
-    """
+    """Platform-native signal mechanism a stage execution artifact uses to publish its result."""
 
     CHECK_RUN = "check_run"
-    WORKFLOW_OUTPUT = "workflow_output"
-    COMMIT_STATUS = "commit_status"
 
 
 class StageResultState(str, Enum):
