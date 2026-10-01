@@ -9,8 +9,7 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 > **product scope**, however, is the **development lane** (approved story → merged PR). Planning
 > and CD/deploy are delivered by **separate sibling toolkits** that reuse this same contract, not
 > by stagr's reference lane. The contract's reach across the toolkit family is wider than
-> stagr's own span. The authoritative, refined design and
-> roadmap live in [`stagr/`](stagr/README.md) — start with [`stagr/overview.md`](stagr/overview.md).
+> stagr's own span.
 
 ---
 
