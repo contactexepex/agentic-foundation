@@ -134,12 +134,12 @@ stages:
 
   # A stage with enabled: false is excluded before normalization — not rendered,
   # not in the dependency graph, not in blockingStageIds. See 02-canonical-stage-model.md.
-  - id: implement-codex
-    type: implement
+  - id: extra-review
+    type: review
     provider: openai
     enabled: false          # optional; true by default
     triggers:
-      - issue_labeled
+      - manual
 ```
 
 ### Config keys and the normalized model
