@@ -254,7 +254,10 @@ managed stages (section 3).
 
 Results with the same name from any other author identity are ignored, so nobody else can
 satisfy the stage by creating a check with that name. The job runs on pull request events, when
-the producer's result is **created, re-requested or completed**, and on a schedule. Waking when
+the producer's result is **created, re-requested or completed**, when a producer that runs on the
+platform's own CI **finishes** (the platform does not announce results that its own CI creates),
+and on a schedule. The tool must post its result on the change: a tool that never posts one is
+not supported as an observed stage, and its stage stays without a result and blocks. Waking when
 the producer *starts* matters: a producer that re-runs a check after an earlier success flips
 the signal from `PASS` to `RUNNING` at the start of the re-run, not at its end. Because the job
 only reads and derives, running it again is always safe, so a missed event is corrected by the
@@ -284,7 +287,7 @@ provides these capabilities; a renderer that cannot provide one refuses to rende
 | 6 | Result carrier authored by the publisher identity and bound to a head | Check Run written by the Stagr App |
 | 7 | Wake-up when another stage's result changes | `check_run` / `check_suite` completed |
 | 8 | Per-job timeout | `timeout-minutes` |
-| 9 | Observed stages only: list results by name and authenticated author identity for a head, and wake when such a result is created, re-requested or completed | Check Runs API: every result for the head with that name, matched on `.app.id`; the one that started last wins (`filter=latest` is not enough, section 9, fact 4); `check_run` created, rerequested, completed |
+| 9 | Observed stages only: list results by name and authenticated author identity for a head, and wake when such a result is created, re-requested or completed, or when a producer on the platform's own CI finishes | Check Runs API: every result for the head with that name, matched on `.app.id`; the one that started last wins (`filter=latest` is not enough, section 9, fact 4); `check_run` created, rerequested, completed; `workflow_run` completed for a GitHub Actions producer (section 9, fact 7) |
 
 Other platforms (GitLab, Azure DevOps, Bitbucket, Jenkins) are added later as one column of
 this table each, checked against that vendor's documentation at that time. None is claimed now.
@@ -303,6 +306,7 @@ is built (item S below). Throwaway workflows ran on 2026-09-30 in the test repos
 | 4 | The Check Runs API with `filter=latest` returns one result per name and author after a re-run | **Corrected.** It holds for a re-run inside one workflow run ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749923387)). Separate runs on the same head each stay "latest", because `filter=latest` works per check suite ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749380522)). Stagr therefore lists every result and takes the one that started last (section 6) |
 | 5 | A `check_run` created, rerequested or completed event from a foreign producer starts a workflow for the pull request | **Verified for created and completed**, from SonarCloud and CodeQL ([created](https://github.com/exepex/spring-angular-book-management/actions/runs/36749001079), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36749059157)). Rerequested was not exercised |
 | 6 | `cancel-in-progress` accepts an expression | **Verified.** A push cancelled the older head's work; a manual run and a re-run cancelled nothing ([cancelled run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749940333)) |
+| 7 | A `workflow_run` completed event starts a workflow when a GitHub Actions producer finishes on a pull request (added by owner decision 17, #265) | **Verified** on 2026-10-01. The event named the producer's head and `pull_requests=[15]` ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36828554910)) |
 
 Also observed:
 
@@ -310,8 +314,7 @@ Also observed:
   next run in the group waits during that time, so runs still never overlap.
 - Results created by GitHub Actions itself (App id 15368) never started a `check_run` workflow:
   about 20 such results during the test, against 19 wake-ups that all came from SonarCloud and
-  CodeQL. An observed stage whose producer is a GitHub Actions workflow is therefore not woken by
-  capability 9 and is caught only by the scheduled run. The fix is an open owner decision (#265).
+  CodeQL. A GitHub Actions producer is therefore woken through `workflow_run` instead (fact 7).
 - Results the Stagr App writes (capability 7) were not exercised; the test used no App token.
 
 If a fact turns out false, this document is corrected first, then the code.
