@@ -20,9 +20,8 @@ platform:
   publisher: { app_id: 5125793, private_key_secret: STAGR_APP_PRIVATE_KEY }
 
 providers:
-  # Secret alias map: each key is a SecretRef.alias used in the BackendRenderer's ExecutionPlan;
-  # each value is the environment-variable name where the actual secret lives at run time.
-  # The values here are secret NAMES (never values); the runtime reads them from the environment.
+  # Secret alias map: each key is an alias a backend asks for; each value is the NAME of the CI
+  # secret that holds it (never the value). See docs/CONFIGURATION.md, "Secret alias resolution".
   openai:
     secrets:
       TRUSTED_COMMENTER_TOKEN: REMEDIATION_TOKEN
@@ -56,9 +55,8 @@ build:
   commands:
     test: "python .github/scripts/validate_config.py"
 
-# Fast-path is DISABLED for this repository: every PR — docs included — is routed to Codex for an
-# independent review. This is a shared toolkit whose docs other people rely on, so nothing merges
-# without review (see AGENTS.md / CLAUDE.md). Mirrors .github/workflows/fast-ai-code-review.yml.
+# Fast path is disabled for this repository; the policy is in AGENTS.md, "Git and pull-request
+# rules". The hand-written .github/workflows/fast-ai-code-review.yml applies it today.
 routing:
   fast_path:
     enabled: false

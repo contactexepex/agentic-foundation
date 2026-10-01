@@ -39,7 +39,7 @@ scoped to the stage:
 **Current state, stated honestly (this repository's hand-written workflows) — the agent lane is not read-only today:**
 
 - The **Codex security-review lane** (`request-final-security-review.yml`) carries the **remediation
-  PAT** (`CODEX_PAT`, a real-user credential with **Contents R/W + Pull Requests R/W**) to author the
+  PAT** (the `REMEDIATION_TOKEN` secret, a real-user credential with **Contents R/W + Pull Requests R/W**) to author the
   review request as a trusted user. The code review needs no credential of ours: the Codex App starts
   it by itself.
   The PAT is exposed **step-wide**: it is set in the environment of the **whole orchestration shell

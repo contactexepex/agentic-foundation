@@ -342,8 +342,8 @@ All four are blocking and run on `pr_opened` and `pr_updated`. Reviews wait for 
 an AI review of code that does not compile is noise and costs money; they do not wait for
 `unit-test`, which would lengthen the critical path for no safety gain.
 
-**Security waits for the code review** because this repository's contract (`AGENTS.md`,
-`CLAUDE.md`) says the two reviews run in sequence. Whether the review backend really fails on a
+**Security waits for the code review** because this repository's contract (`AGENTS.md`, "Git and
+pull-request rules") says the two reviews run in sequence. Whether the review backend really fails on a
 concurrent pair is unverified (`07-validation.md`), so this is a default, not a proof; a
 repository may remove the dependency. `minimal` is unchanged (`review` only).
 
