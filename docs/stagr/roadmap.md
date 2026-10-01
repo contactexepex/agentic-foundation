@@ -49,11 +49,12 @@ behaviour and the stated design:
 - **Security waits for review.** Decide whether the `standard` profile should make `security` depend
   on `review` (the two are independent today; design-docs/09 section 10 proposes the dependency).
   ([dev-lane.md](dev-lane.md))
-- **Minimal commenting identity for review lanes.** Replace the broad remediation PAT
-  (`CODEX_PAT`, Contents + PR R/W) used by the Codex review/security lanes with a narrowly-scoped
+- **Minimal commenting identity for the security-review lane.** Replace the broad remediation PAT
+  (`CODEX_PAT`, Contents + PR R/W) used by the Codex security-review lane with a narrowly-scoped
   commenting identity. ([security-and-secrets.md](security-and-secrets.md))
-- **Shared review lock.** A cross-workflow lock (or single dispatch authority) for code vs. security
-  review, closing the check-to-post window so "never concurrent" is guaranteed, not best-effort.
+- **Single review dispatch.** One authority that starts both the code and the security review (today
+  the Codex App starts the code review by itself), so "never concurrent" is guaranteed, not
+  best-effort.
   ([trust-and-correctness.md](trust-and-correctness.md))
 - **Decision-event emitter.** Build the audit/provenance emit layer — none ships today, so all of
   [audit-and-provenance.md](audit-and-provenance.md) is target.

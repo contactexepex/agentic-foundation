@@ -84,18 +84,17 @@ workflows do so. Whether the Codex backend really **errors if a code review and 
 run concurrently** on one PR is not verified, so in the `standard` profile the two stages are
 independent and sequencing is a **[target]** default. The hand-written workflows work like this:
 
-- the **code-review loop runs per push** until it converges (completed + clean on the head);
+- the **code-review loop runs per push** until it converges (completed + clean on the head): the
+  Codex App reviews every new commit by itself, and no workflow of ours requests it;
 - the **single security review** is triggered **only after** convergence;
 - the security-review workflow **serializes its own runs** (concurrency group `request-codex-security`).
 
-**Honest residual [target].** The code-review and security-review *request* workflows use **separate**
-concurrency groups (`request-codex-review-*` per PR vs. `request-codex-security`), so there is **no
-shared cross-workflow lock**. A push landing in the security workflow's **check-to-post window**
-(after it verifies the head but before its comment POST, and before Codex flips the summary row to
-`Running`) can let the code-review request post too — a narrow window where both could be requested.
-"Never concurrent" is therefore the **design intent**, achieved by converge-then-request plus
-per-workflow serialization; fully closing the window needs a **shared lock or a single dispatch
-authority** ([roadmap.md](roadmap.md)).
+**Honest residual [target].** Nothing serializes the Codex App's own code review against the
+security-review workflow. A push that lands while the security review is being requested or is
+running makes the App start a code review of the new commit at the same time — a narrow window where
+both run. "Never concurrent" is therefore the **design intent**, achieved by converge-then-request
+plus the security workflow's own serialization; fully closing the window needs a **single dispatch
+authority** for both reviews ([roadmap.md](roadmap.md)).
 
 Either way, the gate requires a head-bound code review **and** a head-bound security review to have
 completed — a security review alone, or one bound to an old head, is not enough.

@@ -8,7 +8,7 @@ gate that decides when the PR is **provably ready**.
 > - **implement** is not a Stagr stage: implementing a story belongs to the future development module (decision record #265).
 >   In this repository a person or an agent session opens the PR. The **review→fix loop is
 >   not auto-driven** — after a finding, an **external actor** (a human, or an orchestrator) pushes
->   the fix, and the review lane only *re-requests* Codex on the new commit. An automatic
+>   the fix, and the Codex App only *re-reviews* the new commit by itself. An automatic
 >   finding→remediation trigger with a bounded loop is **[target]**.
 > - **code review** does **not** re-run on every push under the shipped default: `routing.fast_path`
 >   defaults **on**, so the router can classify a trivial head and **skip** the review. (This repo

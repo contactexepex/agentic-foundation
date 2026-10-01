@@ -246,6 +246,5 @@ If you ever see a secret value in a log or comment, treat it as compromised and 
 | Symptom | Likely cause |
 |---|---|
 | Reviewer never runs on Codex | `REMEDIATION_TOKEN` missing or not a real-user PAT, or the Codex GitHub App is not installed. |
-| Endpoints/agents fail auth | Model API key secret missing or wrong name. |
 | Fast path never triggers | A changed file matches none of `routing.fast_path.globs`. |
 | Config rejected with a secret-name error | A `*_secret` field holds something that is not a valid secret name (for example a pasted token). Put the value in a CI secret and use its name. |

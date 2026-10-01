@@ -38,11 +38,13 @@ scoped to the stage:
 
 **Current state, stated honestly (this repository's hand-written workflows) — the agent lane is not read-only today:**
 
-- The **Codex review and security lanes** carry the **remediation PAT** (`CODEX_PAT`, a real-user
-  credential with **Contents R/W + Pull Requests R/W**) to author review comments as a trusted user.
+- The **Codex security-review lane** (`request-final-security-review.yml`) carries the **remediation
+  PAT** (`CODEX_PAT`, a real-user credential with **Contents R/W + Pull Requests R/W**) to author the
+  review request as a trusted user. The code review needs no credential of ours: the Codex App starts
+  it by itself.
   The PAT is exposed **step-wide**: it is set in the environment of the **whole orchestration shell
   step** (which also runs an authenticated `/user` lookup before posting), so **every command in that
-  step can read it** — it is **not** confined to a single isolated post step. So the review/security
+  step can read it** — it is **not** confined to a single isolated post step. So the security-review
   lane is **not read-scoped** and holds a publisher-class credential.
 
 So the least-privilege, buffered-apply, and minimal-commenting-identity goals above (including
