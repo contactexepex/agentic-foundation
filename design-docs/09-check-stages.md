@@ -310,7 +310,7 @@ is built (item S below). Throwaway workflows ran on 2026-09-30 in the test repos
 | 1 | A manual run and a re-run wait in the same concurrency group as ordinary runs (no overlap) | **Verified.** A manual run started after the pull-request run ended ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36748955501)), and a re-run started after a manual run ended ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36748953700), attempt 2) |
 | 2 | `needs.<work job>.result` reports failure, timeout, cancelled and skipped, and a publish job with `always()` still runs after each | **Corrected.** Publish runs after each. GitHub reports `success`, `failure`, `cancelled` and `skipped`, but a **timeout is reported as `cancelled`**, in `needs.<work job>.result` and in the check-run conclusion alike ([timeout](https://github.com/exepex/spring-angular-book-management/actions/runs/36748905937), [cancelled](https://github.com/exepex/spring-angular-book-management/actions/runs/36748910303)). Publish therefore tells them apart by run time (section 8, capability 4) |
 | 3 | A `pull_request_target` job can check out the head SHA with a read-only, non-stored token and no App token | **Verified.** The head matched, no credential stayed in `.git`, and a write with the token was refused with HTTP 403 ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36748953700)) |
-| 4 | The Check Runs API with `filter=latest` returns one result per name and author after a re-run | **Corrected.** It holds for a re-run inside one workflow run ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749923387)). Separate runs on the same head each stay "latest", because `filter=latest` works per check suite ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749380522)). Stagr therefore lists every result and takes the one that started last (section 6) |
+| 4 | The Check Runs API with `filter=latest` returns one result per name and author after a re-run | **Corrected.** It holds for a re-run inside one workflow run ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749923387)). Separate runs on the same head each stay "latest", because `filter=latest` works per check suite ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749380522)). Stagr therefore lists every result and takes the newest by creation (section 6) |
 | 5 | A `check_run` created, rerequested or completed event from a foreign producer starts a workflow for the pull request | **Verified for created and completed**, from SonarCloud and CodeQL ([created](https://github.com/exepex/spring-angular-book-management/actions/runs/36749001079), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36749059157)). Rerequested was not exercised; the design does not depend on it (section 6) |
 | 6 | `cancel-in-progress` accepts an expression | **Verified.** A push cancelled the older head's work; a manual run and a re-run cancelled nothing ([cancelled run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749940333)) |
 | 7 | A result written by the Stagr App starts a `check_run` workflow (section 8, capability 7) | **Verified** on 2026-10-01. Both created and completed started the workflow within about three seconds, naming the pull request ([write](https://github.com/exepex/spring-angular-book-management/actions/runs/36836277797), [created](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298185), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298452)). The App needs the Checks read and write permission to write results |
@@ -374,7 +374,7 @@ Outside this design: `stagr plan` and `stagr apply` on the neutral pipeline are 
 separately, and G needs the latter.
 
 **S. Verify the GitHub behavior of section 9.**
-- Done when: each of the six facts is marked verified or corrected in section 9, with the
+- Done when: each of the seven facts is marked verified or corrected in section 9, with the
   workflow run that showed it.
 - Test: the throwaway workflow and its run links; no product code.
 
@@ -449,7 +449,7 @@ separately, and G needs the latter.
 | 5 | Executor model instead of a provider on every stage | Owner confirmed (#265) |
 | 6 | Newest attempt wins, achieved by non-overlapping runs (no leases or tokens) | Owner confirmed (#265); runs verified not to overlap (section 9, fact 1) |
 | 7 | Dependents wait on any non-`PASS` upstream | Owner confirmed (#265) |
-| 8 | Security waits for review; reviews wait for `build` | Owner confirmed (#265). Unit tests move into `build` (#265); that change to this document follows separately |
+| 8 | Security waits for review; reviews wait for `build` | Owner confirmed (#265) |
 | 9 | Advisory exists only for `commands` and `observed` stages | Owner confirmed (#265) |
 | 10 | A timeout is told from a cancel by the work job's run time, with the known limit of section 8, capability 4 | Owner confirmed (#265) |
 | 11 | An observed stage takes the newest result, chosen by creation | Owner confirmed (#265) |
