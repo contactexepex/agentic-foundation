@@ -19,6 +19,5 @@ re-review still decide mergeability. A run is ignored if the PR head has moved s
 
 GitHub marks a thread `isOutdated` when the anchored code changes at all — not only when the finding
 is actually fixed. So a cosmetic edit (reformat, comment) to a flagged line can mark a genuine Codex
-finding outdated and auto-resolve it. This is backstopped by the re-review requested on every push
-(`request-codex-review-on-push.yml`): a still-valid issue is re-flagged as a new thread and re-blocks
-the auto-merge gate. Do not rely on auto-resolution to clear a real finding — address it in code.
+finding outdated and auto-resolve it. This is backstopped by Codex's own review of every new commit: a
+still-valid issue is re-flagged as a new thread and re-blocks the auto-merge gate. Do not rely on auto-resolution to clear a real finding — address it in code.

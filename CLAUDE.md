@@ -100,7 +100,7 @@ Who resolves threads, how many fix rounds are allowed, and when to escalate are 
 "Review threads".
 
 When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
-the delta review manually, since no push fires the per-push workflow.
+the delta review manually, since Codex reviews by itself only when new commits are pushed.
 
 For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
 workflow requests the delta review automatically.

@@ -2,12 +2,12 @@ name: Request Codex security review (final pre-merge)
 
 # Requests exactly ONE Codex security review, as the FINAL step before merge — after the code review
 # has converged (the Codex code review is "Completed" for the current head and there are no unresolved
-# review threads). The security review is kept out of the on-push lane
-# (request-codex-review-on-push.yml) so the two never run concurrently: Codex's cloud backend errors
-# when a code and a security review run at the same time on one PR.
+# review threads). The Codex App runs the code review itself, on PR open and on every new commit; the
+# security review is requested only here, so the two never run concurrently: Codex's cloud backend
+# errors when a code and a security review run at the same time on one PR.
 #
-# IMPORTANT — the Codex App must be configured to run only the CODE review automatically on PR open
-# (not the security review). Whether the App auto-runs a security review on open is a ChatGPT-side App
+# IMPORTANT — the Codex App must be configured to run only the CODE review automatically, on PR open and
+# on new commits (not the security review). Whether the App auto-runs a security review on open is a ChatGPT-side App
 # setting this toolkit cannot render; if it is left on, the App's native security review races the code
 # review on every open and re-hits the same backend concurrency error this workflow exists to prevent.
 # This workflow is the SOLE trigger of the security review.
@@ -131,8 +131,7 @@ jobs:
             author_assoc="$(jq -r '.author_association' <<<"$PR_JSON")"
             head_sha="$(jq -r '.head.sha' <<<"$PR_JSON")"
 
-            # Same eligibility guard as the on-push lane: open, non-draft, same-repo head, default base,
-            # trusted author. Fork PRs and untrusted authors never drive an automated review request.
+            # Eligibility guard: open, non-draft, same-repo head, default base, trusted author. Fork PRs and untrusted authors never drive an automated review request.
             [[ "$state" == "open" && "$draft" == "false" && "$head_repo" == "$REPO" && "$base_ref" == "$DEFAULT_BRANCH" ]] \
               || { echo "PR #${PR_NUMBER} not eligible (state/draft/fork/base); skipping."; return 0; }
             printf '%s' "$TRUSTED_ROLES" | jq -e --arg a "$author_assoc" 'index($a) != null' >/dev/null 2>&1 \
@@ -180,7 +179,7 @@ jobs:
 
             # Re-check the PR head immediately before posting. If a push landed after head_sha was read,
             # the comment would attach to the now-updated PR and Codex would review the new head while the
-            # on-push lane simultaneously requests its code review — recreating the concurrent code/security
+            # Codex App simultaneously starts its own code review of it — recreating the concurrent code/security
             # run this workflow exists to prevent. Abort unless the head is still head_sha; the new head's
             # own events will drive the flow.
             current_head="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')" || { echo "PR #${PR_NUMBER}: cannot re-read PR head before posting; skipping."; return 0; }

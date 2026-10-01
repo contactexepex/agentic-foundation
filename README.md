@@ -136,9 +136,10 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 (a Codex review stage and a Codex security stage), and `.github/workflows/` are the hand-written
 **reference implementation** the GitHub renderer (`stagr/platforms/github/`) is modelled on:
 
-- **Codex reviews** — code and security — is re-requested on every push
-  (`request-codex-review-on-push.yml`); the deterministic router (`fast-ai-code-review.yml`)
-  routes every PR to Codex (the fast path is disabled here, so docs are reviewed too).
+- **Codex reviews** the code of every new commit by itself (a Codex App setting), and the final
+  security review is requested once the code review is clean (`request-final-security-review.yml`);
+  the deterministic router (`fast-ai-code-review.yml`) routes every PR to Codex (the fast path is
+  disabled here, so docs are reviewed too).
 - **`Validate`** (`validate.yml`) is the CI gate. Review threads that a later commit made outdated,
   with Codex-only comments, **auto-resolve** (`resolve-fixed-codex-review-threads.yml`); who resolves
   every other thread is set in `AGENTS.md`, "Review threads". The **fail-closed foundation gate**
