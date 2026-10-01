@@ -45,10 +45,11 @@ or links is actionable, not a style finding.
   only the delta.
 - The only permitted automated merge is the **fail-closed foundation-lane gate** (see "Merge lanes").
   It enforces every gate rather than bypassing one. Neither Claude nor Codex hand-merges.
-- Automated resolution of Codex review threads is limited to threads a later commit has already made
-  outdated.
-- Review threads are resolved only when a later commit makes them outdated; neither Claude nor any
-  automated actor resolves a current (non-outdated) thread.
+- The **judge** (the reviewer-side account `contactexepex-judge`) rules on every review finding. When
+  it rules a finding fixed on the current head, or a decline accepted, it resolves that thread, whether
+  or not the thread is outdated.
+- Claude never resolves a current (non-outdated) thread, on its own PR or elsewhere. A thread that a
+  later commit has made outdated may be resolved by anyone, including the outdated-thread workflow.
 - If a finding cannot be resolved within the bounded review cycles in `CLAUDE.md`, escalate to a
   human rather than looping.
 
@@ -87,7 +88,7 @@ requires unrealistic preconditions is noise that slows the pipeline — omit it 
 Focus on what is actually broken in what the diff actually changes.
 
 **Claude (implementor):** decline non-actionable findings with one evidence-based reply. Do not
-resolve the thread — leave it open for the Codex delta review. Do not loop on a finding you have
+resolve the thread; the judge rules on it after the Codex delta review. Do not loop on a finding you have
 declined with evidence. One remediation cycle per finding is the limit.
 
 ## Core operating loop

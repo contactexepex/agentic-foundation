@@ -95,13 +95,13 @@ finding — review comments require judgment, not blind acceptance.
 
 **How to decline**: reply once on the thread with the specific evidence-based reason (cite the
 existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
-Do not resolve the thread — leave it open for the Codex delta review. Do not loop: a declined
+Do not resolve the thread; the judge rules on it after the Codex delta review. Do not loop: a declined
 finding stays declined unless Codex presents new evidence in the delta review. One remediation
 cycle per finding is the limit.
 
 When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
-the delta review manually, since no push fires the per-push workflow. If findings remain
-unresolved after the delta review, escalate to a human (apply `human-merge`) rather than looping.
+the delta review manually, since no push fires the per-push workflow. If the judge does not resolve
+a finding after the delta review, escalate to a human (apply `human-merge`) rather than looping.
 
 For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
 workflow requests the delta review automatically. Limit the total remediation → delta-review loop
