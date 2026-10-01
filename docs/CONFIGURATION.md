@@ -7,8 +7,8 @@ a **service account** vs a **personal access token (PAT)**, and every field of `
 
 ## 1. Prerequisites
 
-- A repository on GitHub that you can add workflows and secrets to. GitHub is the only platform with
-  a renderer today.
+- A repository you can add workflows and secrets to, on a platform that has a renderer (see
+  [ARCHITECTURE.md](ARCHITECTURE.md), section 8).
 - Provider access for each provider your stages use (today only OpenAI Codex).
 
 The toolkit never creates credentials.
@@ -70,7 +70,7 @@ platform: { type: github, default_branch: main, publisher: { app_id: 123456 } }
 ### `platform`
 | Field | Meaning |
 |---|---|
-| `type` | `github` \| `gitlab` \| `azure_devops` \| `bitbucket` \| `gitea` \| `other`. Selects the renderer. Only the GitHub renderer exists today. |
+| `type` | `github` \| `gitlab` \| `azure_devops` \| `bitbucket` \| `gitea` \| `other`. Selects the renderer; which renderers exist today is in [ARCHITECTURE.md](ARCHITECTURE.md), section 8. |
 | `default_branch` | Trunk branch change-requests target. Default `main`. |
 | `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). Default `true`. |
 | `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. Default `owner`, `member`, `collaborator`. |
@@ -161,9 +161,8 @@ same `id` overrides). Each stage is one agent. One provider has a default backen
 | `gate` | `advisory` (reported, never blocks merge) or `blocking` (the merge gate requires the stage to pass). Omit for `advisory`. |
 | `depends_on` | Ids of stages that must pass before this one starts (defines the graph). Unknown ids and cycles are rejected. |
 
-> **What renders today.** The GitHub renderer renders stages whose backend is started by a PR comment,
-> such as Codex (`openai`). A backend that needs a different start is rejected by validation V-S08 on
-> GitHub. The only backend today is `codex`.
+> **Which stages render.** A stage whose backend the platform renderer cannot start is rejected by
+> validation (V-S08). What renders today is in [ARCHITECTURE.md](ARCHITECTURE.md), section 8.
 
 See **Model resolution** below for how a stage's model is chosen.
 

@@ -72,8 +72,7 @@ contract layer**: a stage names a **provider**, and the toolkit derives the codi
 `backend` is a plain string. The tool follows the provider; an explicit `backend` override lets you
 pin one or adopt a roadmap adapter later without touching the rest of the pipeline.
 
-What the GitHub renderer can render today is set out under `stages` in
-[CONFIGURATION.md](CONFIGURATION.md).
+What the GitHub renderer can render today is in section 8 below.
 
 ---
 
@@ -109,8 +108,8 @@ expressed independently per stage. The precedence is set out in
 ## 5. Platform neutrality
 
 The contract is written once and rendered per platform. `platform.type` selects the
-renderer (the values are listed under `platform` in [CONFIGURATION.md](CONFIGURATION.md); GitHub
-ships first). The renderer normalizes platform concepts:
+renderer (the values are listed under `platform` in [CONFIGURATION.md](CONFIGURATION.md); which
+render today is in section 8). The renderer normalizes platform concepts:
 
 | Neutral concept | GitHub | GitLab | Azure DevOps |
 |---|---|---|---|

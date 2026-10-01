@@ -16,9 +16,8 @@ gate that decides when the PR is **provably ready**.
 > - **SAST/quality, build, test, integration-test, performance, custom** stages are **[target]** — no
 >   workflow renders them today (the GitHub renderer renders only the Codex `review` and `security`
 >   stages). Their rows and ordering below describe the intended graph.
-> - in the `standard` profile **`security` waits for `review`** (`depends_on: [review]`); what each
->   profile expands to is set out under `profile` in
->   [CONFIGURATION.md](../CONFIGURATION.md).
+> - the stage order each profile sets, including whether `security` waits for `review`, is under
+>   `profile` in [CONFIGURATION.md](../CONFIGURATION.md).
 > - the **merge gate below is implemented today only by this repository's hand-written foundation
 >   gate** (`auto-merge-foundation-prs.yml`), not by Stagr. Stagr's governance workflow renders a
 >   smaller check: blocking stages must pass. Human-lane readiness depends on an
@@ -37,7 +36,7 @@ approved story issue
 [code-review]  Codex reviews ──► fix pushed by an external actor ──► new commit re-triggers review
       │        (loop until ZERO open review threads; the fix push is NOT auto-driven today — see note)
       ▼  (only after code review has converged: completed + clean on head)
-[security-review]  Codex security review  ── runs after the code review passes (`security` depends on `review`)
+[security-review]  Codex security review  ── runs after the code review
       +  [sast/quality integrations]  Sonar / Checkmarx (if configured) ── must be clean
       │  (all security findings addressed, zero open security comments)
       ▼
@@ -62,7 +61,7 @@ for the repo and is itself a blocking check. Stagr does not render it yet; its d
 | **implement** | not a Stagr stage; belongs to the future development module (decision record #265) | n/a (produces the PR) | one PR per story |
 | **validate / CI** | PR opened/updated, push | blocking | build + unit tests must pass on the head |
 | **code-review** (Codex) | PR opened/updated (`synchronize`) | advisory or blocking | re-runs on each push **unless fast-path skips a trivial head** (shipped default `fast_path: on`); converges only when **zero open review threads** on the current head |
-| **security-review** (Codex) | PR opened/updated; in the `standard` profile it starts once the code review passes; **[target]** code review completed + clean on head | blocking **when configured** (blocking in the `standard` profile) | **[target]** runs once, after code review converges; **never concurrent** (best-effort) |
+| **security-review** (Codex) | PR opened/updated, in the order the profile sets ([CONFIGURATION.md](../CONFIGURATION.md), `profile`); **[target]** code review completed + clean on head | blocking **when configured** (blocking in the `standard` profile) | **[target]** runs once, after code review converges; **never concurrent** (best-effort) |
 | **sast / quality** (Sonar, Checkmarx) **[target]** | PR opened/updated | blocking (if configured) | grouped with security; clean **before** integration/perf/custom — *not rendered today* |
 | **integration-test** **[target]** | after security clean (or as configured) | blocking (if configured) | default: **after** the security group — *not rendered today* |
 | **performance-test** (a `test`/`custom` stage) **[target]** | after integration (or as configured) | blocking (if configured) | default: after integration — *not rendered today* |
@@ -81,8 +80,8 @@ but the default keeps the expensive and the risky stages behind the cheap securi
 This repository's contract (`AGENTS.md`) runs the two reviews in sequence, and its hand-written
 workflows trigger the security review **only after** the code-review loop has converged (completed
 and clean on the exact head). Whether the Codex backend really fails on a concurrent pair is not
-verified, so the order is a default, not a proof; the `standard` profile makes `security` wait for
-`review`. See
+verified, so the order is a default, not a proof; the stage order each profile sets is under
+`profile` in [CONFIGURATION.md](../CONFIGURATION.md). See
 [trust-and-correctness.md](trust-and-correctness.md#sequencing-code-vs-security-review).
 
 ## The merge gate — the definition of "provably ready"

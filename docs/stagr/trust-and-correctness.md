@@ -81,8 +81,9 @@ to:
 
 This repository's contract (`AGENTS.md`) runs the two reviews in sequence, and the hand-written
 workflows do so. Whether the Codex backend really **errors if a code review and a security review
-run concurrently** on one PR is not verified, so the order is a default, not a proof; the `standard`
-profile makes `security` depend on `review`. The hand-written workflows work like this:
+run concurrently** on one PR is not verified, so the order is a default, not a proof (the stage order
+each profile sets is under `profile` in [CONFIGURATION.md](../CONFIGURATION.md)). The hand-written
+workflows work like this:
 
 - the **code-review loop runs per push** until it converges (completed + clean on the head): the
   Codex App reviews every new commit by itself, and no workflow of ours requests it;

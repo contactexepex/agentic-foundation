@@ -33,13 +33,14 @@ stage binds a **role/type** (review, security, build, test, deploy, custom) to a
 
 Today the toolkit has one backend renderer, **OpenAI (Codex)**; more providers/tools are roadmap and
 slot in through the same provider→tool map without forking the contract. What the GitHub renderer
-can render today is set out under `stages` in [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+can render today is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), section 8.
 
 **Models are configurable and layered.** You need not specify a model at all; how a stage's model is
 chosen is set out in [Model resolution](docs/CONFIGURATION.md#3a-model-resolution).
 
 **Any platform.** `platform.type` selects a renderer that maps the same contract to that system
-(PR↔MR, roles, required checks). GitHub is the only renderer today; others follow.
+(PR↔MR, roles, required checks). Which platforms render today is in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), section 8.
 
 **Compose, don't reinvent.** New tools plug in through one seam: a stage's optional `backend` override
 wraps a mature OSS agent (OpenHands, PR-Agent, SWE-agent) or a custom adapter — roadmap today, added

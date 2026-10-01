@@ -93,7 +93,7 @@ of the same id). Profile expansions are set out under `profile` in
 ## Platform renderer
 
 The contract is written once and **rendered** per platform. `platform.type` selects the renderer;
-**GitHub ships first**, others follow as pure renderers (the values are listed under `platform` in
-[CONFIGURATION.md](../CONFIGURATION.md)).
+the values are listed under `platform` in [CONFIGURATION.md](../CONFIGURATION.md), and other
+platforms follow as pure renderers.
 Neutrality is a design principle enforced by keeping platform specifics in the renderer layer, not
 a near-term deliverable — see [roadmap.md](roadmap.md).

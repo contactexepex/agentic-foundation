@@ -37,7 +37,7 @@ behavioural fixture with a stubbed platform API).
 | Findings persist after the iteration cap | **Escalate** (stop looping) |
 | Fix reintroduces a prior finding (oscillation) | Circuit breaker trips → **Escalate** |
 | Review never returns / backend error | Fail-closed **Blocked**; retry within cap; then **Escalate** |
-| Code + security review would run concurrently | Security is **deferred** until code review passes: the `standard` profile makes `security` depend on `review`, and this repository's hand-written workflows also wait until the code review has converged |
+| Code + security review would run concurrently | Security is **deferred** until the code review passes when the stage graph orders them (the stage order each profile sets is under `profile` in [CONFIGURATION.md](../CONFIGURATION.md)); this repository's hand-written workflows also wait until the code review has converged |
 
 ## 3. Checks, statuses, and reruns
 
