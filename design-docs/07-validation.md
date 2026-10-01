@@ -1,7 +1,8 @@
 # Stagr Neutral Core — Validation Checklist
 
 **Status:** Static checks V-S01 to V-S09, V-S11 and V-S14 are implemented and run in `stagr plan` and
-`stagr apply`. V-S15 (check stages) and the environment checks (`stagr doctor`) are not implemented yet.
+`stagr apply`; today V-S01 still accepts unknown top-level keys. V-S15 (check stages), V-S16 (engine
+file), V-S17 (platform axes) and the environment checks (`stagr doctor`) are not implemented yet.
 
 ---
 
@@ -21,13 +22,15 @@ and **environment** (requires network access, credentials, and a configured plat
 | `stagr apply` | Static validation, then renders and writes artifacts | No (but `doctor` should pass first) |
 
 `stagr plan` and `stagr apply` share the same static validation pass. Any static error
-that fails `plan` also fails `apply`.
+that fails `plan` also fails `apply`, except V-S16 (engine file), which `apply` skips because it
+writes that file.
 
 ---
 
 ## Static validation
 
-Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifacts.
+Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifacts (V-S16 is the
+exception described under that check).
 
 `validate_config` in `stagr/core/config_validation.py` is the front door for V-S01 to V-S06:
 schema, publisher block, profile, dependency references, cycles, and skill files.
@@ -39,12 +42,8 @@ check is `python .github/scripts/validate_config.py`.
 ### V-S01 — Config schema validity
 
 All required fields are present; all field values are recognized enum members or valid
-strings. Unrecognized top-level keys are silently ignored — operators may co-locate
-non-Stagr configuration (e.g., `deploy:`) alongside the Stagr contract in
-`.agentic/config.yml`. Stagr validates only its own recognized key namespace: `version`,
-`profile`, `platform`, `defaults`, `providers`, `stages`, `routing`, `merge` and, once
-`09-check-stages.md` is built, `build`. Any other top-level key is not read, not validated,
-and does not produce an error or warning. Unknown keys inside a Stagr key are errors. See `01-neutral-config-contract.md` for the full list of recognized keys.
+strings; and no key is unknown, at any level. The rule and the list of recognized keys are in
+`01-neutral-config-contract.md`, "The schema is the key list".
 
 ### V-S02 — Schema version support
 
@@ -80,7 +79,7 @@ in the config.
 ### V-S08 — Platform renderer compatibility
 
 The target PlatformRenderer supports every `InvocationKind` present in the
-ExecutionPlans that would be generated. Catches `CI_COMPONENT` incompatibilities with
+ExecutionPlans that would be generated. Catches `CI_STEP` incompatibilities with
 the target platform.
 
 ### V-S09 — Route dependency-closure
@@ -124,14 +123,28 @@ For stages with a `commands` or `observed` executor (`09-check-stages.md`, secti
 1. A stage declares `commands` or `observe`, never both; `commands` appears only on `custom`
    stages.
 2. Every `commands` stage has at least one command, after the `build:` block is applied to the
-   `build` and `unit-test` stages. A stage with nothing to run is an error.
+   `build` stage. A stage with nothing to run is an error.
 3. `observe.check` and `observe.producer` are both present; an observed stage has no
-   `depends_on`. The target platform renderer accepts the form of `observe.producer` (on GitHub
-   a numeric App id, never a login or display name).
+   `depends_on`. The target platform renderer accepts the form of `observe.producer`
+   (`09-check-stages.md`, section 2, rule 3).
 4. `timeout_minutes` is an integer from 1 to 360.
-5. `BUILD` and `TEST` stages are never agent stages; `REVIEW` and `SECURITY` stages are always
+5. `BUILD` stages are never agent stages; `REVIEW` and `SECURITY` stages are always
    `agent` stages with a blocking gate.
 6. No key named `secrets` exists on a stage. Unknown keys are rejected as in V-S01.
+
+### V-S16 — Engine file present and unchanged
+
+The rules engine file that `stagr apply` writes (`06-runtime-boundary.md`, "The engine file") is
+present and identical to the file this Stagr version would write. A missing, edited or
+out-of-date engine file fails `stagr plan`. V-S16 is the one static check that `stagr apply`
+skips, because `apply` is what writes the engine file: on a fresh repository and after an upgrade
+it writes the current file.
+
+### V-S17 — Platform axes known
+
+`platform.scm` is present, and `platform.scm` and `platform.ci` (when set) each name a platform
+with a renderer. The platform block is described in `01-neutral-config-contract.md`, "The
+platform block".
 
 ---
 
@@ -152,34 +165,33 @@ repository or environment secret on the target platform. Missing secrets produce
 
 ### V-E02 — Backend app/integration installed
 
-Each provider's GitHub App, OAuth integration, or equivalent is installed on the
-repository and has the permissions that the backend requires (e.g., PR comment write,
-review thread read).
+Each provider's platform app or integration is installed on the repository and has the
+permissions that the backend requires (for example, writing comments on the change and reading
+review threads).
 
 ### V-E03 — Platform permissions
 
-The repository has the workflow permissions that the generated artifacts require (e.g.,
-`pull-requests: read`, `statuses: read`, `contents: read`). Validates against the
-minimal `permissions:` blocks that the PlatformRenderer will generate.
+The repository grants the workflow permissions that the generated artifacts require. Validates
+against the minimal permission blocks that the PlatformRenderer will generate.
 
 ### V-E04 — TrustPolicy author roles reachable
 
 The `trustedRoles` configured in `TrustPolicy` includes at least one role that the
-repository's expected PR authors hold. A TrustPolicy that excludes all likely authors
-will cause every PR to be skipped.
+repository's expected change authors hold. A TrustPolicy that excludes all likely authors
+will cause every change to be skipped.
 
 ---
 
 ## Notes
 
-**V-S10 is obsolete.** It guarded an auto-merge setting that the schema does not have. There is
+**V-S10 is obsolete.** It guarded an automatic-merge setting that the schema does not have. There is
 no check with that number.
 
 **V-S12 has no separate check.** The resolver's convention fallback means every alias resolves;
 see V-S12 above.
 
 **V-S13 (NON_BLOCKING dependency warning) has been removed.** `NON_BLOCKING` controls
-merge-gate participation, not what conclusion a stage can produce. A `NON_BLOCKING`
+gate participation, not what conclusion a stage can produce. A `NON_BLOCKING`
 stage can produce `conclusion = PASS` and is a perfectly valid dependency for any stage,
 including `BLOCKING` ones. The original rule was based on a false premise.
 

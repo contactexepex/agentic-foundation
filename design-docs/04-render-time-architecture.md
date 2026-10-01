@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Render-Time Architecture
 
-**Status:** Design phase — not yet implemented
+**Status:** Target design. What is built today is in
+[ARCHITECTURE.md, section 8](../docs/ARCHITECTURE.md#8-status--roadmap).
 
 ---
 
@@ -8,8 +9,8 @@
 
 Render time is when Stagr translates the neutral config into platform-native artifacts.
 It happens once per config change, triggered by `stagr apply`. After rendering, Stagr
-has no further involvement; the generated artifacts run entirely inside the target
-platform.
+has no further involvement; the generated artifacts, including the rules engine file, run
+entirely inside the target platform (`06-runtime-boundary.md`).
 
 ---
 
@@ -35,7 +36,7 @@ ExecutionPlan { stageId, invocation, requiredSecrets, evidence, gateDisposition 
       ▼
 PlatformRenderer
       │  produces
-      ├── Stage execution artifact (e.g., one GitHub Actions workflow file per stage)
+      ├── Stage execution artifact (e.g., one CI workflow file per stage)
       └── StageResultSpec  (how this stage signals its result at run time)
 ```
 
@@ -62,7 +63,7 @@ RoutingPolicy + MergePolicy + TrustPolicy + StageResultSpec[]
 PlatformRenderer
       │  returns
       ▼
-Routing artifact + Governance/merge artifact
+Routing artifact + Governance artifact
 ```
 
 **Why two phases?** The governance artifact must know **where** each blocking stage will
@@ -70,7 +71,8 @@ publish its `StageResultSignal` at run time. This is determined by the PlatformR
 during Phase 1 (not by the BackendRenderer and not from `RenderContext` inputs). Phase 2
 therefore cannot begin until all Phase 1 `StageResultSpec` outputs are collected.
 
-**Separation rule:** Phase 1 renderers never read routing or merge policy. Phase 2
+**Separation rule:** Phase 1 renderers read `RoutingPolicy` only to embed the stage's route
+applicability into its artifact, and never read merge policy. Phase 2
 renderers never read stage `ExecutionPlan` objects directly — they receive only the
 `StageResultSpec[]` summary produced by Phase 1.
 
@@ -88,7 +90,9 @@ RenderContext {
   routingPolicy: RoutingPolicy
   mergePolicy:   MergePolicy
   trustPolicy:   TrustPolicy
-  platform:      string                 // e.g. "github", "gitlab", "bitbucket"
+  scm:           string                 // platform.scm: where changes, the gate and identities live
+  ci:            string                 // platform.ci: where jobs run; equals scm unless set
+  host:          string | null          // platform.host: base URL of a self-hosted platform
 }
 ```
 
@@ -129,12 +133,14 @@ Invocation {
 
 ### InvocationKind
 
-| Value | Semantics | Platform notes |
-|---|---|---|
-| `PR_COMMENT` | Post a comment on the PR to trigger the backend | GitHub: `gh pr comment` via trusted-user PAT |
-| `CI_COMPONENT` | Insert a native CI component (Action, GitLab component, etc.) | **Platform-dependent by design.** Validation catches incompatibilities at render time. |
-| `RUN_COMMANDS` | Run the stage's commands in a CI job with no credentials and no secrets (`commands` executor) | GitHub: the untrusted work job of the stage workflow |
-| `READ_RESULT` | Read a named result from a named producer (`observed` executor); starts nothing | GitHub: a job that reads Check Runs |
+| Value | Semantics |
+|---|---|
+| `COMMENT_COMMAND` | Post a comment on the change to trigger the backend |
+| `CI_STEP` | Insert a native CI step provided by the platform or the backend. **Platform-dependent by design**; validation (V-S08) catches incompatibilities at render time. |
+| `RUN_COMMANDS` | Run the stage's commands in a CI job with no credentials and no secrets (`commands` executor) |
+| `READ_RESULT` | Read a named result from a named producer (`observed` executor); starts nothing |
+
+How each kind is rendered on GitHub is in `08-github-codex-mapping.md`.
 
 ### StageResultSpec
 
@@ -145,40 +151,20 @@ reading raw `EvidenceSpec` details.
 ```
 StageResultSpec {
   stageId:        string
-  signalKind:     StageResultSignalKind   // how the signal is published at run time
-  signalSelector: string                  // platform-specific locator for the signal
+  signalSelector: string                  // platform-specific locator of the result carrier
   provenance:     StageResultProvenance   // expected publisher identity for governance verification
 }
 
 StageResultProvenance {
   publisherIdentity: string   // platform-specific identity of the expected signal publisher
-                              // (e.g., GitHub App installation ID, workflow file path)
 }
 ```
 
-`StageResultSignalKind` has one value: `CHECK_RUN` (authenticated App identity).
-
-`provenance.publisherIdentity` is used by the governance artifact to verify the signal
-came from the expected publisher before trusting its conclusion. On GitHub, this is the
-GitHub App installation ID or a stable workflow identity that created the Check Run. The
-governance artifact must reject any signal whose publisher identity does not match the
-rendered `provenance` value.
-
-**How `signalKind == CHECK_RUN` flows to platform capabilities.** When the
-PlatformRenderer selects `CHECK_RUN` as `signalKind`, it must:
-
-1. Include `checks: write` in the generated stage execution artifact's `permissions:`
-   block (GitHub V1). This is a PlatformRenderer implementation responsibility — it is
-   not declared as a field in `ExecutionPlan` because `checks: write` is a GitHub-specific
-   permission name that belongs in the PlatformRenderer, not in the neutral intermediate
-   representation produced by the BackendRenderer.
-2. Do the same for the routing artifact, which also emits an authenticated Check Run
-   (`RouteClassification`).
-
-`stagr doctor` V-E03 validates that the repository has the permissions these generated
-`permissions:` blocks require. V-E02 validates that the backend App/integration is
-installed with the capabilities to create those Check Runs. These two doctor checks are
-the verification layer; `ExecutionPlan` does not duplicate them as data model fields.
+The signal is published on a result carrier bound to the revision and written by the publisher
+identity; the provenance rule is in `06-runtime-boundary.md`, "Signal emission". The carrier
+and the permissions it needs are platform primitives, so they are chosen by the
+PlatformRenderer and never appear in `ExecutionPlan`. The GitHub carrier and its permissions are
+in `08-github-codex-mapping.md`.
 
 The BackendRenderer produces the `EvidenceSpec[]` (how to detect raw completion).
 The PlatformRenderer for a stage execution artifact uses those `EvidenceSpec` entries to
@@ -218,49 +204,15 @@ governance artifact (Path 2).
 
 Path 1 generates stage execution artifacts that detect raw backend evidence (e.g., a
 Codex comment row containing "Completed"). Path 2 generates a governance artifact that
-must decide merge eligibility. Without a normalized signal between them, the governance
+must decide the gate result. Without a normalized signal between them, the governance
 artifact must understand every possible backend's raw output format — breaking
 provider-neutrality.
 
 ### The solution: StageResultSignal
 
-At run time, each stage execution artifact **emits a `StageResultSignal`** to a
-well-known platform location (e.g., a commit status or check run output). The
-governance artifact reads these signals, not raw evidence.
-
-```
-StageResultSignal {
-  stageId:    string
-  headSha:    string
-  state:      StageResultState
-  conclusion: StageResultConclusion
-}
-```
-
-### StageResultState
-
-| Value | Meaning |
-|---|---|
-| `PENDING` | Stage has not started yet |
-| `RUNNING` | Stage invocation is in flight |
-| `COMPLETED` | Stage finished processing (regardless of findings) |
-| `FAILED` | Stage could not finish (infrastructure failure, timeout) |
-
-### StageResultConclusion
-
-| Value | Meaning |
-|---|---|
-| `PASS` | Stage completed and the result satisfies the gate (no blocking findings) |
-| `BLOCKED` | Stage completed but findings or conditions prevent a merge-gate pass. For review stages: review finished with unaddressed findings. |
-| `FAILED` | Stage did not finish successfully (infrastructure failure, dependency failed) |
-| `UNKNOWN` | Signal received but conclusion cannot be determined (malformed signal, version mismatch) |
-
-### Why COMPLETED ≠ PASS for review stages
-
-A code review that produces 3 serious findings is `COMPLETED` (the reviewer finished
-processing) but `BLOCKED` (the findings prevent merge). The gate requires
-`conclusion = PASS`, not `state = COMPLETED`. This separation prevents a completed
-review with outstanding findings from satisfying a blocking gate.
+At run time, each stage execution artifact **emits a `StageResultSignal`** to the location its
+`StageResultSpec` declares. The governance artifact reads these signals, not raw evidence. The
+signal, its states, conclusions and reasons are defined in `06-runtime-boundary.md`.
 
 ### Signal flow
 
@@ -270,22 +222,24 @@ Stage execution artifact (runtime)
     ├── Determines state and conclusion
     └── Emits StageResultSignal
             │
-            ▼ (platform-native signal: commit status / check run)
+            ▼ (result carrier written by the publisher identity)
 Governance artifact (runtime)
     ├── Reads StageResultSignal for each blockingStageId
-    ├── Checks: state ∈ {COMPLETED} AND conclusion = PASS for current headSha
-    └── Reports merge eligibility
+    ├── Evaluates the gate (06-runtime-boundary.md, "Gate evaluation")
+    └── Publishes the one gate result
 ```
 
 ---
 
 ## Three artifact classes
 
-| Class | Produced by | Examples (GitHub) | Responsibility |
-|---|---|---|---|
-| **Stage execution artifact** | Path 1, one per stage | One workflow file per stage | Trigger on declared StageTriggers; invoke the backend; detect evidence; emit StageResultSignal |
-| **Routing artifact** | Path 2 | `fast-ai-code-review.yml` | Classify changed files; emit `RouteClassification` signal |
-| **Governance / merge artifact** | Path 2 | `auto-merge-foundation-prs.yml` | Read `StageResultSignal` for each blocking stage + `RouteClassification`; enforce `MergePolicy`; merge when eligible |
+| Class | Produced by | Responsibility |
+|---|---|---|
+| **Stage execution artifact** | Path 1, one per stage | Trigger on declared StageTriggers; invoke the backend or run the work; detect evidence; emit StageResultSignal |
+| **Routing artifact** | Path 2 | Classify changed files; emit `RouteClassification` signal |
+| **Governance artifact** | Path 2 | Read `StageResultSignal` for each blocking stage + `RouteClassification`; enforce `MergePolicy`; publish the one gate result. It never merges. |
+
+The GitHub file names are in `08-github-codex-mapping.md`.
 
 ---
 
@@ -295,9 +249,9 @@ Governance artifact (runtime)
    dependency ordering.
 2. **RoutingPolicy** owns stage applicability: which stages run on FAST vs NORMAL routes.
 3. **EvidenceSpec** owns raw completion detection: what backend output counts as the
-   stage having processed a given head commit.
-4. **MergePolicy** owns merge eligibility: which stages must have `conclusion = PASS`
-   for the head to be mergeable.
+   stage having processed a given revision.
+4. **MergePolicy** owns the gate requirements: which stages must have `conclusion = PASS`
+   for the revision's gate result to pass.
 
 No renderer may override these four authorities. Any conflict is a renderer bug.
 

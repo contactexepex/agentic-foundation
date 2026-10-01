@@ -26,13 +26,14 @@ agentic-foundation is a **control plane**, not a **runtime**.
 |---|---|
 | **Declare** the stage graph + gates (the contract) | Run the agents (Codex, Claude Code, …) |
 | **Initialize / render** it into native pipelines (GitHub Actions, GitLab CI, …) | Execute the model calls, tests, scans |
-| **Govern**: merge lanes, required-stage gates, review-clean checks | Store memory / embeddings / RAG |
+| **Govern**: one gate result from required stages and review-clean checks; the platform merges | Store memory / embeddings / RAG |
 | **Resolve** models & secrets by *name* | Host dashboards / build UIs |
 | **Audit / emit** run + cost + decision events to the org's stack | Provide the compute / runners |
 
 Rule of thumb: **the toolkit writes the wiring; the platform runs the work.** The moment the toolkit
 itself calls a model, runs a test, or hosts a long-running service, it has become the framework we
-refuse to be.
+refuse to be. The rules engine is embedded in the generated workflows as a file in the repository,
+and Stagr itself never runs as a service ([design-docs/06](../design-docs/06-runtime-boundary.md)).
 
 *Edge case — provider adapters.* When a provider has no first-class integration (GitHub Codex app,
 `claude-code-action`, a platform-native equivalent, …), the toolkit may **render a thin adapter step
@@ -103,8 +104,8 @@ Ordered by fit to the identity; each is control-plane, not runtime:
    (the planned `stagr init` + front-door skill), so the toolkit "just works" when dropped into a repo.
 2. **Multi-stage "definition of ready"** — the code and security reviews are gated stages in the graph
    (how each profile orders them is under `profile` in [CONFIGURATION.md](CONFIGURATION.md)). Still
-   roadmap: first-class build / test / custom gate stages in the graph and the merge gate, beyond the
-   code and security reviews.
+   roadmap: first-class build (unit tests included) and custom gate stages in the graph and the gate,
+   beyond the code and security reviews.
 3. **More platform renderers** — GitLab, Bitbucket, Azure DevOps (contract → native pipeline mapping
    only; the agents and runners stay the platform's).
 4. **Budget & guardrail enforcement** — cost and loop limits; the config gets keys for them only once enforcement exists.

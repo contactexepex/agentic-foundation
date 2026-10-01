@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Canonical Stage Model
 
-**Status:** Design phase — not yet implemented
+**Status:** Target design. What is built today is in
+[ARCHITECTURE.md, section 8](../docs/ARCHITECTURE.md#8-status--roadmap).
 
 ---
 
@@ -13,6 +14,17 @@ receive. Renderers translate it; they never modify or extend it.
 
 ---
 
+## Change and revision
+
+The subject of governance is a **change**: a pull request, a merge commit, a schedule, a release
+or a manual run. Only the pull request is implemented first (#265, section 2, decision 1).
+
+A **revision** is the exact content of a change that a run looks at. Every signal binds to the
+pair (change, revision), so a result for an older revision never counts for a newer one. How the
+GitHub adapter maps both is in `08-github-codex-mapping.md`.
+
+---
+
 ## Enumerations
 
 ### StageKind
@@ -22,20 +34,19 @@ object") it determines what handles the stage.
 
 | Value | Semantics |
 |---|---|
-| `REVIEW` | Code-quality review by a model-backed provider. Completes when the reviewer finishes processing the head commit; findings may be present. Always an `agent` stage. |
+| `REVIEW` | Code-quality review by a model-backed provider. Completes when the reviewer finishes processing the revision; findings may be present. Always an `agent` stage. |
 | `SECURITY` | Security-focused review. Same completion semantics as REVIEW. Always an `agent` stage. The `standard` profile makes it depend on REVIEW. |
-| `BUILD` | Compile/package step. Completes when the build finishes; conclusion is PASS only when the build succeeds. Never an `agent` stage. |
-| `TEST` | Automated test run. Completes when tests finish; conclusion is PASS only when all tests pass. Never an `agent` stage. |
+| `BUILD` | Builds the change and runs its unit tests, from the `build:` commands (`09-check-stages.md`, section 2). Completes when the commands finish; conclusion is PASS only when all succeed. Never an `agent` stage. Unit tests have no stage kind of their own (#265, section 5). |
 | `CUSTOM` | Operator-defined. With an `agent` executor its semantics come from the referenced skill; with a `commands` or `observed` executor, from those commands or that observed result. |
 
 ### StageGate
 
-Controls whether a stage's conclusion must be PASS before the merge gate passes.
+Controls whether a stage's conclusion must be PASS before the gate result passes.
 
 | Value | Semantics |
 |---|---|
-| `BLOCKING` | The merge gate requires this stage to have reached conclusion=PASS on the current head SHA before the PR can merge. |
-| `NON_BLOCKING` | The stage runs and its result is reported, but the merge gate does not wait for it. |
+| `BLOCKING` | The gate result passes only when this stage has reached conclusion=PASS on the current revision. |
+| `NON_BLOCKING` | The stage runs and its result is reported, but the gate does not wait for it. |
 
 A stage that does not declare a gate is `BLOCKING`, whatever its kind. `REVIEW` and
 `SECURITY` stages must be `BLOCKING` (see "Gate-semantics constraint" in
@@ -50,10 +61,11 @@ When a stage's execution is requested.
 
 | Value | Semantics |
 |---|---|
-| `PR_OPENED` | Fires when a PR transitions to an open, non-draft state. |
-| `PR_UPDATED` | Fires on every push to an open, non-draft PR. |
+| `CHANGE_OPENED` | Fires when a change becomes open and ready for review. |
+| `CHANGE_UPDATED` | Fires on every new revision of an open, ready change. |
 | `MANUAL` | Fires only when explicitly triggered (e.g., a human command). |
-| `ISSUE_LABELED` | Fires when a specific label is applied to an issue. Events without a pull request publish no stage signal. |
+
+The platform events behind each trigger are in `08-github-codex-mapping.md` for GitHub.
 
 > **V1 scope:** `SCHEDULED` is excluded from V1. It requires a `ScheduleSpec` on
 > `NormalizedStage` (cron expression, timezone, etc.) that is not yet modeled. Any
@@ -73,7 +85,7 @@ NormalizedStage {
   kind:         StageKind
   gate:         StageGate
   triggers:     StageTrigger[]
-  dependencies: string[]        // ids of stages that must reach PASS before this starts
+  dependencies: string[]        // ids of stages that must reach PASS before this starts (06)
   executor:     AgentExecutor | CommandsExecutor | ObservedExecutor
 }
 
@@ -91,7 +103,7 @@ CommandsExecutor {              // a CI job rendered by Stagr runs the commands
 
 ObservedExecutor {              // the team's own CI or a service does the work
   check:        string          // name of the result to read
-  producer:     string          // immutable platform identity of the author (GitHub: numeric App id)
+  producer:     string          // immutable platform identity of the author (09, section 2)
 }
 ```
 
@@ -135,7 +147,7 @@ they would receive if the stage were active.
 
 **Dependency rule:** An active stage must not declare a dependency on a disabled stage
 id. If stage B has `depends_on: [A]` and stage A has `enabled: false`, Stagr reports
-a schema error (V-S02 reference validity) at render time. The operator must either
+a static error (V-S05 reference validity) at render time. The operator must either
 re-enable A, remove B's dependency on A, or also disable B.
 
 **Rationale:** Defining `enabled: false` as a pre-normalization exclusion (rather than
@@ -160,37 +172,11 @@ graph is validated for:
 
 ---
 
-## Dependency semantics — precise rule
+## Dependency semantics
 
-> **A dependent stage becomes eligible to start only when all of its declared
-> dependencies have reached `conclusion = PASS`.**
-
-**While any dependency is anything other than `COMPLETED` + `PASS`** (no result yet,
-`RUNNING`, `BLOCKED`, `COMPLETED` + `FAILED`, or state `FAILED`): The dependent stage
-remains `PENDING`. It does not start, and its own conclusion is not set. A dependency's
-result is mutable — it may turn `PASS` when findings are resolved (`BLOCKED`) or when a
-later attempt or a new push succeeds (`FAILED`), so the dependent stage re-evaluates
-eligibility on each event that updates an upstream signal. An upstream failure is never
-propagated: a dependent that failed for good because its upstream failed once would stay
-failed after the upstream is fixed.
-
-There is no conditional dependency ("run even if upstream failed") in V1. Stages with
-`dependencies: []` are unconditionally independent — they start whenever their declared
-`triggers` fire.
-
-### Example
-
-```
-build  (no dependencies)
-test   (dependencies: [build])
-```
-
-- `build` starts on PR_UPDATED.
-- `test` starts only after `build` concludes PASS.
-- If `build` is `COMPLETED/BLOCKED` (e.g., a lint finding), `test` stays PENDING and
-  re-evaluates when `build` reconciles.
-- If `build` fails (a compile error, or an infrastructure error), `test` does not start
-  and is not marked failed. It starts when `build` later concludes PASS.
+What a dependency means at run time (a dependent waits until every dependency passes, and a
+failure is never propagated) is the dependency rule of the rules engine,
+`06-runtime-boundary.md`, "Dependency rule".
 
 ---
 
@@ -239,16 +225,16 @@ stages:
   - id: review
     kind: REVIEW
     gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
+    triggers: [CHANGE_OPENED, CHANGE_UPDATED]
     dependencies: []
     executor: AgentExecutor { provider: openai, backend: codex, model: null, skill: code-review }
 ```
 
 ### `standard`
 
-Intended for application code repositories. It is the baseline of `09-check-stages.md`:
-build, unit tests, code review, security review. The commands of `build` and `unit-test`
-come from the top-level `build:` block.
+Intended for application code repositories: build (with its unit tests), code review, security
+review. The commands of `build` come from the top-level `build:` block, and the reasons for this
+order are in `09-check-stages.md`, section 10.
 
 Normalized output:
 ```
@@ -256,28 +242,21 @@ stages:
   - id: build
     kind: BUILD
     gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
+    triggers: [CHANGE_OPENED, CHANGE_UPDATED]
     dependencies: []
-    executor: CommandsExecutor { commands: <from build:>, timeoutMinutes: 30 }
-
-  - id: unit-test
-    kind: TEST
-    gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
-    dependencies: [build]
     executor: CommandsExecutor { commands: <from build:>, timeoutMinutes: 30 }
 
   - id: review
     kind: REVIEW
     gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
+    triggers: [CHANGE_OPENED, CHANGE_UPDATED]
     dependencies: [build]
     executor: AgentExecutor { provider: openai, backend: codex, model: null, skill: code-review }
 
   - id: security
     kind: SECURITY
     gate: BLOCKING
-    triggers: [PR_OPENED, PR_UPDATED]
+    triggers: [CHANGE_OPENED, CHANGE_UPDATED]
     dependencies: [review]      // the two reviews run in sequence (09-check-stages.md, section 10)
     executor: AgentExecutor { provider: openai, backend: codex, model: null, skill: security-review }
 ```

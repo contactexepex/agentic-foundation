@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Neutral Config Contract
 
-**Status:** Design phase — not yet implemented
+**Status:** Target design. What is built today is in
+[ARCHITECTURE.md, section 8](../docs/ARCHITECTURE.md#8-status--roadmap).
 
 ---
 
@@ -8,7 +9,7 @@
 
 The neutral config contract is the interface between the **operator** (who configures
 pipelines) and **Stagr** (which renders them). It lives entirely in `.agentic/config.yml`
-and is platform-agnostic: it carries no GitHub syntax, no CI event names, no provider
+and is platform-agnostic: it carries no platform syntax, no CI event names, no provider
 API details, and no secret values.
 
 ---
@@ -19,9 +20,9 @@ The config declares:
 
 - **Stage identity** — what kind of work each stage does and which provider+backend
   performs it
-- **Stage governance** — when a stage runs, whether it blocks merge, and which other
+- **Stage governance** — when a stage runs, whether it blocks the gate result, and which other
   stages it depends on
-- **Pipeline policy** — routing (fast-path rules) and the merge rule for review discussions
+- **Pipeline policy** — routing (fast-path rules) and the gate rule for review discussions
 
 The config does **not** contain:
 
@@ -30,7 +31,7 @@ The config does **not** contain:
   **names/aliases** (references that tell the renderer which secret to look up) are
   allowed; for example `auth.token_secret: REMEDIATION_TOKEN` names the platform secret
   without revealing its value. See `03-provider-backend-model.md` for the alias model.
-- CI event names (`pull_request_target`, `issue_comment`, etc.)
+- CI event names
 - Comment formats or platform-specific selectors
 - Any implementation detail that is specific to one platform or one provider version
 
@@ -47,16 +48,15 @@ version: 2
 # See 02-canonical-stage-model.md for available profiles and expansion rules.
 profile: custom
 
-# Platform declaration. Identifies the target CI/CD platform and its settings.
-# Required. The renderer uses this to select the correct PlatformRenderer.
+# Platform declaration: the two platform axes and their settings (see "The platform block").
 platform:
-  type: github              # target platform id (e.g. github, gitlab, bitbucket)
-  trusted_roles:            # AuthorRole[] for TrustPolicy
+  scm: github               # required: where changes, the gate and identities live
+  ci: github                # optional: where jobs run; defaults to scm
+  # host: https://github.acme.com   # optional; self-hosted only
+  trusted_roles:            # AuthorRole[] for TrustPolicy (redesigned in Plan B)
     - owner
     - member
     - collaborator
-  labels:
-    human_merge: human-merge  # label that forces the human-gated lane
   auth:
     token_secret: REMEDIATION_TOKEN  # platform secret name for the trusted-user token
 
@@ -82,13 +82,13 @@ routing:
       fast:   []            # stage ids that run on the FAST route
       normal: []            # stage ids that run on the NORMAL route (all eligible stages)
 
-# Merge policy. The merge gate's blocking stages come from each stage's `gate`.
+# Gate policy (MergePolicy). The gate's blocking stages come from each stage's `gate`.
 merge:
   discussions:
-    require_resolved: true  # every open review discussion must be resolved before merge
+    require_resolved: true  # every open review discussion must be resolved for the gate to pass
 
-# What "green" means for this repository: the commands of the build and unit-test
-# stages (see 09-check-stages.md). A preset fills every command it can.
+# What "green" means for this repository: the commands of the build stage, unit tests
+# included (see 09-check-stages.md). A preset fills every command it can.
 build:
   preset: maven             # python | maven | gradle | node | go | rust | dotnet | custom
   # commands:               # optional per-key overrides: install, build, lint, typecheck, test
@@ -103,8 +103,8 @@ stages:
     skill: code-review      # skill id → shipped skill, or the repo's .agentic/skills/<id>/SKILL.md
     gate: blocking          # blocking | advisory (default blocking)
     triggers:               # StageTrigger[]: when this stage runs
-      - pr_opened
-      - pr_updated
+      - change_opened
+      - change_updated
     depends_on: []          # stage ids that must reach conclusion=PASS before this starts
 
   - id: security
@@ -114,8 +114,8 @@ stages:
     skill: security-review
     gate: blocking
     triggers:
-      - pr_opened
-      - pr_updated
+      - change_opened
+      - change_updated
     depends_on: [review]    # starts after the code review has passed
 
   # Check stages have no provider, backend or skill (see 09-check-stages.md):
@@ -125,11 +125,12 @@ stages:
     type: custom
     commands: ["./scripts/integration.sh"]   # custom stages only
     timeout_minutes: 30                      # 1..360, default 30
-    # triggers omitted: runs on pr_opened and pr_updated
+    # triggers omitted: runs on change_opened and change_updated
     gate: advisory
   - id: analysis
     type: custom
-    observe: { check: "Code Analysis", producer: 12526 }   # GitHub App id of the tool that posts it
+    # producer: the identity of the tool that posts the result (09, section 2)
+    observe: { check: "Code Analysis", producer: 12526 }
 
   # A stage with enabled: false is excluded before normalization — not rendered,
   # not in the dependency graph, not in blockingStageIds. See 02-canonical-stage-model.md.
@@ -151,7 +152,7 @@ the model of `02-canonical-stage-model.md`. This table is the only place the two
 | `type: review` (lowercase) | `kind: REVIEW` |
 | `depends_on: [ids]` | `dependencies: string[]` |
 | `gate: blocking` / `gate: advisory` | `StageGate.BLOCKING` / `StageGate.NON_BLOCKING` |
-| `triggers: [pr_opened, ...]` | `StageTrigger[]` |
+| `triggers: [change_opened, ...]` | `StageTrigger[]` |
 | `provider`, `backend`, `model`, `skill` | `AgentExecutor` |
 | `commands`, `timeout_minutes` | `CommandsExecutor` |
 | `observe: { check, producer }` | `ObservedExecutor` |
@@ -160,33 +161,27 @@ the model of `02-canonical-stage-model.md`. This table is the only place the two
 
 `stagr/config.schema.json` lists exactly the keys the neutral pipeline reads, and nothing
 else. The top-level keys are `version`, `profile`, `platform`, `defaults`, `providers`,
-`stages`, `routing` and `merge`. An external check such as SonarCloud is an observed stage
-(`09-check-stages.md`), not a separate key.
+`stages`, `routing`, `merge` and `build`. An external check such as SonarCloud is an observed
+stage (`09-check-stages.md`), not a separate key.
 
-Unknown keys inside a Stagr key are validation errors. The "silently ignored" rule applies
-only to unknown **top-level** keys (see "Non-Stagr keys" below); it does not extend to
-sub-fields of a Stagr key.
+**An unknown key is a validation error at every level**, top level included (#265, section 2,
+decision 12). `.agentic/config.yml` holds only the Stagr contract; other tools keep their
+configuration in their own files. V-S01 (`07-validation.md`) checks this rule.
 
 `backend` is a plain string. When it is omitted, the default comes from the stage's
 provider (`openai` → `codex`).
 
-### Non-Stagr keys
+### The platform block
 
-`.agentic/config.yml` is owned by the operator, not exclusively by Stagr. Operators may
-include additional top-level keys alongside the Stagr contract to co-locate CI or tooling
-configuration in a single file. For example:
+`platform:` names the two platform axes (#265, section 2, decision 3; addendum, decision 22):
 
-```yaml
-# Operator tooling configuration — not part of the Stagr contract.
-# Stagr ignores this key during validation and rendering.
-deploy:
-  target: staging
-```
+- `scm` (required) — where changes, the gate and identities live.
+- `ci` (optional) — where jobs run. It defaults to `scm`.
+- `host` (optional) — the base URL of a self-hosted platform. Omit it for the hosted service.
 
-Stagr validates only the keys it defines (`version`, `profile`, `platform`, `defaults`,
-`providers`, `stages`, `routing`, `merge`, and, once `09-check-stages.md` is built, `build`).
-Any unrecognized top-level key is silently ignored by `stagr plan` and `stagr apply`. This lets operators co-locate other
-tooling configuration in `.agentic/config.yml` without breaking Stagr validation.
+There is no `platform.type` key. Platform-specific settings, such as `trusted_roles` and `auth`,
+stay under `platform:` and are checked against the chosen platform; an unknown key fails. V-S17
+(`07-validation.md`) checks that `scm` and `ci` name a platform with a renderer.
 
 ---
 
@@ -194,13 +189,13 @@ tooling configuration in `.agentic/config.yml` without breaking Stagr validation
 
 An operator need only specify fields that differ from defaults. The renderer and profile
 expansion (see `02-canonical-stage-model.md`) fill in the rest. The minimal valid config
-for the baseline pipeline (build, unit-test, review, security) using the `standard` profile:
+for the baseline pipeline (build, review, security) using the `standard` profile:
 
 ```yaml
 version: 2
 profile: standard
 platform:
-  type: github
+  scm: github
 build:
   preset: maven
 ```
