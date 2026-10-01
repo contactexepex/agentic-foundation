@@ -169,7 +169,7 @@ only to unknown **top-level** keys (see "Non-Stagr keys" below); it does not ext
 sub-fields of a Stagr key.
 
 `backend` is a plain string. When it is omitted, the default comes from the stage's
-provider (`anthropic` → `claude-code-action`, `openai` → `codex`).
+provider (`openai` → `codex`).
 
 ### Non-Stagr keys
 

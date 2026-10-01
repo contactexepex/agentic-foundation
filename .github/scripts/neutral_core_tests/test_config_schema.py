@@ -149,7 +149,6 @@ def test_secret_name_fields_reject_anything_that_is_not_a_name() -> None:
     """Secret names are placed into workflows as ``secrets.<name>``, so every such field is pattern-checked."""
     for bad_name in _NOT_SECRET_NAMES:
         _expect_schema_error(_config_with(("platform", "auth"), {"token_secret": bad_name}), "token_secret")
-        _expect_schema_error(_config_with(("providers",), {"openai": {"api_key_secret": bad_name}}), "api_key_secret")
         _expect_schema_error(
             _config_with(("providers",), {"openai": {"secrets": {"PROVIDER_API_KEY": bad_name}}}),
             "PROVIDER_API_KEY",

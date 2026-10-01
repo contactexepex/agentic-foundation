@@ -213,8 +213,8 @@ def test_parse_config_error_message_names_found_version() -> None:
 
 PASTED_SECRET_YAML_CASES = (
     # The first is the reviewer's example; the second makes PyYAML quote the text in its message.
-    ("mapping values are not allowed", "providers:\n  openai:\n    api_key_secret: sk-secret-abc123: oops\n"),
-    ("constructor for the tag", "providers:\n  openai:\n    api_key_secret: !sk-secret-abc123 value\n"),
+    ("mapping values are not allowed", "platform:\n  auth:\n    token_secret: sk-secret-abc123: oops\n"),
+    ("constructor for the tag", "platform:\n  auth:\n    token_secret: !sk-secret-abc123 value\n"),
 )
 
 

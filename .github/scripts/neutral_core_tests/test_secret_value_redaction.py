@@ -62,7 +62,7 @@ def test_describe_schema_error_only_redacts_secret_named_fields() -> None:
         def __init__(self, path: list[Any], message: str) -> None:
             self.path, self.message = path, message
 
-    assert "withheld" in describe_schema_error(FakeError(["x", "api_key_secret"], "'v' bad"))
+    assert "withheld" in describe_schema_error(FakeError(["x", "token_secret"], "'v' bad"))
     assert describe_schema_error(FakeError(["x", "branch"], "'v' bad")) == "'v' bad"
     assert describe_schema_error(FakeError([], "root bad")) == "root bad"
 

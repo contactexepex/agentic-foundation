@@ -163,8 +163,8 @@ def test_missing_and_unparseable_config_files_are_rejected() -> None:
 
 def test_yaml_errors_never_echo_config_text() -> None:
     pasted_secret_yaml_cases = (
-        "providers:\n  openai:\n    api_key_secret: sk-secret-abc123: oops\n",
-        "providers:\n  openai:\n    api_key_secret: !sk-secret-abc123 value\n",
+        "platform:\n  auth:\n    token_secret: sk-secret-abc123: oops\n",
+        "platform:\n  auth:\n    token_secret: !sk-secret-abc123 value\n",
     )
     for yaml_text in pasted_secret_yaml_cases:
         with dogfood_project() as project_root:
