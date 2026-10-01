@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Tests for neutral core data models and enumerations (Group A: issues #173–#178).
+"""Runs every test of the Stagr core and the GitHub platform renderer.
 
-Run with: python .github/scripts/test_neutral_core_models.py
+Run with: python .github/scripts/test_core.py
 No pytest required. Exit 0 = all pass.
 
 This is a thin runner. The tests live in scoped modules under ``neutral_core_tests/``,

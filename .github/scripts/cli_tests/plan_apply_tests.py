@@ -5,7 +5,6 @@ import hashlib
 import os
 import re
 import stat
-from pathlib import Path
 from typing import Any, Callable
 
 import yaml

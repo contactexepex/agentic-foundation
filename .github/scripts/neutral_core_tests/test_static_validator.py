@@ -2,7 +2,7 @@
 
 The implementation lives in the static_validator_tests sub-package, split by
 validation check.  This module re-exports every name so existing imports in
-test_neutral_core_models.py remain unchanged.
+test_core.py remain unchanged.
 """
 from __future__ import annotations
 

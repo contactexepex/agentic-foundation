@@ -56,7 +56,7 @@ jobs:
 
       - name: Neutral core & CLI unit tests
         run: |
-          python .github/scripts/test_neutral_core_models.py
+          python .github/scripts/test_core.py
           python .github/scripts/test_cli.py
 
       - name: Build the package and smoke-test the installed CLI
