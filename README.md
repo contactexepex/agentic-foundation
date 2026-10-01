@@ -1,7 +1,7 @@
 # agentic-foundation
 
-A reusable toolkit that drops a configurable **graph of SDLC/STLC agent stages** — implement,
-review, security, build, test, and more — into *any* repository, on *any* SCM platform, in *any* language,
+A reusable toolkit that drops a configurable **graph of SDLC/STLC agent stages** — review,
+security, build, test, and more — into *any* repository, on *any* SCM platform, in *any* language,
 with *any* provider/model per stage. It is the generic engineering core extracted from the
 `permission-api` project, with everything product-specific (Azure deploy, the runtime app, the
 Permission-API domain) removed.
@@ -24,22 +24,18 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design and
 ## Flexible by design
 
 **Stages are agents; anything plugs in.** A pipeline is an ordered, extensible graph of stages. Each
-stage binds a **role/type** (implement, review, security, build, test, deploy, custom) to a
-**provider + model**; the coding tool is derived from the provider — `anthropic` runs Claude Code,
-`openai` runs Codex:
+stage binds a **role/type** (review, security, build, test, deploy, custom) to a
+**provider + model**; the coding tool is derived from the provider — `openai` runs Codex:
 
 | Stage | Provider | Model | Tool (derived) |
 |---|---|---|---|
-| implement | anthropic | set in `defaults.models.anthropic` or the stage | Claude Code |
 | review | openai | app-supplied | Codex |
 | security | openai | app-supplied | Codex |
 
-Mix Anthropic and OpenAI per stage, or vary the Anthropic model across stages. Today the toolkit
-has backend renderers for **Anthropic (Claude Code)** and **OpenAI (Codex)**; more providers/tools
-are roadmap and slot in through the same provider→tool map without forking the contract. The GitHub
-renderer can render only backends that are started by a pull-request comment (the Codex review and
-security stages); config validation rejects an `implement` stage on GitHub until the implementer can
-be rendered there.
+Today the toolkit has one backend renderer, **OpenAI (Codex)**; more providers/tools are roadmap and
+slot in through the same provider→tool map without forking the contract. The GitHub renderer can
+render only backends that are started by a pull-request comment (the Codex review and security
+stages); config validation (V-S08) rejects any other backend on GitHub.
 
 **Models are configurable and layered.** You need not specify a model at all: each stage resolves
 one through a precedence chain — **stage model › `defaults.models.<provider>.default`** (then it
@@ -62,9 +58,7 @@ provider/backend/language-agnostic) are the content; a stage points at one with 
 **Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
 (`minimal`/`standard`/`custom`; `minimal` and `standard` expand to a default stage graph), a
 `platform`, and `platform.publisher.app_id` (the ID of your Stagr GitHub App, which `stagr plan` and
-`stagr apply` need). An `anthropic` stage (Claude Code) also needs a model binding
-(`defaults.models.anthropic`, or a per-stage model); an `openai` stage (Codex) supplies its own.
-Model resolution is fail-loud — no hidden default. Still a few lines; define `stages` only for finer
+`stagr apply` need). An `openai` stage (Codex) supplies its own model. Model resolution is fail-loud — no hidden default. Still a few lines; define `stages` only for finer
 control.
 
 **Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,

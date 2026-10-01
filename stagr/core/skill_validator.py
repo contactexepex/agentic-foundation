@@ -4,7 +4,7 @@ For each stage where ``skill`` is not None, the referenced skill id must resolve
 to an existing ``.agentic/skills/<id>/SKILL.md`` file.  A missing file raises
 :class:`~stagr.core.models.StaticValidationError` naming the expected path.
 
-Stages with ``skill=None`` (e.g. IMPLEMENT stages) are skipped — they do not
+Stages with ``skill=None`` are skipped — they do not
 require a skill file.  Stages with ``enabled: false`` are skipped because
 disabled stages are removed before normalization and never participate in the
 active pipeline.

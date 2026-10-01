@@ -92,64 +92,16 @@ def test_phase1_empty_stages_returns_empty_list() -> None:
     )
 
 
-def test_phase1_provider_api_key_resolved_from_api_key_secret() -> None:
-    """PROVIDER_API_KEY alias falls back to providers.<provider>.api_key_secret when no secrets map entry exists."""
-    from stagr.core.render_loop import run_phase1
-    from stagr.core.backend_renderer_registry import BackendRendererRegistry
-
-    stage = build_stage("stage-api-key")
-    render_context = build_minimal_render_context([stage])
-
-    plan_with_provider_api_key = build_execution_plan(
-        "stage-api-key", secret_aliases=("PROVIDER_API_KEY",)
-    )
-
-    class _BackendRendererWithProviderApiKey:
-        provider = "testprovider"
-        backend = "testbackend"
-
-        def render(self, stage_arg):
-            return plan_with_provider_api_key
-
-    registry = BackendRendererRegistry()
-    registry.register(_BackendRendererWithProviderApiKey())
-
-    received_plans: list = []
-
-    class _CapturingPlatformRenderer(TrackingPlatformRenderer):
-        def render_stage(self, plan, stage_arg, render_context_arg):
-            received_plans.append(plan)
-            return build_stage_render(stage_arg.id)
-
-    # api_key_secret field present; no explicit secrets map for PROVIDER_API_KEY.
-    provider_config = {
-        "providers": {
-            "testprovider": {
-                "api_key_secret": "TESTPROVIDER_API_KEY",
-            },
-        },
-    }
-
-    run_phase1(render_context, registry, _CapturingPlatformRenderer(), provider_config)
-
-    assert received_plans, "PlatformRenderer.render_stage was not called"
-    resolved_plan = received_plans[0]
-    env_names = {ref.alias: ref.env_name for ref in resolved_plan.required_secrets}
-    assert env_names == {"PROVIDER_API_KEY": "TESTPROVIDER_API_KEY"}, (
-        f"PROVIDER_API_KEY must resolve via api_key_secret; got {env_names!r}"
-    )
-
-
-def test_phase1_explicit_secrets_map_takes_precedence_over_api_key_secret() -> None:
-    """An explicit secrets map entry beats the api_key_secret fallback for PROVIDER_API_KEY."""
+def test_phase1_explicit_secrets_map_takes_precedence_over_platform_token_secret() -> None:
+    """An explicit secrets map entry beats platform.auth.token_secret for TRUSTED_COMMENTER_TOKEN."""
     from stagr.core.render_loop import run_phase1
     from stagr.core.backend_renderer_registry import BackendRendererRegistry
 
     stage = build_stage("stage-precedence")
     render_context = build_minimal_render_context([stage])
 
-    plan_with_provider_api_key = build_execution_plan(
-        "stage-precedence", secret_aliases=("PROVIDER_API_KEY",)
+    plan_with_commenter_token = build_execution_plan(
+        "stage-precedence", secret_aliases=("TRUSTED_COMMENTER_TOKEN",)
     )
 
     class _BackendRendererExplicit:
@@ -157,7 +109,7 @@ def test_phase1_explicit_secrets_map_takes_precedence_over_api_key_secret() -> N
         backend = "testbackend"
 
         def render(self, stage_arg):
-            return plan_with_provider_api_key
+            return plan_with_commenter_token
 
     registry = BackendRendererRegistry()
     registry.register(_BackendRendererExplicit())
@@ -169,13 +121,13 @@ def test_phase1_explicit_secrets_map_takes_precedence_over_api_key_secret() -> N
             received_plans.append(plan)
             return build_stage_render(stage_arg.id)
 
-    # Both explicit secrets map and api_key_secret present — explicit map must win.
+    # Both explicit secrets map and platform.auth.token_secret present — explicit map must win.
     provider_config = {
+        "platform": {"auth": {"token_secret": "FALLBACK_TOKEN"}},
         "providers": {
             "testprovider": {
-                "api_key_secret": "FALLBACK_KEY",
                 "secrets": {
-                    "PROVIDER_API_KEY": "EXPLICIT_API_KEY",
+                    "TRUSTED_COMMENTER_TOKEN": "EXPLICIT_TOKEN",
                 },
             },
         },
@@ -186,8 +138,8 @@ def test_phase1_explicit_secrets_map_takes_precedence_over_api_key_secret() -> N
     assert received_plans, "PlatformRenderer.render_stage was not called"
     resolved_plan = received_plans[0]
     env_names = {ref.alias: ref.env_name for ref in resolved_plan.required_secrets}
-    assert env_names == {"PROVIDER_API_KEY": "EXPLICIT_API_KEY"}, (
-        f"Explicit secrets map must take precedence over api_key_secret; got {env_names!r}"
+    assert env_names == {"TRUSTED_COMMENTER_TOKEN": "EXPLICIT_TOKEN"}, (
+        f"Explicit secrets map must take precedence over platform.auth.token_secret; got {env_names!r}"
     )
 
 

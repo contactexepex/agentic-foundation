@@ -16,12 +16,12 @@ from pathlib import Path
 
 
 def test_v_s06_stage_with_no_skill_raises_no_error() -> None:
-    """A stage where skill=None (e.g. an IMPLEMENT stage) never triggers V-S06."""
+    """A stage where skill=None never triggers V-S06."""
     from stagr.core.skill_validator import validate_skill_file_existence
 
     with tempfile.TemporaryDirectory() as temporary_directory:
         project_root = Path(temporary_directory)
-        stages = [{"id": "implement", "type": "implement"}]
+        stages = [{"id": "custom-check", "type": "custom"}]
         validate_skill_file_existence(stages, project_root)
 
 
@@ -128,7 +128,7 @@ def test_v_s06_mixed_stages_only_missing_files_fail() -> None:
         existing_skill_file.write_text("---\nid: code-review\n---\n# ok\n")
 
         stages = [
-            {"id": "implement", "type": "implement"},
+            {"id": "custom-check", "type": "custom"},
             {"id": "review", "skill": "code-review"},
             {"id": "security", "skill": "security-review"},
         ]

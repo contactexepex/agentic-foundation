@@ -6,13 +6,10 @@ provider and backend strings as its class attributes.
 """
 from __future__ import annotations
 
-PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_OPENAI = "openai"
 
-BACKEND_CLAUDE_CODE_ACTION = "claude-code-action"
 BACKEND_CODEX = "codex"
 
 DEFAULT_BACKEND_BY_PROVIDER: dict[str, str] = {
-    PROVIDER_ANTHROPIC: BACKEND_CLAUDE_CODE_ACTION,
     PROVIDER_OPENAI: BACKEND_CODEX,
 }

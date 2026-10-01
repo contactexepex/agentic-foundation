@@ -54,10 +54,6 @@ def point_at_missing_skill(config: dict[str, Any]) -> None:
     config["stages"][0]["skill"] = "no-such-skill"
 
 
-def use_backend_the_platform_cannot_run(config: dict[str, Any]) -> None:
-    config["stages"][0]["provider"] = "anthropic"
-
-
 def use_platform_without_renderer(config: dict[str, Any]) -> None:
     config["platform"]["type"] = "gitlab"
 
@@ -81,7 +77,6 @@ INVALID_CONFIG_CASES: tuple[tuple[str, Callable[[dict[str, Any]], None], str], .
     ("unknown config key", add_unknown_key, "does not conform to schema"),
     ("unknown dependency (V-S05)", add_unknown_dependency, "missing-stage"),
     ("missing skill file (V-S06)", point_at_missing_skill, "no-such-skill"),
-    ("backend the platform cannot run (V-S08)", use_backend_the_platform_cannot_run, "V-S08"),
     ("platform without a renderer", use_platform_without_renderer, "has no renderer"),
     ("no enabled stage", disable_every_stage, "no enabled stage"),
 )

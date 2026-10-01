@@ -33,7 +33,7 @@ def test_defaults_model_resolved_from_defaults() -> None:
     """A stage omitting model receives defaults.models[resolved_provider].default."""
     from stagr.core.defaults import resolve_defaults
 
-    active_stages = [{"id": "implement-claude", "type": "implement", "provider": "anthropic"}]
+    active_stages = [{"id": "custom-check", "type": "custom", "provider": "anthropic"}]
     defaults_cfg = {
         "provider": "anthropic",
         "models": {
