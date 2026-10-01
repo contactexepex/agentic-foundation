@@ -23,7 +23,6 @@ from stagr.core.pipeline import normalize_config
 from stagr.core.policy import derive_merge_policy, derive_routing_policy, derive_trust_policy
 from stagr.core.publisher import PublisherConfig, derive_publisher_config
 from stagr.core.render_loop import run_phase1
-from stagr.core.renderers.anthropic_claude_backend_renderer import AnthropicClaudeBackendRenderer
 from stagr.core.renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
 from stagr.core.static_validator import (
     validate_backend_renderer_availability,
@@ -56,7 +55,6 @@ def build_backend_registry() -> BackendRendererRegistry:
     """Return a registry holding every backend renderer this toolkit ships."""
     backend_registry = BackendRendererRegistry()
     backend_registry.register(OpenAICodexBackendRenderer())
-    backend_registry.register(AnthropicClaudeBackendRenderer())
     return backend_registry
 
 

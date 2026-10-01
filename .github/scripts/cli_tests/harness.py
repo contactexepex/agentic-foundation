@@ -66,14 +66,11 @@ def dogfood_project(mutate_config: Callable[[dict[str, Any]], None] | None = Non
 
 @contextmanager
 def starter_project(config_text: str) -> Iterator[Path]:
-    """A project built the way the docs tell a new user to: an empty repo, the config, the starter skills."""
+    """A project built the way the docs tell a new user to: an empty repo and the config."""
     with tempfile.TemporaryDirectory() as temporary_directory:
         project_root = Path(temporary_directory)
         (project_root / AGENTIC_DIRECTORY).mkdir()
         (project_root / CONFIG_FILE_PATH).write_text(config_text, encoding="utf-8")
-        shutil.copytree(
-            REPOSITORY_ROOT / "stagr" / "templates" / "skills", project_root / AGENTIC_DIRECTORY / "skills"
-        )
         yield project_root
 
 

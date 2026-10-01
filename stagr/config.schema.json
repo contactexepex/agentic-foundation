@@ -69,7 +69,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "provider": { "type": "string", "minLength": 1, "description": "Default provider id for stages that omit one. Providers with a default backend today: `anthropic` (Claude Code) and `openai` (Codex)." },
+        "provider": { "type": "string", "minLength": 1, "description": "Default provider id for stages that omit one. The only provider with a default backend today is `openai` (Codex)." },
         "models": {
           "description": "Default model binding per provider id (open map — any provider).",
           "type": "object",
@@ -143,14 +143,14 @@
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-_]*$", "description": "Unique stage id, e.g. review, security." },
         "type": {
-          "enum": ["review", "security", "build", "test", "deploy", "custom", "implement"],
+          "enum": ["review", "security", "build", "test", "deploy", "custom"],
           "description": "What kind of work the stage does. Mirrors the StageKind enum of the neutral core."
         },
         "enabled": { "type": "boolean", "default": true },
         "provider": { "type": "string", "minLength": 1, "description": "Provider id for this stage. Omit to inherit defaults.provider." },
-        "backend": { "type": "string", "minLength": 1, "description": "Backend that performs the stage. Omit to use the provider's default backend (`anthropic` -> `claude-code-action`, `openai` -> `codex`)." },
+        "backend": { "type": "string", "minLength": 1, "description": "Backend that performs the stage. Omit to use the provider's default backend (`openai` -> `codex`)." },
         "model": { "$ref": "#/$defs/modelBinding" },
-        "skill": { "type": "string", "minLength": 1, "description": "Skill id: the stage's methodology lives in .agentic/skills/<id>/SKILL.md." },
+        "skill": { "type": "string", "minLength": 1, "description": "Skill id: the stage's methodology. Resolves to the repository's .agentic/skills/<id>/SKILL.md when present, otherwise to the shipped stagr/templates/skills/<id>/SKILL.md." },
         "triggers": {
           "type": "array",
           "items": { "enum": ["pr_opened", "pr_updated", "manual", "issue_labeled"] }
@@ -172,9 +172,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "api_key_secret": { "$ref": "#/$defs/secretName", "description": "NAME of the secret holding the provider API key. Default per provider (for example ANTHROPIC_API_KEY)." },
         "secrets": {
-          "description": "Secret alias map: keys are SecretRef.alias names used by this provider's BackendRenderer; values are the environment-variable names where the actual secret lives at run time. Never the secret values themselves. Example: {\"PROVIDER_API_KEY\": \"ANTHROPIC_API_KEY\"}.",
+          "description": "Secret alias map: keys are SecretRef.alias names used by this provider's BackendRenderer; values are the environment-variable names where the actual secret lives at run time. Never the secret values themselves. Example: {\"TRUSTED_COMMENTER_TOKEN\": \"REMEDIATION_TOKEN\"}.",
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/secretName" }
         }

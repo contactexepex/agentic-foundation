@@ -43,13 +43,12 @@ Stage workflow structure (see stage_workflow.py):
                  3. Idempotency guard and   — PR_COMMENT backends (spec: #205): one step checks the
                     backend invocation        completion guard and the in-flight lease, then posts
                                               the comment; holds only the TRUSTED_COMMENTER_TOKEN
-                                              secret. Other invocation kinds keep placeholder steps
-                                              (V-S08 rejects them before a config is rendered).
+                                              secret. Other invocation kinds are rejected (V-S08
+                                              rejects them before a config is rendered).
                  4. Result signaling        — Check Run carrying the StageResultSignal (spec: #206);
                                               the only step that creates the Check Run
   reconcile job  issue_comment wakeup; updates the Check Run in place (spec: #206)
   sweep job      scheduled backstop over open pull requests (spec: #206); updates only
-The reconcile and sweep jobs exist only for plans that declare asynchronous evidence.
 
 Trigger mapping (design-doc 08):
   StageTrigger.PR_OPENED    → pull_request_target: [opened, reopened, ready_for_review]
@@ -153,9 +152,7 @@ class GitHubPlatformRenderer:
         signal_config = build_stage_signal_config(
             plan, stage, render_context, self._publisher_app_id, check_run_name
         )
-        on_section_yaml = build_on_section(
-            stage.triggers, signal_config.has_asynchronous_evidence, signal_config.has_dependencies
-        )
+        on_section_yaml = build_on_section(stage.triggers, signal_config.has_dependencies)
         self._assert_privileged_stage_on_section_is_safe(stage, on_section_yaml, is_privileged)
 
         workflow_yaml = build_stage_workflow_yaml(

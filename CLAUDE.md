@@ -32,7 +32,7 @@ than duplicating branches, commits, or PRs.
 - Add or update tests/checks for changed behavior and plausible regressions.
 - Prefer deterministic checks over extra model calls. Common local checks here:
   - `python .github/scripts/validate_config.py` (schema + the dogfood config through the front door + skills)
-  - `python .github/scripts/test_neutral_core_models.py` and `python .github/scripts/test_cli.py` (unit tests)
+  - `python .github/scripts/test_core.py` and `python .github/scripts/test_cli.py` (unit tests)
   - `python -m py_compile` on any changed `.py`
 - Read the exact failure, fix the root cause, and rerun the narrowest failing check first.
 - Allow at most three attempts for the same failing condition, then stop and report evidence.
@@ -100,10 +100,10 @@ Who resolves threads, how many fix rounds are allowed, and when to escalate are 
 "Review threads".
 
 When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
-the delta review manually, since no push fires the per-push workflow.
+the delta review manually, since Codex reviews by itself only when new commits are pushed.
 
-For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
-workflow requests the delta review automatically.
+For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The Codex App
+reviews the new commit by itself, which is the delta review.
 
 If Codex review is unavailable, report the PR as awaiting independent review — never substitute
 self-review for it.

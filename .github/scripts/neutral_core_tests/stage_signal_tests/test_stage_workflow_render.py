@@ -3,11 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from neutral_core_tests.github_platform_renderer_tests.helpers import (
-    build_execution_plan,
-    build_render_context,
-    build_stage,
-)
+from neutral_core_tests.github_platform_renderer_tests.helpers import build_render_context
 from neutral_core_tests.stage_signal_tests.render_helpers import (
     build_codex_plan,
     parse_workflow,
@@ -19,25 +15,18 @@ from stagr.platforms.github import stage_workflow
 from stagr.platforms.github.runtime import stage_signal_runtime as runtime
 
 
-def test_async_evidence_plan_renders_execute_reconcile_and_sweep_jobs() -> None:
+def test_stage_workflow_renders_execute_reconcile_and_sweep_jobs() -> None:
     _, document = render_codex_workflow()
     assert list(document["jobs"]) == ["execute", "reconcile", "sweep"]
 
 
-def test_async_evidence_plan_adds_only_the_comment_and_schedule_wakeups() -> None:
+def test_stage_workflow_adds_only_the_comment_and_schedule_wakeups() -> None:
     _, document = render_codex_workflow()
     triggers = document["on"]
     assert triggers["issue_comment"] == {"types": ["created", "edited"]}
     assert triggers["schedule"] == [{"cron": stage_workflow.SWEEP_CRON_SCHEDULE}]
     assert "check_suite" not in triggers, "V1 supports comment-based evidence only"
     assert set(triggers["pull_request_target"]["types"]) >= {"opened", "synchronize"}
-
-
-def test_synchronous_plan_renders_only_the_execute_job_and_no_wakeups() -> None:
-    stage = build_stage()
-    workflow = parse_workflow(render_workflow_text(build_execution_plan(), stage))
-    assert list(workflow["jobs"]) == ["execute"]
-    assert set(workflow["on"]) == {"pull_request_target"}
 
 
 def test_synchronizing_a_new_head_is_an_invocation_trigger_not_a_wakeup() -> None:

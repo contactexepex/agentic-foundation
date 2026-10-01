@@ -1,26 +1,25 @@
 """Stage workflow assembly for GitHubPlatformRenderer (issues #194, #206, #205 and #207).
 
-Builds the text of ``.github/workflows/stage-<id>.yml``. One workflow file per stage holds up to
-three jobs, each guarded by an explicit ``github.event_name`` condition so that a wakeup can never
+Builds the text of ``.github/workflows/stage-<id>.yml``. One workflow file per stage holds three
+jobs, each guarded by an explicit ``github.event_name`` condition so that a wakeup can never
 re-run a backend and an invocation trigger can never run the sweep:
 
 - ``execute``   declared triggers (PR events, manual, issue label), plus, for a stage with
                 dependencies, the ``check_run`` / ``check_suite`` wake-ups of its upstream stages.
                 Step 1 acquires the App token. Step 2 ("Check eligibility", #207) decides through
                 the shared runtime whether the backend may be invoked (trust, fork policy, current
-                head, route, dependencies) and sets the output ``proceed``. For a ``PR_COMMENT``
-                backend one step (#205) checks the completion guard and the in-flight lease and
-                posts the invocation, holding only the backend secret; other invocation kinds keep
-                placeholder steps; all of them run only when ``proceed`` is ``true``. The last step
+                head, route, dependencies) and sets the output ``proceed``. One step (#205) checks
+                the completion guard and the in-flight lease and posts the ``PR_COMMENT``
+                invocation, holding only the backend secret; it runs only when ``proceed`` is
+                ``true``. The last step
                 publishes the result signal through the shared runtime (#206) and is the ONLY place
                 a Check Run is created.
 - ``reconcile`` ``issue_comment`` wakeup for a pull request, only when the comment author is a
                 declared evidence producer. Updates an existing Check Run in place.
 - ``sweep``     scheduled backstop over every open pull request. Updates in place.
 
-``reconcile`` and ``sweep`` exist only for plans that declare asynchronous evidence; a plan that
-completes inside the execute job has nothing to observe later. Neither holds the backend secret, so
-neither can post an invocation: an expired in-flight lease is recovered the next time ``execute``
+``reconcile`` and ``sweep`` observe the stage's evidence after the invocation was posted. Neither
+holds the backend secret, so neither can post an invocation: an expired in-flight lease is recovered the next time ``execute``
 runs (see design-docs/08-github-codex-mapping.md).
 
 All per-stage data reaches the runtime as one JSON document in the workflow ``env`` (see
@@ -32,6 +31,7 @@ from pathlib import Path
 
 from stagr.core.enums import StageTrigger
 from stagr.core.models import ExecutionPlan, NormalizedStage
+from stagr.platforms.github.action_pins import APP_TOKEN_ACTION_REF
 from stagr.platforms.github.stage_expressions import (
     build_concurrency_key_expression,
     build_event_head_sha_expression,
@@ -39,14 +39,6 @@ from stagr.platforms.github.stage_expressions import (
     build_wakeup_relevance_expression,
 )
 from stagr.platforms.github.stage_signal_config import StageSignalConfig
-
-# Pinned commit SHA for actions/create-github-app-token v1.11.1. Update this SHA after
-# auditing the release when upgrading. Mutable tags are not used per AGENTS.md supply-chain
-# integrity requirement (immutable action pinning).
-APP_TOKEN_ACTION_REF = (
-    "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e"
-    "  # v1.11.1"
-)
 
 RUNTIME_SCRIPT_PATH = Path(__file__).parent / "runtime" / "stage_signal_runtime.py"
 
@@ -66,7 +58,6 @@ _PROCEED_CONDITION = "${{ steps.eligibility.outputs.proceed == 'true' }}"
 
 def build_on_section(
     stage_triggers: tuple[StageTrigger, ...],
-    has_asynchronous_evidence: bool,
     has_dependency_wakeups: bool = False,
 ) -> str:
     """Return the indented YAML lines for the ``on:`` trigger section.
@@ -74,9 +65,9 @@ def build_on_section(
     Merges PR_OPENED and PR_UPDATED into a single pull_request_target block when both are present.
     MANUAL becomes workflow_dispatch and ISSUE_LABELED becomes an issues block. Reconciliation
     wakeups (``issue_comment`` and the scheduled sweep) are renderer-internal, not StageTriggers,
-    and are added only when the plan declares asynchronous evidence. The ``check_run`` and
-    ``check_suite`` wake-ups (an upstream signal may have changed) are added only for a stage that
-    declares dependencies; the job conditions decide which of those events matter.
+    and are always added, because a stage's completion is observed later as evidence. The
+    ``check_run`` and ``check_suite`` wake-ups (an upstream signal may have changed) are added only
+    for a stage that declares dependencies; the job conditions decide which of those events matter.
     """
     pull_request_target_events: list[str] = []
     include_workflow_dispatch = False
@@ -106,11 +97,10 @@ def build_on_section(
         lines.append("    types: [completed]\n")
         lines.append("  check_suite:\n")
         lines.append("    types: [completed]\n")
-    if has_asynchronous_evidence:
-        lines.append("  issue_comment:\n")
-        lines.append("    types: [created, edited]\n")
-        lines.append("  schedule:\n")
-        lines.append(f'    - cron: "{SWEEP_CRON_SCHEDULE}"\n')
+    lines.append("  issue_comment:\n")
+    lines.append("    types: [created, edited]\n")
+    lines.append("  schedule:\n")
+    lines.append(f'    - cron: "{SWEEP_CRON_SCHEDULE}"\n')
     return "".join(lines)
 
 
@@ -125,10 +115,11 @@ def build_stage_workflow_yaml(
     """Return the complete GitHub Actions workflow YAML string for the stage."""
     token_step = _build_token_acquisition_step(publisher_app_id, private_key_secret_name)
     wakeup_relevance = _build_wakeup_relevance(signal_config, publisher_app_id)
-    jobs = [_build_execute_job(plan, stage, signal_config, token_step, wakeup_relevance)]
-    if signal_config.has_asynchronous_evidence:
-        jobs.append(_build_reconcile_job(signal_config, token_step))
-        jobs.append(_build_sweep_job(token_step))
+    jobs = [
+        _build_execute_job(plan, stage, signal_config, token_step, wakeup_relevance),
+        _build_reconcile_job(signal_config, token_step),
+        _build_sweep_job(token_step),
+    ]
     return (
         f'name: "Stagr stage: {stage.id}"\n'
         "\n"
@@ -259,24 +250,12 @@ def _build_event_environment_lines(
 
 
 def _build_invocation_steps(plan: ExecutionPlan, signal_config: StageSignalConfig) -> str:
-    """Return the step(s) that ask the backend to run, each gated on the eligibility step.
+    """Return the step that asks the backend to run, gated on the eligibility step.
 
-    A ``PR_COMMENT`` backend gets the real ``invoke`` step (#205): one process checks the
-    completion guard and the in-flight lease, then posts the comment, so a skipped invocation is
-    simply a step that exits successfully and the publish step still runs. Other invocation kinds
-    are not implemented by this renderer yet and keep the placeholder steps.
+    The ``invoke`` step (#205) is one process that checks the completion guard and the in-flight
+    lease, then posts the comment, so a skipped invocation is simply a step that exits
+    successfully and the publish step still runs.
     """
-    if not signal_config.posts_pull_request_comment_invocation:
-        return (
-            "      - name: Check idempotency (stub)\n"
-            f'        if: "{_PROCEED_CONDITION}"\n'
-            "        run: echo 'Idempotency guard placeholder (only PR_COMMENT backends are guarded)'\n"
-            "\n"
-            "      - name: Invoke backend (stub)\n"
-            f'        if: "{_PROCEED_CONDITION}"\n'
-            "        run: echo 'Backend invocation placeholder (only PR_COMMENT backends are invoked)'\n"
-            f"{_build_backend_env_section(plan, ())}"
-        )
     invoke_environment_lines = (
         "          STAGR_MODE: invoke\n",
         *_build_event_environment_lines(signal_config, include_event_name=False),
@@ -293,11 +272,8 @@ def _build_backend_env_section(plan: ExecutionPlan, leading_lines: tuple[str, ..
     """Return the YAML env block for the backend invocation step.
 
     Emits ``leading_lines`` (already indented) and then one line per resolved SecretRef, mapping
-    alias -> secrets.<env_name>. Returns an empty string when there is nothing to emit. The App
-    token is never part of this block.
+    alias -> secrets.<env_name>. The App token is never part of this block.
     """
-    if not plan.required_secrets and not leading_lines:
-        return ""
     lines = ["        env:\n", *leading_lines]
     for secret_ref in plan.required_secrets:
         secret_expression = f"${{{{ secrets.{secret_ref.env_name} }}}}"

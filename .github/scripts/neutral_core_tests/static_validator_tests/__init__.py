@@ -16,7 +16,6 @@ from neutral_core_tests.static_validator_tests.test_v_s08 import (
     test_v_s08_raises_for_unsupported_invocation_kind,
     test_v_s08_names_stage_in_error,
     test_v_s08_github_renderer_declares_only_what_it_really_renders,
-    test_v_s08_rejects_implement_stage_on_github,
 )
 from neutral_core_tests.static_validator_tests.test_v_s09 import (
     test_v_s09_skips_when_fast_path_disabled,
@@ -36,7 +35,6 @@ STATIC_VALIDATOR_TESTS = [
     test_v_s08_raises_for_unsupported_invocation_kind,
     test_v_s08_names_stage_in_error,
     test_v_s08_github_renderer_declares_only_what_it_really_renders,
-    test_v_s08_rejects_implement_stage_on_github,
     test_v_s09_skips_when_fast_path_disabled,
     test_v_s09_passes_when_route_is_dependency_closed,
     test_v_s09_raises_when_fast_route_missing_dependency,
@@ -55,7 +53,6 @@ __all__ = [
     "test_v_s08_raises_for_unsupported_invocation_kind",
     "test_v_s08_names_stage_in_error",
     "test_v_s08_github_renderer_declares_only_what_it_really_renders",
-    "test_v_s08_rejects_implement_stage_on_github",
     "test_v_s09_skips_when_fast_path_disabled",
     "test_v_s09_passes_when_route_is_dependency_closed",
     "test_v_s09_raises_when_fast_route_missing_dependency",

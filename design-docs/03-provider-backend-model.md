@@ -36,7 +36,6 @@ Examples:
 |---|---|---|
 | `openai` | `codex` | Posts `@codex review` or `@codex security review` as a PR comment |
 | `openai` | `generic` | Calls the OpenAI Chat Completions API directly |
-| `anthropic` | `claude-code` | Invokes Claude Code in a CI workflow step |
 | `anthropic` | `generic` | Calls the Anthropic Messages API directly |
 | `deepseek` | `generic` | Calls the DeepSeek API directly |
 
@@ -57,7 +56,6 @@ normalization time (after profile expansion, before rendering):
 ```
 provider: openai  → default backend: codex
 provider: openai, backend: codex  → default model: (backend-defined)
-provider: anthropic  → default backend: claude-code
 provider: deepseek  → default backend: generic
 ```
 

@@ -1,11 +1,11 @@
 """Shared test helpers for GitHubPlatformRenderer tests."""
 from __future__ import annotations
 
+import dataclasses
+
 from stagr.core.enums import (
     AuthorRole,
     ForkPolicy,
-    GateDispositionKind,
-    InvocationKind,
     StageGate,
     StageKind,
     StageTrigger,
@@ -13,8 +13,6 @@ from stagr.core.enums import (
 from stagr.core.models import (
     DiscussionPolicy,
     ExecutionPlan,
-    GateDispositionSpec,
-    Invocation,
     MergePolicy,
     NormalizedStage,
     RenderContext,
@@ -22,11 +20,14 @@ from stagr.core.models import (
     SecretRef,
     TrustPolicy,
 )
+from stagr.core.renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
 from stagr.platforms.github.renderer import GitHubPlatformRenderer
 
 # Publisher credentials used across all tests.
 TEST_PUBLISHER_APP_ID = "99001"
 TEST_PUBLISHER_PRIVATE_KEY_SECRET = "STAGR_APP_PRIVATE_KEY"
+# The repository secret the TRUSTED_COMMENTER_TOKEN alias resolves to in these tests.
+TRUSTED_COMMENTER_ENV_NAME = "REMEDIATION_TOKEN"
 
 
 def build_renderer() -> GitHubPlatformRenderer:
@@ -59,20 +60,18 @@ def build_execution_plan(
     stage_id: str = "review",
     required_secrets: tuple[SecretRef, ...] = (),
 ) -> ExecutionPlan:
-    """Return a minimal ExecutionPlan for the given stage.
+    """Return the real Codex plan for a review stage, with its secret alias resolved.
 
-    Uses a synchronous CI_COMPONENT invocation: a plan with no evidence is only valid when the
-    invocation completes inside the execute job (see stage_signal_config).
+    The GitHub renderer wires only PR_COMMENT invocations, so tests render the plan the Codex
+    backend renderer really produces. ``required_secrets`` are added after the resolved
+    TRUSTED_COMMENTER_TOKEN secret.
     """
-    return ExecutionPlan(
-        stage_id=stage_id,
-        invocation=Invocation(kind=InvocationKind.CI_COMPONENT),
-        gate_disposition=GateDispositionSpec(
-            kind=GateDispositionKind.ALWAYS_PASS,
-            selector="always",
-        ),
-        required_secrets=required_secrets,
+    codex_plan = OpenAICodexBackendRenderer().render(build_stage(stage_id=stage_id))
+    resolved_secrets = tuple(
+        SecretRef(alias=secret.alias, env_name=TRUSTED_COMMENTER_ENV_NAME)
+        for secret in codex_plan.required_secrets
     )
+    return dataclasses.replace(codex_plan, required_secrets=resolved_secrets + required_secrets)
 
 
 def build_render_context(stage: NormalizedStage) -> RenderContext:

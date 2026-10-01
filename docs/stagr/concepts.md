@@ -9,9 +9,9 @@ leans on, plus the one genuinely new concept — the **agent-backend seam**.
 
 A **stage** is one unit of the dev lane, bound to:
 
-- a **type** — one of the contract's accepted values **[shipped]**: `implement`, `review`,
-  `security`, `build`, `test`, `deploy`, `custom`. The dev lane uses `implement`, `review`,
-  `security`, `build`, `test`, and `custom`. There is **no
+- a **type** — one of the contract's accepted values **[shipped]**: `review`, `security`,
+  `build`, `test`, `deploy`, `custom`. The dev lane uses `review`, `security`, `build`, `test`, and
+  `custom`; implementing a story belongs to the future development module (decision record #265). There is **no
   `code-review`/`security-review`/`integration-test`/`performance-test` type**: the friendly name is
   the stage **`id`** (e.g. an `id: code-review` stage of `type: review`, an `id: security-review`
   stage of `type: security`), and integration or performance testing is a `test` or `custom` stage.
@@ -49,12 +49,11 @@ A **backend** is the executor that actually runs a stage's agent. stagr derives 
 provider and lets a stage pin or swap it **by name** — the *agent-backend seam*.
 
 `backend` is a plain string **[shipped]**. Omit it and the provider picks the backend
-(`anthropic` → `claude-code-action`, `openai` → `codex`). Validation (V-S07) rejects a backend that
+(`openai` → `codex`). Validation (V-S07) rejects a backend that
 has no registered backend renderer.
 
 | Backend | Wraps | Harness kind | Status |
 |---|---|---|---|
-| `claude-code-action` | Anthropic Claude Code | GitHub-native (Actions) | backend renderer **[shipped]**; the GitHub renderer cannot render an `implement` stage yet (validation V-S08 rejects it) **[target]** |
 | `codex` | OpenAI Codex | GitHub-native (Actions + Codex app) | **[shipped]** — code review, security review |
 | `openhands`, `pr-agent`, `swe-agent`, provider-agnostic runners | OSS agents / any action | varies | **not available [target]** — no backend renderer yet |
 | `claude-code-cli` | Claude Code CLI-in-runner adapter | CLI-in-runner | **not available [Phase 3 target]** |
@@ -62,12 +61,11 @@ has no registered backend renderer.
 The **seam pattern** exists now (a stage names a backend; the `provider→backend` default is in the
 core). Adding a cloud/CLI backend later is **one new backend renderer registered in the core — never
 a renderer rewrite** (this is the "a new backend is a renderer, never a rewrite" charter principle).
-The seam also carries a hard invariant **[target for the implementer]**: a backend should always run
-on the user's side of the line — in their CI runner, or by dispatching to a provider's cloud — never
-inside a stagr-hosted process. See [security-and-secrets.md](security-and-secrets.md) for where the
-hand-written implementer does not yet meet the isolation half of this.
+The seam also carries a hard invariant **[target]**: a backend should always run on the user's side
+of the line — in their CI runner, or by dispatching to a provider's cloud — never inside a
+stagr-hosted process.
 
-> The demo binds `implement`→`claude-code-action` and the reviews→`codex`. That is the
+> The demo binds the reviews→`codex`. That is the
 > **default reference binding, not an identity**: stagr is not Codex or Claude; it is the seam
 > they plug into.
 

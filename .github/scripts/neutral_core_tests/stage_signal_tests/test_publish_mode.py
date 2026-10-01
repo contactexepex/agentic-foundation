@@ -7,7 +7,7 @@ from neutral_core_tests.stage_signal_tests.fixtures import (
     HEAD_SHA,
     OLD_HEAD_SHA,
     PULL_NUMBER,
-    always_pass_gate,
+    build_config,
     build_existing_check_run,
     build_pull_request,
     build_reconciler,
@@ -71,19 +71,13 @@ def test_retry_after_failure_returns_the_same_check_run_to_running() -> None:
     assert _payload(check_run)["state"] == "running"
 
 
-def test_plan_without_evidence_completes_from_the_invocation_outcome() -> None:
-    fake = build_world()
-    reconciler = build_reconciler(fake, evidence=[], gate=always_pass_gate(), trustedRoles=["OWNER"])
-    reconciler.reconcile_pull_request(request(PUBLISH, job_status="success"))
-    (check_run,) = fake.check_runs
-    assert (_payload(check_run)["state"], _payload(check_run)["conclusion"]) == ("completed", "pass")
-
-
-def test_plan_without_evidence_reports_failure_when_the_job_failed() -> None:
-    fake = build_world()
-    reconciler = build_reconciler(fake, evidence=[], gate=always_pass_gate())
-    reconciler.reconcile_pull_request(request(PUBLISH, job_status="failure"))
-    assert _payload(fake.check_runs[0])["state"] == "failed"
+def test_runtime_rejects_a_document_without_evidence() -> None:
+    try:
+        build_config(evidence=[])
+    except runtime.RuntimeConfigError as error:
+        assert "evidence rule is required" in str(error), str(error)
+        return
+    raise AssertionError("expected RuntimeConfigError")
 
 
 def test_stale_event_head_publishes_nothing() -> None:

@@ -7,6 +7,7 @@ from typing import Any
 import yaml
 
 from neutral_core_tests.github_platform_renderer_tests.helpers import (
+    TRUSTED_COMMENTER_ENV_NAME,
     build_render_context,
     build_renderer,
     build_stage,
@@ -14,8 +15,6 @@ from neutral_core_tests.github_platform_renderer_tests.helpers import (
 from stagr.core.enums import StageKind, StageTrigger
 from stagr.core.models import ExecutionPlan, NormalizedStage, SecretRef
 from stagr.core.renderers.openai_codex_backend_renderer import OpenAICodexBackendRenderer
-
-TRUSTED_COMMENTER_ENV_NAME = "REMEDIATION_TOKEN"
 
 
 def build_codex_plan(stage_kind: StageKind = StageKind.REVIEW) -> tuple[ExecutionPlan, NormalizedStage]:

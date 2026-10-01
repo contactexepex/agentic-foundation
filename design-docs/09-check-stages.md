@@ -37,7 +37,7 @@ Every stage has an **executor** that says who does the work:
 
 | Executor | Who does the work | Fields |
 |---|---|---|
-| `agent` | An AI backend (today's review, security and implement stages) | `provider`, `backend`, `model`, `skill` |
+| `agent` | An AI backend (today's review and security stages) | `provider`, `backend`, `model`, `skill` |
 | `commands` | A CI job that Stagr renders (**managed**) | `commands`, `timeoutMinutes` |
 | `observed` | The team's own CI or an external service; Stagr only reads the result | `check`, `producer` (author identity) |
 
@@ -45,7 +45,7 @@ Every stage has an **executor** that says who does the work:
 NormalizedStage { id, kind, gate, triggers, dependencies, executor }
 ```
 
-- `BUILD` and `TEST` are never `agent` stages. `REVIEW`, `SECURITY` and `IMPLEMENT` are always
+- `BUILD` and `TEST` are never `agent` stages. `REVIEW` and `SECURITY` are always
   `agent`. `CUSTOM` may use any executor.
 - A `commands` or `observed` stage has no provider, backend, model or skill.
 - All executors produce the same `StageResultSignal` and are consumed by the same merge gate.

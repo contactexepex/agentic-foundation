@@ -1,7 +1,7 @@
 # agentic-foundation
 
-A reusable toolkit that drops a configurable **graph of SDLC/STLC agent stages** — implement,
-review, security, build, test, and more — into *any* repository, on *any* SCM platform, in *any* language,
+A reusable toolkit that drops a configurable **graph of SDLC/STLC agent stages** — review,
+security, build, test, and more — into *any* repository, on *any* SCM platform, in *any* language,
 with *any* provider/model per stage. It is the generic engineering core extracted from the
 `permission-api` project, with everything product-specific (Azure deploy, the runtime app, the
 Permission-API domain) removed.
@@ -24,22 +24,18 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the design and
 ## Flexible by design
 
 **Stages are agents; anything plugs in.** A pipeline is an ordered, extensible graph of stages. Each
-stage binds a **role/type** (implement, review, security, build, test, deploy, custom) to a
-**provider + model**; the coding tool is derived from the provider — `anthropic` runs Claude Code,
-`openai` runs Codex:
+stage binds a **role/type** (review, security, build, test, deploy, custom) to a
+**provider + model**; the coding tool is derived from the provider — `openai` runs Codex:
 
 | Stage | Provider | Model | Tool (derived) |
 |---|---|---|---|
-| implement | anthropic | set in `defaults.models.anthropic` or the stage | Claude Code |
 | review | openai | app-supplied | Codex |
 | security | openai | app-supplied | Codex |
 
-Mix Anthropic and OpenAI per stage, or vary the Anthropic model across stages. Today the toolkit
-has backend renderers for **Anthropic (Claude Code)** and **OpenAI (Codex)**; more providers/tools
-are roadmap and slot in through the same provider→tool map without forking the contract. The GitHub
-renderer can render only backends that are started by a pull-request comment (the Codex review and
-security stages); config validation rejects an `implement` stage on GitHub until the implementer can
-be rendered there.
+Today the toolkit has one backend renderer, **OpenAI (Codex)**; more providers/tools are roadmap and
+slot in through the same provider→tool map without forking the contract. The GitHub renderer can
+render only backends that are started by a pull-request comment (the Codex review and security
+stages); config validation (V-S08) rejects any other backend on GitHub.
 
 **Models are configurable and layered.** You need not specify a model at all: each stage resolves
 one through a precedence chain — **stage model › `defaults.models.<provider>.default`** (then it
@@ -62,9 +58,7 @@ provider/backend/language-agnostic) are the content; a stage points at one with 
 **Simple by default, advanced when you want it.** A runnable config is a `version`, a `profile`
 (`minimal`/`standard`/`custom`; `minimal` and `standard` expand to a default stage graph), a
 `platform`, and `platform.publisher.app_id` (the ID of your Stagr GitHub App, which `stagr plan` and
-`stagr apply` need). An `anthropic` stage (Claude Code) also needs a model binding
-(`defaults.models.anthropic`, or a per-stage model); an `openai` stage (Codex) supplies its own.
-Model resolution is fail-loud — no hidden default. Still a few lines; define `stages` only for finer
+`stagr apply` need). An `openai` stage (Codex) supplies its own model. Model resolution is fail-loud — no hidden default. Still a few lines; define `stages` only for finer
 control.
 
 **Secrets stay secret.** The toolkit never logs, prints, or exposes any credential (API key, token,
@@ -98,12 +92,9 @@ being rebuilt (see [docs/CLI.md](docs/CLI.md)).
    For a reproducible, auditable install, pin the URL to a commit SHA (or a release tag) instead of
    `main` — see [docs/CLI.md](docs/CLI.md).
 2. Run `stagr help` to see the available commands.
-3. In your target repo, write `.agentic/config.yml` by hand, and copy the two starter skill folders,
-   `code-review` and `security-review`, from
-   [`stagr/templates/skills/`](https://github.com/exepex/agentic-foundation/tree/main/stagr/templates/skills)
-   into `.agentic/skills/` (they are also inside the installed package). Every stage's skill must exist
-   there, or `plan` fails with V-S06. The full field reference, provider→secret mapping, and
-   troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
+3. In your target repo, write `.agentic/config.yml` by hand. The starter skills ship with Stagr, so no
+   other file is needed. The full field reference (including how to override a skill),
+   provider→secret mapping, and troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 4. Run `stagr plan` in the repo root to validate the config and list the files it produces (nothing is
    written), then `stagr apply` to write those same files under `.github/workflows/`.
 
@@ -145,12 +136,10 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 (a Codex review stage and a Codex security stage), and `.github/workflows/` are the hand-written
 **reference implementation** the GitHub renderer (`stagr/platforms/github/`) is modelled on:
 
-- **Claude implements** (`claude-code-implementor.yml`, manual dispatch) and **Codex implements**
-  (`authorized-engineering-task.yml`, on the `codex-engineering` issue label) via an
-  untrusted-implement → validate → trusted-publish (remediation) flow.
-- **Codex reviews** — code and security — is re-requested on every push
-  (`request-codex-review-on-push.yml`); the deterministic router (`fast-ai-code-review.yml`)
-  routes every PR to Codex (the fast path is disabled here, so docs are reviewed too).
+- **Codex reviews** the code of every new commit by itself (a Codex App setting), and the final
+  security review is requested once the code review is clean (`request-final-security-review.yml`);
+  the deterministic router (`fast-ai-code-review.yml`) routes every PR to Codex (the fast path is
+  disabled here, so docs are reviewed too).
 - **`Validate`** (`validate.yml`) is the CI gate. Review threads that a later commit made outdated,
   with Codex-only comments, **auto-resolve** (`resolve-fixed-codex-review-threads.yml`); who resolves
   every other thread is set in `AGENTS.md`, "Review threads". The **fail-closed foundation gate**
@@ -160,7 +149,7 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 > Status: **neutral core + GitHub renderer, dogfooded.** The platform-neutral stage-graph schema,
 > profiles, provider/backend/model resolution, and the GitHub renderer (per-stage, routing, and
 > governance workflows) and the `stagr plan` / `stagr apply` commands are in place, alongside the
-> toolkit's own live Claude+Codex automation. Next: the `init`/`doctor` commands, more stage types, more platform renderers, and the
+> toolkit's own live Codex review automation. Next: the `init`/`doctor` commands, more stage types, more platform renderers, and the
 > front-door skill (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).
 
 ## License

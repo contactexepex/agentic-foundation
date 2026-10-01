@@ -31,7 +31,7 @@ acceptance criteria, each with a test.
   never touch the real network (C3, C8).
 - Follow the existing layout: new tests under `.github/scripts/` in a focused sub-package if a module
   passes 350 lines; run by the existing `validate.yml` commands.
-- Existing gates stay: `python .github/scripts/validate_config.py`, `test_neutral_core_models.py`,
+- Existing gates stay: `python .github/scripts/validate_config.py`, `test_core.py`,
   `test_cli.py`, `py_compile` on changed files.
 - **One real run.** After merge, run `stagr doctor` in a workflow in this repository (App 5125793, secret
   `STAGR_APP_PRIVATE_KEY`) to confirm F1 to F4. Expect PASS. Then run once on a scratch branch with a wrong

@@ -26,7 +26,6 @@ def test_enum_string_values() -> None:
     assert StageKind("test") is StageKind.TEST
     assert StageKind("deploy") is StageKind.DEPLOY
     assert StageKind("custom") is StageKind.CUSTOM
-    assert StageKind("implement") is StageKind.IMPLEMENT
 
     # StageGate — neutral-core M2 contract (issue #173)
     assert StageGate("blocking") is StageGate.BLOCKING

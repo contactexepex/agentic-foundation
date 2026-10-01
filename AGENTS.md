@@ -132,9 +132,9 @@ clarification, treat the answer as evidence and re-run the affected validation.
   disabled for this repository (`.agentic/config.yml` → `routing.fast_path.enabled: false`), so every
   change, documentation included, is routed to Codex. This is a shared toolkit whose docs other people
   rely on, so nothing merges without review. Code review and security review run in sequence, never
-  concurrently: the code review iterates per push (`request-codex-review-on-push.yml`), and once it has
-  converged (completed + clean on the head) a single security review runs as the final pre-merge step
-  (`request-final-security-review.yml`). The merge gate requires a head-bound Codex *code* review AND a
+  concurrently: the code review iterates per push (the Codex App reviews every new commit by itself),
+  and once it has converged (completed + clean on the head) a single security review runs as the final
+  pre-merge step (`request-final-security-review.yml`). The merge gate requires a head-bound Codex *code* review AND a
   head-bound *security* review to have completed, plus zero unresolved review threads; a finding — code
   or security — blocks via its thread. Self-review never substitutes for a required review. The
   `standard` profile declares the same order: its `security` stage depends on `review`.

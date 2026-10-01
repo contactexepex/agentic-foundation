@@ -10,11 +10,7 @@ import dataclasses
 import json
 from typing import Any
 
-from neutral_core_tests.github_platform_renderer_tests.helpers import (
-    build_execution_plan,
-    build_render_context,
-    build_stage,
-)
+from neutral_core_tests.github_platform_renderer_tests.helpers import build_render_context
 from neutral_core_tests.stage_signal_tests.render_helpers import (
     build_codex_plan,
     parse_workflow,
@@ -75,18 +71,6 @@ def test_stage_with_dependencies_also_listens_to_completed_check_runs_and_suites
 def test_stage_without_dependencies_keeps_exactly_its_previous_triggers() -> None:
     _, document = render_codex_workflow(StageKind.SECURITY)
     assert set(document["on"]) == {"pull_request_target", "issue_comment", "schedule"}
-    plain = parse_workflow(render_workflow_text(build_execution_plan(), build_stage()))
-    assert set(plain["on"]) == {"pull_request_target"}
-
-
-def test_stage_with_dependencies_but_no_asynchronous_evidence_still_wakes_on_upstream_signals() -> None:
-    stage = dataclasses.replace(build_stage("lint"), dependencies=("review",))
-    upstream = build_stage("review")
-    context = dataclasses.replace(build_render_context(stage), stages=(upstream, stage))
-    document = parse_workflow(render_workflow_text(build_execution_plan("lint"), stage, context))
-    assert list(document["jobs"]) == ["execute"]
-    assert {"check_run", "check_suite"} <= set(document["on"])
-    assert "issue_comment" not in document["on"] and "schedule" not in document["on"]
 
 
 def test_execute_job_runs_for_pull_request_events_and_relevant_upstream_signals() -> None:
@@ -208,12 +192,9 @@ def test_publish_step_still_runs_after_a_skipped_invocation_and_learns_the_event
     assert publish["env"]["STAGR_PULL_NUMBER"] == _steps(document)["Check eligibility"]["env"]["STAGR_PULL_NUMBER"]
 
 
-def test_placeholder_backend_steps_are_gated_on_eligibility_as_well() -> None:
-    document = parse_workflow(render_workflow_text(build_execution_plan(), build_stage()))
-    steps = _steps(document)
-    assert steps["Check idempotency (stub)"]["if"] == PROCEED_CONDITION
-    assert steps["Invoke backend (stub)"]["if"] == PROCEED_CONDITION
-    assert steps["Check eligibility"]["env"]["STAGR_PULL_NUMBER"] == (
+def test_stage_without_dependencies_reads_the_pull_number_from_its_own_event() -> None:
+    _, document = render_codex_workflow()
+    assert _steps(document)["Check eligibility"]["env"]["STAGR_PULL_NUMBER"] == (
         "${{ github.event.pull_request.number }}"), "no wake-up data without dependencies"
 
 

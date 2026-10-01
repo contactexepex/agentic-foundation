@@ -131,9 +131,9 @@ def test_codex_renderer_unsupported_stage_kind_raises_value_error() -> None:
     from stagr.core.models import NormalizedStage
 
     renderer = build_renderer()
-    implement_stage = NormalizedStage(
-        id="implement",
-        kind=StageKind.IMPLEMENT,
+    custom_stage = NormalizedStage(
+        id="custom",
+        kind=StageKind.CUSTOM,
         provider="openai",
         backend="codex",
         skill=None,
@@ -144,12 +144,12 @@ def test_codex_renderer_unsupported_stage_kind_raises_value_error() -> None:
 
     raised = False
     try:
-        renderer.render(implement_stage)
+        renderer.render(custom_stage)
     except ValueError:
         raised = True
 
     assert raised, (
-        "Expected ValueError when rendering an IMPLEMENT stage with "
+        "Expected ValueError when rendering a CUSTOM stage with "
         "OpenAICodexBackendRenderer"
     )
 

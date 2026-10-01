@@ -24,19 +24,19 @@ def test_normalized_stage_construction() -> None:
     assert stage.gate is StageGate.BLOCKING
     assert len(stage.triggers) == 2
 
-    # IMPLEMENT-type stage: skill is None, gate is NON_BLOCKING
-    implement_stage = NormalizedStage(
-        id="implement-claude",
-        kind=StageKind.IMPLEMENT,
-        provider="anthropic",
-        backend="claude-code",
+    # A stage without a skill and with a NON_BLOCKING gate is valid too.
+    custom_stage = NormalizedStage(
+        id="custom-check",
+        kind=StageKind.CUSTOM,
+        provider="openai",
+        backend="codex",
         skill=None,
         gate=StageGate.NON_BLOCKING,
         triggers=(StageTrigger.MANUAL,),
         dependencies=(),
     )
-    assert implement_stage.skill is None
-    assert implement_stage.gate is StageGate.NON_BLOCKING
+    assert custom_stage.skill is None
+    assert custom_stage.gate is StageGate.NON_BLOCKING
 
     # No `enabled` field
     assert not hasattr(stage, "enabled"), "NormalizedStage must not have an `enabled` field"

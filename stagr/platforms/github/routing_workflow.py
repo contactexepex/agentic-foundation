@@ -22,6 +22,7 @@ import base64
 import json
 
 from stagr.core.models import FastPathPolicy
+from stagr.platforms.github.action_pins import APP_TOKEN_ACTION_REF
 
 # Stable Check Run name emitted by the routing artifact and consumed by the
 # governance artifact. This string is rendered as a literal into both artifacts;
@@ -30,46 +31,6 @@ ROUTE_CLASSIFICATION_CHECK_RUN_NAME = "stagr/route-classification"
 
 # Output file name inside ``.github/workflows/``.
 ROUTING_WORKFLOW_FILENAME = "routing.yml"
-
-# Pinned commit SHA for actions/create-github-app-token v1.11.1.
-# Immutable pinning is required per AGENTS.md supply-chain integrity requirement.
-_APP_TOKEN_ACTION_REF = (
-    "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e"
-    "  # v1.11.1"
-)
-
-
-def classify_route_from_changed_files(
-    changed_file_paths: list[str],
-    fast_path_patterns: list[str],
-) -> str:
-    """Classify a PR as FAST or NORMAL given its changed file paths and patterns.
-
-    Returns ``'FAST'`` when ALL changed file paths match at least one pattern and
-    the file list is non-empty. Returns ``'NORMAL'`` when any file does not match
-    any pattern, or when the changed file list is empty.
-
-    Pattern matching uses ``fnmatch.fnmatch`` semantics, where ``*`` matches any
-    characters including ``/`` (i.e., any subpath) and ``**`` is treated the same
-    as ``*``. This mirrors the behaviour embedded in the generated workflow step.
-
-    Args:
-        changed_file_paths: List of relative file paths changed by the PR.
-        fast_path_patterns: Glob patterns from RoutingPolicy.fast_path.match.paths.
-
-    Returns:
-        ``'FAST'`` if all paths match any pattern and the list is non-empty;
-        ``'NORMAL'`` otherwise.
-    """
-    import fnmatch
-
-    if not changed_file_paths:
-        return "NORMAL"
-
-    def matches_any_pattern(file_path: str) -> bool:
-        return any(fnmatch.fnmatch(file_path, pattern) for pattern in fast_path_patterns)
-
-    return "FAST" if all(matches_any_pattern(fp) for fp in changed_file_paths) else "NORMAL"
 
 
 def generate_routing_workflow_yaml(
@@ -146,7 +107,7 @@ def _build_token_acquisition_step(
     return (
         f"      - name: Acquire Stagr App installation token\n"
         f"        id: app-token\n"
-        f"        uses: {_APP_TOKEN_ACTION_REF}\n"
+        f"        uses: {APP_TOKEN_ACTION_REF}\n"
         f"        with:\n"
         f'          app-id: "{publisher_app_id}"\n'
         f'          private-key: "{private_key_secret_expr}"\n'
@@ -246,9 +207,9 @@ def _build_classify_step(patterns_json: str) -> str:
     Embeds the fast_path patterns as a base64-encoded constant and runs inline Python
     to classify the route. Base64 encoding is used so that glob patterns containing
     apostrophes (e.g. ``docs/o'hare/**``) cannot break YAML single-quoted scalar syntax.
-    Using ``fnmatch.fnmatch``, which treats ``*`` and ``**`` as matching any characters
-    including path separators, implements the same semantics as
-    ``classify_route_from_changed_files``.
+    Pattern matching uses ``fnmatch.fnmatch``, which treats ``*`` and ``**`` as matching any
+    characters including path separators. The route is FAST only when the file list is non-empty
+    and every path matches a pattern.
     """
     patterns_b64 = base64.b64encode(patterns_json.encode()).decode()
     return (

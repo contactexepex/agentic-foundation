@@ -2,8 +2,8 @@
 """Deterministic validation for the agentic-foundation contract.
 
 This is the repository's "green" check (the equivalent of a unit-test suite for a
-contract/docs repo). It runs in CI (`validate.yml`) and in the Codex implementor's
-validation step. It has no network access and only reads repository files.
+contract/docs repo). It runs in CI (`validate.yml`). It has no network access and only reads
+repository files.
 
 Checks:
   1. stagr/config.schema.json is valid JSON Schema (2020-12).

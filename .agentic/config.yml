@@ -25,7 +25,6 @@ providers:
   # The values here are secret NAMES (never values); the runtime reads them from the environment.
   openai:
     secrets:
-      PROVIDER_API_KEY: OPENAI_API_KEY
       TRUSTED_COMMENTER_TOKEN: REMEDIATION_TOKEN
 
 stages:

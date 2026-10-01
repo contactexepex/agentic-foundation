@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Tests for neutral core data models and enumerations (Group A: issues #173–#178).
+"""Runs every test of the Stagr core and the GitHub platform renderer.
 
-Run with: python .github/scripts/test_neutral_core_models.py
+Run with: python .github/scripts/test_core.py
 No pytest required. Exit 0 = all pass.
 
 This is a thin runner. The tests live in scoped modules under ``neutral_core_tests/``,
@@ -65,6 +65,8 @@ from neutral_core_tests.test_skill_validator import (
     test_v_s06_stage_id_named_in_error,
     test_v_s06_mixed_stages_only_missing_files_fail,
     test_v_s06_empty_stages_passes,
+    test_v_s06_shipped_skill_passes_without_a_repository_copy,
+    test_v_s06_repository_copy_outside_the_skills_directory_is_rejected,
 )
 from neutral_core_tests.test_defaults import (
     test_defaults_provider_propagates,
@@ -141,16 +143,6 @@ from neutral_core_tests.test_backend_renderer import (
     test_backend_renderer_gate_disposition_set,
     test_backend_renderer_no_platform_fields,
 )
-from neutral_core_tests.test_anthropic_claude_backend_renderer import (
-    test_anthropic_renderer_invocation_kind,
-    test_anthropic_renderer_invocation_params_action,
-    test_anthropic_renderer_invocation_params_secret_inputs,
-    test_anthropic_renderer_secret_alias_only,
-    test_anthropic_renderer_gate_disposition_always_pass,
-    test_anthropic_renderer_no_evidence_spec,
-    test_anthropic_renderer_protocol_conformance,
-    test_anthropic_renderer_provider_and_backend,
-)
 from neutral_core_tests.test_backend_renderer_registry import (
     test_registry_get_returns_registered_renderer,
     test_registry_get_unknown_raises_error,
@@ -219,6 +211,8 @@ _TESTS = [
     test_v_s06_stage_id_named_in_error,
     test_v_s06_mixed_stages_only_missing_files_fail,
     test_v_s06_empty_stages_passes,
+    test_v_s06_shipped_skill_passes_without_a_repository_copy,
+    test_v_s06_repository_copy_outside_the_skills_directory_is_rejected,
     test_defaults_provider_propagates,
     test_defaults_explicit_provider_not_overridden,
     test_defaults_model_resolved_from_defaults,
@@ -278,14 +272,6 @@ _TESTS = [
     test_backend_renderer_secret_alias_only,
     test_backend_renderer_gate_disposition_set,
     test_backend_renderer_no_platform_fields,
-    test_anthropic_renderer_invocation_kind,
-    test_anthropic_renderer_invocation_params_action,
-    test_anthropic_renderer_invocation_params_secret_inputs,
-    test_anthropic_renderer_secret_alias_only,
-    test_anthropic_renderer_gate_disposition_always_pass,
-    test_anthropic_renderer_no_evidence_spec,
-    test_anthropic_renderer_protocol_conformance,
-    test_anthropic_renderer_provider_and_backend,
     test_registry_get_returns_registered_renderer,
     test_registry_get_unknown_raises_error,
     test_registry_default_backend_for_provider,

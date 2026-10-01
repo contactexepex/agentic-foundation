@@ -5,7 +5,7 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 **any SCM platform**, and **any language**.
 
 > **Scope note.** The contract described here is **generic** — it can express any stage type
-> (`implement`, `review`, `security`, `build`, `test`, `deploy`, `custom`). stagr's
+> (`review`, `security`, `build`, `test`, `deploy`, `custom`). stagr's
 > **product scope**, however, is the **development lane** (approved story → merged PR). Planning
 > and CD/deploy are delivered by **separate sibling toolkits** that reuse this same contract, not
 > by stagr's reference lane. The contract's reach across the toolkit family is wider than
@@ -17,22 +17,20 @@ This is the design of the toolkit: the mental model, the layers, and how it stay
 ## 1. Mental model: a pipeline is a graph of stages
 
 A repository's agentic pipeline is an **ordered, extensible graph of stages**. Each
-**stage is one agent** in the SDLC/STLC — `implement`, `review`, `security`, `build`, `test`,
-`deploy`, or `custom` — bound to:
+**stage is one agent** in the SDLC/STLC — `review`, `security`, `build`, `test`, `deploy`, or
+`custom` — bound to:
 
-- a **provider + model** (the knob — `anthropic` or `openai` today; mix per stage),
+- a **provider + model** (the knob — `openai` today; mix per stage as providers are added),
 - a **backend** (the executor/tool; derived from the provider, overridable),
 - **triggers** (issue label, PR/MR opened or updated, manual),
 - a **gate** (advisory = comment only; blocking = emits a required status check),
 - **dependencies** (`depends_on`) that define the graph edges.
 
-`implement` and `review` are just two built-in stage *types*; they are not special.
+`review` and `security` are just two built-in stage *types*; they are not special.
 The same contract expresses a two-stage pipeline or a full SDLC of a dozen stages.
 
 ```
-issue ──▶ [implement] ─┬─▶ [security] ──┐
-                     ├─▶ [test]     ──┤─▶ gates ─▶ PR/MR ─▶ human
-                     └─▶ [review]   ──┘
+PR/MR ──▶ [build] ──▶ [review] ──▶ [security] ──▶ gate ──▶ human
 ```
 
 ---
@@ -45,7 +43,7 @@ The toolkit is deliberately split so each concern can change without disturbing 
 |---|---|---|
 | **1. Contract** | Declarative, platform-neutral description of the pipeline. | `.agentic/config.yml` (this schema) |
 | **2. Provider adapters** | Talk to a model vendor (Claude / OpenAI / Gemini / local / gateway). Give true provider-agnosticism. | `providers`, `defaults.models` |
-| **3. Agent tools** | Execute a stage. The tool is derived from the provider (`anthropic` → Claude Code, `openai` → Codex); roadmap adapters wrap other OSS agents. | `stages[].provider` (or `stages[].backend` to pin) |
+| **3. Agent tools** | Execute a stage. The tool is derived from the provider (`openai` → Codex); roadmap adapters wrap other OSS agents. | `stages[].provider` (or `stages[].backend` to pin) |
 | **4. Platform/SCM adapters** | Render the neutral pipeline into a concrete CI system and normalize concepts (PR↔MR, roles, checks). | `platform` |
 | **5. CLI** | Today: `help`, `plan` (list the files a config produces) and `apply` (write them). Planned: `init`, `doctor`. | — |
 
@@ -65,7 +63,6 @@ contract layer**: a stage names a **provider**, and the toolkit derives the codi
 
 | Backend (tool) | Wraps | Derived from | Status |
 |---|---|---|---|
-| `claude-code-action` | Anthropic's Claude Code | `anthropic` | backend renderer exists; the GitHub renderer cannot render it yet (see below) |
 | `codex` | OpenAI Codex | `openai` | rendered on GitHub: review, security |
 | `claude-code-cli` | Anthropic's Claude Code (CLI runner) | — (override only) | roadmap |
 | `openhands` | OpenHands issue resolver | — | roadmap |
@@ -76,9 +73,8 @@ contract layer**: a stage names a **provider**, and the toolkit derives the codi
 pin one or adopt a roadmap adapter later without touching the rest of the pipeline.
 
 The GitHub renderer renders only backends that are started by a pull-request comment (the
-`PR_COMMENT` invocation kind, which is how Codex runs). The Claude Code implement backend needs a
-different kind (`CI_COMPONENT`), so validation (V-S08) rejects an `implement` stage on GitHub until
-that kind can be rendered.
+`PR_COMMENT` invocation kind, which is how Codex runs). Validation (V-S08) rejects a backend that
+needs any other kind on GitHub.
 
 ---
 
@@ -88,7 +84,7 @@ Two distinct concepts, cleanly layered so the domain knowledge is reusable and p
 
 | Concept | Is | Lives in | Referenced by |
 |---|---|---|---|
-| **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `.agentic/skills/<id>/SKILL.md` in your repo (reference copies ship in `stagr/templates/skills/<id>/`) | `stages[].skill` |
+| **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `stagr/templates/skills/<id>/SKILL.md` (shipped); a repo overrides one with its own `.agentic/skills/<id>/SKILL.md` | `stages[].skill` |
 | **Stage** | An agent *placed in the pipeline graph* (with `depends_on`, overrides). | `.agentic/config.yml` `stages[]` | the pipeline |
 
 Why the split:
@@ -110,10 +106,10 @@ Per stage, the model resolves **most-specific-first**:
 1. **Stage model** — `stages[].model.default`
 2. **Org/account default** — `defaults.models.<provider>.default`
 
-There is **no hidden toolkit fallback**: for an `anthropic` stage (Claude Code consumes a contract
-model), if neither layer yields a model the toolkit **fails loudly** and never guesses a version. An
-`openai` stage (Codex) supplies its own model, so the rule does not apply to it. This is how "same
-provider, different models" or "mix Anthropic and OpenAI" is expressed — independently per stage.
+There is **no hidden toolkit fallback**: for a stage whose backend consumes a contract model, if
+neither layer yields a model the toolkit **fails loudly** and never guesses a version. An `openai`
+stage (Codex) supplies its own model, so the rule does not apply to it. This is how "same provider,
+different models" or "mix providers" is expressed — independently per stage.
 
 ---
 

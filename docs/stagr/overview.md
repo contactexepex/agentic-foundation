@@ -64,9 +64,9 @@ implement/review/test/deploy map naturally onto discrete, event-driven CI stages
 
 ## Scope alignment with older docs
 
-The generic contract in [`../ARCHITECTURE.md`](../ARCHITECTURE.md) can express *any* stage type
-(`implement`, `review`, `security`, `build`, `test`, `deploy`, `custom`). That stays
-true — the contract is generic on purpose. What this design **bounds is stagr's product
+The generic contract in [`../ARCHITECTURE.md`](../ARCHITECTURE.md) can express the stage types
+`review`, `security`, `build`, `test`, `deploy` and `custom`; implementing a story belongs to the
+future development module (decision record #265). The contract is generic on purpose. What this design **bounds is stagr's product
 scope**: stagr ships and owns the **dev-lane** stages and their gate. The `deploy` stage type
 remains expressible by the shared contract, but deploying is **delivered by the CD sibling
 toolkit**, and planning by the Planning toolkit, not by stagr's reference lane.

@@ -101,7 +101,7 @@ stages:
     provider: openai        # API/credential provider id
     backend: codex          # invocation mechanism (defaults per provider)
     # model: { default: gpt-4o }   # optional; omit to use the backend's default
-    skill: code-review      # skill id → .agentic/skills/<id>/SKILL.md
+    skill: code-review      # skill id → shipped skill, or the repo's .agentic/skills/<id>/SKILL.md
     gate: blocking          # blocking | advisory (default blocking)
     triggers:               # StageTrigger[]: when this stage runs
       - pr_opened
@@ -134,12 +134,12 @@ stages:
 
   # A stage with enabled: false is excluded before normalization — not rendered,
   # not in the dependency graph, not in blockingStageIds. See 02-canonical-stage-model.md.
-  - id: implement-codex
-    type: implement
+  - id: extra-review
+    type: review
     provider: openai
     enabled: false          # optional; true by default
     triggers:
-      - issue_labeled
+      - manual
 ```
 
 ### Config keys and the normalized model
@@ -169,7 +169,7 @@ only to unknown **top-level** keys (see "Non-Stagr keys" below); it does not ext
 sub-fields of a Stagr key.
 
 `backend` is a plain string. When it is omitted, the default comes from the stage's
-provider (`anthropic` → `claude-code-action`, `openai` → `codex`).
+provider (`openai` → `codex`).
 
 ### Non-Stagr keys
 

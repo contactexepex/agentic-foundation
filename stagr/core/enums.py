@@ -22,7 +22,6 @@ class StageKind(str, Enum):
     TEST = "test"
     DEPLOY = "deploy"
     CUSTOM = "custom"
-    IMPLEMENT = "implement"
 
 
 class StageGate(str, Enum):

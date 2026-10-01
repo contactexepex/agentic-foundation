@@ -5,7 +5,6 @@ import hashlib
 import os
 import re
 import stat
-from pathlib import Path
 from typing import Any, Callable
 
 import yaml
@@ -54,10 +53,6 @@ def point_at_missing_skill(config: dict[str, Any]) -> None:
     config["stages"][0]["skill"] = "no-such-skill"
 
 
-def use_backend_the_platform_cannot_run(config: dict[str, Any]) -> None:
-    config["stages"][0]["provider"] = "anthropic"
-
-
 def use_platform_without_renderer(config: dict[str, Any]) -> None:
     config["platform"]["type"] = "gitlab"
 
@@ -81,7 +76,6 @@ INVALID_CONFIG_CASES: tuple[tuple[str, Callable[[dict[str, Any]], None], str], .
     ("unknown config key", add_unknown_key, "does not conform to schema"),
     ("unknown dependency (V-S05)", add_unknown_dependency, "missing-stage"),
     ("missing skill file (V-S06)", point_at_missing_skill, "no-such-skill"),
-    ("backend the platform cannot run (V-S08)", use_backend_the_platform_cannot_run, "V-S08"),
     ("platform without a renderer", use_platform_without_renderer, "has no renderer"),
     ("no enabled stage", disable_every_stage, "no enabled stage"),
 )
@@ -169,8 +163,8 @@ def test_missing_and_unparseable_config_files_are_rejected() -> None:
 
 def test_yaml_errors_never_echo_config_text() -> None:
     pasted_secret_yaml_cases = (
-        "providers:\n  openai:\n    api_key_secret: sk-secret-abc123: oops\n",
-        "providers:\n  openai:\n    api_key_secret: !sk-secret-abc123 value\n",
+        "platform:\n  auth:\n    token_secret: sk-secret-abc123: oops\n",
+        "platform:\n  auth:\n    token_secret: !sk-secret-abc123 value\n",
     )
     for yaml_text in pasted_secret_yaml_cases:
         with dogfood_project() as project_root:
@@ -247,7 +241,7 @@ def test_symlinked_and_directory_targets_are_refused() -> None:
 
 
 def test_the_documented_minimal_config_plans_cleanly() -> None:
-    """The starter config in docs/CONFIGURATION.md plans cleanly in an empty repo plus the copied starter skills."""
+    """The starter config in docs/CONFIGURATION.md plans cleanly in an empty repo (shipped skills)."""
     guide_text = (REPOSITORY_ROOT / "docs" / "CONFIGURATION.md").read_text(encoding="utf-8")
     example_start = guide_text.index("# Minimal config")
     minimal_config_text = guide_text[example_start:guide_text.index("```", example_start)]
