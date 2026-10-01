@@ -27,7 +27,7 @@ and 9.
 | `platform.scm`, `platform.ci` | `github` |
 | `StageTrigger.CHANGE_OPENED` | `pull_request_target: [opened, reopened, ready_for_review]` |
 | `StageTrigger.CHANGE_UPDATED` | `pull_request_target: [synchronize]` |
-| `StageTrigger.MANUAL` | `workflow_dispatch` |
+| `StageTrigger.MANUAL` | `workflow_dispatch` with a `pull_request` number input; the adapter reads the change and its current head from it |
 | `InvocationKind.COMMENT_COMMAND` | `gh pr comment <pr> --body-file <file>` with the trusted commenter token |
 | `InvocationKind.CI_STEP` | A GitHub Action step. Not rendered: V-S08 rejects it |
 | `InvocationKind.RUN_COMMANDS` | The untrusted work job of the stage workflow (`09-check-stages.md`, section 8) |
@@ -38,7 +38,7 @@ and 9.
 | `EvidenceKind.WORKFLOW_RESULT` | `needs.<work job>.result` |
 | Result carrier of a `StageResultSignal` | Check Run `stagr/stage/<stageId>` written by the Stagr GitHub App, with the signal as JSON in `output.summary` |
 | Result carrier of a `RouteClassification` | Check Run `stagr/route-classification` written by the Stagr GitHub App |
-| Gate result | The check of the governance workflow's job, required by branch protection |
+| Gate result | Check Run `stagr/gate` written by the Stagr GitHub App; branch protection requires it with the Stagr App as its expected source |
 | Publisher identity | The Stagr GitHub App (`platform.publisher.app_id`) |
 | `producedBy` / `createdBy` identity | A GitHub login. A login ending in `[bot]` matches only a Bot actor, never a person with a similar name |
 | `AuthorRole` | `author_association`: `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR` |
@@ -90,9 +90,16 @@ generating workflows that use `pull_request_target` with secrets:
 
 A Check Run is associated with the GitHub App that creates it, so its publisher's App id is
 verifiable. Commit statuses carry no App identity and are forgeable by any token with
-`statuses: write`, so they are **never** used for a `StageResultSignal` or a
-`RouteClassification`. The governance workflow verifies that each Check Run it reads was written
-by the Stagr App (`StageResultSpec.provenance.publisherIdentity`) and rejects any other.
+`statuses: write`, so they are **never** used for a `StageResultSignal`, a
+`RouteClassification` or the gate result. The governance workflow verifies that each Check Run it
+reads was written by the Stagr App (`StageResultSpec.provenance.publisherIdentity`) and rejects any
+other.
+
+The gate result is never a workflow job's own check: every workflow in the repository posts those
+under the same GitHub Actions identity, so a change could add a job with the same name that always
+passes (the same reason `09-check-stages.md`, section 2, rule 3, rejects that identity as a
+producer). Branch protection therefore requires `stagr/gate` with the Stagr App as its expected
+source.
 
 Writing Check Runs needs the `checks: write` permission in the stage and routing workflows, and
 the Stagr App needs the Checks read and write permission. These are PlatformRenderer
@@ -174,14 +181,16 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   `produced_by`; `invocation_correlation`; any invocation kind other than `COMMENT_COMMAND`; and
   plans with no evidence, because a `COMMENT_COMMAND` invocation finishes asynchronously and
   nothing else could prove it finished.
-- **Events without a pull request** (`workflow_dispatch`) publish no signal.
+- **A `workflow_dispatch` run without a `pull_request` input** names no change, so it publishes
+  no signal.
 - **Invocation and idempotency (`COMMENT_COMMAND` backends).** The `execute` job has one step,
-  "Invoke backend (idempotent)", that runs the engine in `invoke` mode. In this order it
-  (1) skips if the pull request is not eligible or the event's head is stale; (2) skips if the
-  `EvidenceSpec` already holds for the current head (completion guard); (3) skips if a still-valid
-  in-flight marker exists for this stage and this exact head; (4) otherwise posts the backend
-  comment (`Invocation.params["body"]`) with the in-flight marker of `06-runtime-boundary.md`
-  appended, its expiry in UTC. A skipped step exits successfully, so the "Publish result signal"
+  "Invoke backend (idempotent)": the adapter collects the facts, the engine decides, and the
+  adapter carries out the decision. In this order the step (1) skips if the pull request is not
+  eligible or the event's head is stale; (2) skips if the `EvidenceSpec` already holds for the
+  current head (completion guard); (3) skips if a still-valid in-flight marker exists for this
+  stage and this exact head; (4) otherwise the adapter posts the backend comment
+  (`Invocation.params["body"]`) with the in-flight marker of `06-runtime-boundary.md` appended,
+  its expiry in UTC. A skipped step exits successfully, so the "Publish result signal"
   step still runs and reports `running` or the completed result. This step runs inside the
   stage's concurrency group.
 - **The in-flight marker is authenticated.** Comments on a public repository are written by
@@ -197,30 +206,31 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
 - **Lease length** is `Invocation.params["lease_minutes"]` (backend-defined; 30 when absent),
   checked at render time: an integer from 1 to 1440, anything else fails `stagr apply`. `body`
   must be non-empty text and the plan must declare a resolved `TRUSTED_COMMENTER_TOKEN` secret.
-- **Credentials.** Only the invoke step holds the backend secret. It reaches the engine as
-  `TRUSTED_COMMENTER_TOKEN`, and the engine hands it to `gh` as `GH_TOKEN` for that step only.
+- **Credentials.** Only the invoke step holds the backend secret. It reaches the adapter as
+  `TRUSTED_COMMENTER_TOKEN`, and the adapter hands it to `gh` as `GH_TOKEN` for that step only.
+  The engine never receives a token: it returns a "post comment" effect, and the adapter posts it.
   The App installation token is never present in the invoke step; the eligibility step,
   `reconcile` and `sweep` hold only the App token (`reconcile` and `sweep` with
   `permissions: {}`).
-- **Eligibility.** The first step after the token is "Check eligibility". It runs the engine's
-  eligibility checks (`06-runtime-boundary.md`, "Eligibility") and writes `proceed=true` or
-  `proceed=false` to the step output; the invoke step runs only when it is `true`, and a failed
-  eligibility step also stops it. The same eligibility code runs in `publish`, `reconcile` and
-  `sweep`, so no mode can act on a pull request another mode refused. An ineligible run invokes
-  nothing and writes no signal; the "Publish result signal" step still runs and repeats the same
-  checks, so it publishes nothing either. The invoke step keeps its own pull-request checks (it
-  has no App token, so it cannot read Check Runs); route and dependencies are decided once by the
-  eligibility step just before it.
-- **Route applicability.** When `RoutingPolicy.fast_path` is configured, the rendered
-  configuration carries the stage ids of the FAST and NORMAL routes, and the engine reads the
-  `stagr/route-classification` Check Run for the current head. It is trusted only if the Stagr
-  App wrote it, it is bound to the head, it is completed, and its title is exactly
-  `RouteClassification=FAST` or `RouteClassification=NORMAL`; two Stagr runs are an error, and
-  a run from another app is ignored. A stage that is not listed for the route does not run. The
-  routing workflow starts at the same moment as the stage workflow, so a classification that is
-  still missing is waited for (up to 3 minutes, only in the eligibility step); after that the stage
-  fails closed and starts on its next execute run.
-- **Dependencies.** For each stage in `NormalizedStage.dependencies` the engine reads that
+- **Eligibility.** The first step after the token is "Check eligibility". The adapter collects the
+  facts and runs the engine's eligibility checks (`06-runtime-boundary.md`, "Eligibility"), then
+  writes `proceed=true` or `proceed=false` to the step output; the invoke step runs only when it is
+  `true`, and a failed eligibility step also stops it. The same eligibility code runs in `publish`,
+  `reconcile` and `sweep`, so no mode can act on a pull request another mode refused. An ineligible
+  run invokes nothing and writes no signal; the "Publish result signal" step still runs and repeats
+  the same checks, so it publishes nothing either. The invoke step keeps its own pull-request checks
+  (it has no App token, so it cannot read Check Runs); route and dependencies are decided once by
+  the eligibility step just before it.
+- **Route applicability.** When `RoutingPolicy.fast_path` is configured, the rendered configuration
+  carries the stage ids of the FAST and NORMAL routes, and the adapter reads the
+  `stagr/route-classification` Check Run for the current head and passes the route to the engine. It
+  is trusted only if the Stagr App wrote it, it is bound to the head, it is completed, and its title
+  is exactly `RouteClassification=FAST` or `RouteClassification=NORMAL`; two Stagr runs are an
+  error, and a run from another app is ignored. A stage that is not listed for the route does not
+  run. The routing workflow starts at the same moment as the stage workflow, so a classification
+  that is still missing is waited for (up to 3 minutes, only in the eligibility step); after that
+  the stage fails closed and starts on its next execute run.
+- **Dependencies.** For each stage in `NormalizedStage.dependencies` the adapter reads that
   stage's Check Run (`stagr/stage/<id>`) for the current head. It counts only if it is the single
   Check Run of that name written by the Stagr App, and the JSON in `output.summary` has
   `schemaVersion` 1 and states the same stage id and head SHA. `state` and `conclusion` come from

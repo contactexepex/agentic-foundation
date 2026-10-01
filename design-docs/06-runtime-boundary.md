@@ -397,9 +397,12 @@ section 8, capability 4).
 
 - A result that is not `COMPLETED` never passes: `RUNNING` carries conclusion `UNKNOWN`, and
   state `FAILED` carries conclusion `FAILED`.
-- A new revision starts every stage over. A new **attempt** on the same revision (a manual run or
-  a re-run) moves the stage back to `RUNNING` first, whatever it held before, `PASS` included.
-  The newest attempt decides; nothing is immutable (#265, section 5, decision 6).
+- A new revision starts every stage over.
+- For `commands` and `observed` stages, a new **attempt** on the same revision (a manual run or a
+  re-run) moves the stage back to `RUNNING` first, whatever it held before, `PASS` included. The
+  newest attempt decides; nothing is immutable (#265, section 5, decision 6). An agent stage keeps
+  the result its evidence gives for the revision: its completion guard ("Idempotency") does not
+  invoke the backend again while that evidence exists.
 - Every result names its revision. A result for another revision never counts.
 
 ### Why COMPLETED ≠ PASS for review stages
@@ -411,12 +414,19 @@ review with outstanding findings from satisfying a blocking gate.
 
 ### How a stage execution artifact determines conclusion
 
-For agent stages (`REVIEW`, `SECURITY`, and `CUSTOM` with an agent executor):
+For agent stages (`REVIEW`, `SECURITY`, and `CUSTOM` with an agent executor), the evidence sets
+the state and the stage's `GateDispositionSpec` sets the conclusion:
 
 ```
-evidence state  →  state = COMPLETED
+evidence of completion  →  state = COMPLETED
+GateDispositionSpec     →  conclusion = PASS or BLOCKED
+```
+
+For `NO_OPEN_THREADS`, the disposition of the review and security stages, that means:
+
+```
 no unresolved findings linked to this stage  →  conclusion = PASS
-unresolved findings linked to this stage  →  conclusion = BLOCKED
+unresolved findings linked to this stage     →  conclusion = BLOCKED
 ```
 
 For `commands` and `observed` stages, the mapping is in `09-check-stages.md`, sections 3 and 6.
@@ -445,8 +455,10 @@ never acceptable. The GitHub carrier is in `08-github-codex-mapping.md`.
 
 ## Gate evaluation
 
-The governance artifact publishes **one gate result** for the change's current revision. The
-platform's own merge mechanism requires that result and performs the merge; Stagr never merges
+The governance artifact publishes **one gate result** for the change's current revision, on a
+result carrier bound to the revision and written by the publisher identity, like a stage result
+("Signal emission"). The platform's own merge mechanism requires that result, from that identity,
+and performs the merge; Stagr never merges
 (#265, section 2, decision 4). Whether a person must also approve is the approvals policy (#265,
 section 2, decision 9, Plan B) and the platform's own merge settings (#265, addendum,
 decision 23).
@@ -513,8 +525,9 @@ signal only when it reaches a terminal state that cannot change without a new re
 - `COMPLETED + PASS` — the gate condition is satisfied; re-evaluation adds no value.
 - `FAILED` (irrecoverable) — infrastructure failure or similar non-recoverable condition.
 
-**A new attempt is not reconciliation.** A new attempt replaces any result ("State machine"
-above). Reconciliation and the sweep never replace a completed result.
+**A new attempt is not reconciliation.** A new attempt of a `commands` or `observed` stage
+replaces any result ("State machine" above). Reconciliation and the sweep never replace a
+completed result.
 
 **`COMPLETED + BLOCKED` is not terminal for reconciliation.** A BLOCKED conclusion means
 the backend finished but found blocking issues. Those issues can be resolved (e.g.,

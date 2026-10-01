@@ -71,7 +71,8 @@ publish its `StageResultSignal` at run time. This is determined by the PlatformR
 during Phase 1 (not by the BackendRenderer and not from `RenderContext` inputs). Phase 2
 therefore cannot begin until all Phase 1 `StageResultSpec` outputs are collected.
 
-**Separation rule:** Phase 1 renderers never read routing or merge policy. Phase 2
+**Separation rule:** Phase 1 renderers read `RoutingPolicy` only to embed the stage's route
+applicability into its artifact, and never read merge policy. Phase 2
 renderers never read stage `ExecutionPlan` objects directly — they receive only the
 `StageResultSpec[]` summary produced by Phase 1.
 
@@ -91,6 +92,7 @@ RenderContext {
   trustPolicy:   TrustPolicy
   scm:           string                 // platform.scm: where changes, the gate and identities live
   ci:            string                 // platform.ci: where jobs run; equals scm unless set
+  host:          string | null          // platform.host: base URL of a self-hosted platform
 }
 ```
 

@@ -22,13 +22,15 @@ and **environment** (requires network access, credentials, and a configured plat
 | `stagr apply` | Static validation, then renders and writes artifacts | No (but `doctor` should pass first) |
 
 `stagr plan` and `stagr apply` share the same static validation pass. Any static error
-that fails `plan` also fails `apply`.
+that fails `plan` also fails `apply`, except V-S16 (engine file), which `apply` skips because it
+writes that file.
 
 ---
 
 ## Static validation
 
-Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifacts.
+Errors here fail `stagr plan` and prevent `stagr apply` from writing any artifacts (V-S16 is the
+exception described under that check).
 
 `validate_config` in `stagr/core/config_validation.py` is the front door for V-S01 to V-S06:
 schema, publisher block, profile, dependency references, cycles, and skill files.
@@ -134,7 +136,9 @@ For stages with a `commands` or `observed` executor (`09-check-stages.md`, secti
 
 The rules engine file that `stagr apply` writes (`06-runtime-boundary.md`, "The engine file") is
 present and identical to the file this Stagr version would write. A missing, edited or
-out-of-date engine file fails `stagr plan`; `stagr apply` writes it again.
+out-of-date engine file fails `stagr plan`. V-S16 is the one static check that `stagr apply`
+skips, because `apply` is what writes the engine file: on a fresh repository and after an upgrade
+it writes the current file.
 
 ### V-S17 — Platform axes known
 
