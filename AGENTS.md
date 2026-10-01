@@ -45,12 +45,8 @@ or links is actionable, not a style finding.
   only the delta.
 - The only permitted automated merge is the **fail-closed foundation-lane gate** (see "Merge lanes").
   It enforces every gate rather than bypassing one. Neither Claude nor Codex hand-merges.
-- Automated resolution of Codex review threads is limited to threads a later commit has already made
-  outdated.
-- Review threads are resolved only when a later commit makes them outdated; neither Claude nor any
-  automated actor resolves a current (non-outdated) thread.
-- If a finding cannot be resolved within the bounded review cycles in `CLAUDE.md`, escalate to a
-  human rather than looping.
+- The **judge** (the reviewer-side account `contactexepex-judge`) rules on every review finding and
+  resolves review threads as set out in "Review threads".
 
 ## Evaluating review findings
 
@@ -86,9 +82,26 @@ meaningful test gap for changed code.
 requires unrealistic preconditions is noise that slows the pipeline — omit it entirely.
 Focus on what is actually broken in what the diff actually changes.
 
-**Claude (implementor):** decline non-actionable findings with one evidence-based reply. Do not
-resolve the thread — leave it open for the Codex delta review. Do not loop on a finding you have
-declined with evidence. One remediation cycle per finding is the limit.
+**Claude (implementor):** fix actionable findings and decline the rest, as set out in "Review threads".
+
+## Review threads
+
+This section is the only place the rules for review threads are written. Every other file refers to
+it by name.
+
+- **Answering a finding:** the implementer fixes it, or declines it with one evidence-based reply. A
+  declined finding is not argued again unless the reviewer brings new evidence.
+- **Who resolves a thread:**
+  - the judge, once it rules the finding fixed on the current head or the decline accepted, whether or
+    not the thread is outdated;
+  - anyone, including the outdated-thread workflow, once a later commit has made the thread outdated;
+  - Claude never resolves a current (non-outdated) thread.
+- **Fix rounds:** at most two rounds of fix and delta review per PR.
+- **Escalation:** once the judge has ruled on the latest delta review, or cannot rule (for example
+  because it is unavailable), apply `human-merge` and hand the PR to a human, instead of looping, when
+  either of these is true:
+  - the thread of a declined finding is still open;
+  - any thread is still open after the second fix round.
 
 ## Core operating loop
 
@@ -213,6 +226,9 @@ Every identifier must communicate its purpose without needing a comment:
   reader understands. Say what a thing is, why it exists, and how to configure it.
 - **No gaps.** A doc is self-contained and correct end to end — no step that points at something
   which does not exist.
+- **One home for every rule.** Each rule, policy or default is written in exactly one place. Every
+  other document, config comment or template refers to that place by name or link and never restates
+  it, so a change to the rule is made once and cannot drift.
 - **Keep the set minimal.** Do not create a new document when an existing one is the right home.
   Fewer, clearer files beat many overlapping ones.
 - **Simple names and content.** File names and headings are as plain and descriptive as the body. If

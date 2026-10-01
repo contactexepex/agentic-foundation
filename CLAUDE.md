@@ -95,17 +95,16 @@ finding — review comments require judgment, not blind acceptance.
 
 **How to decline**: reply once on the thread with the specific evidence-based reason (cite the
 existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
-Do not resolve the thread — leave it open for the Codex delta review. Do not loop: a declined
-finding stays declined unless Codex presents new evidence in the delta review. One remediation
-cycle per finding is the limit.
+
+Who resolves threads, how many fix rounds are allowed, and when to escalate are set in `AGENTS.md`,
+"Review threads".
 
 When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
-the delta review manually, since no push fires the per-push workflow. If findings remain
-unresolved after the delta review, escalate to a human (apply `human-merge`) rather than looping.
+the delta review manually, since no push fires the per-push workflow.
 
 For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
-workflow requests the delta review automatically. Limit the total remediation → delta-review loop
-to two iterations; if material findings remain after that, escalate to a human rather than looping.
+workflow requests the delta review automatically.
+
 If Codex review is unavailable, report the PR as awaiting independent review — never substitute
 self-review for it.
 
