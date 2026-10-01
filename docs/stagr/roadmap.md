@@ -46,9 +46,6 @@ behaviour and the stated design:
   security-review sweep already has it). ([trust-and-correctness.md](trust-and-correctness.md))
 - **Dismiss-stale-approvals invariant.** Make the ruleset setting a required onboarding invariant so
   human-lane re-approval on push is real. ([onboarding-and-config.md](onboarding-and-config.md))
-- **Security waits for review.** Decide whether the `standard` profile should make `security` depend
-  on `review` (the two are independent today; design-docs/09 section 10 proposes the dependency).
-  ([dev-lane.md](dev-lane.md))
 - **Minimal commenting identity for the security-review lane.** Replace the broad remediation PAT
   (`REMEDIATION_TOKEN`, Contents + PR R/W) used by the Codex security-review lane with a narrowly-scoped
   commenting identity. ([security-and-secrets.md](security-and-secrets.md))

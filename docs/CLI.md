@@ -79,8 +79,8 @@ stagr apply [--root DIR]    # validate, render, write those same files
 `--root` is the project root (default: the current directory). Both commands read
 `<root>/.agentic/config.yml`, and `apply` writes under `<root>`.
 
-They run **one shared pipeline**: read the config, run the static checks (V-S01 to V-S09, and a V-S11
-warning), render every file, compare with what is on disk. Only the last step differs — `plan` prints
+They run **one shared pipeline**: read the config, run the static checks (the list and their status
+are in [design-docs/07-validation.md](../design-docs/07-validation.md)), render every file, compare with what is on disk. Only the last step differs — `plan` prints
 the list, `apply` writes it and prints the same list. So a config that `plan` accepts is a config
 `apply` accepts (`apply` can still fail on the file system, for example a read-only directory), and
 an invalid config fails both with the same message and exit code 1. `apply` renders everything

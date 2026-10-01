@@ -9,7 +9,7 @@ a **service account** vs a **personal access token (PAT)**, and every field of `
 
 - A repository on GitHub that you can add workflows and secrets to. GitHub is the only platform with
   a renderer today.
-- Provider access for each provider your stages use (Claude or OpenAI Codex).
+- Provider access for each provider your stages use (today only OpenAI Codex).
 
 The toolkit never creates credentials.
 
@@ -75,7 +75,7 @@ platform: { type: github, default_branch: main, publisher: { app_id: 123456 } }
 | `same_repo_only` | `true` = ignore fork PR/MR heads. Keep `true` unless you accept fork contributions (widens the threat model). Default `true`. |
 | `trusted_roles` | Normalized permission levels allowed to drive agentic changes (`owner`, `member`, `collaborator`, `contributor`); the renderer maps them to the platform's own roles. Default `owner`, `member`, `collaborator`. |
 | `auth.token_secret` | **Name** of the secret holding the platform API token. Never the value. |
-| `publisher.app_id` | Optional. The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. **Required by `stagr plan` and `stagr apply`**: the generated workflows publish their check runs as this App. |
+| `publisher.app_id` | The numeric ID of the **Stagr GitHub App** that publishes Stagr's own Check Runs. A positive whole number (quoted digits also work). It is **not a secret**: it is written as-is into the generated workflows. No default. The schema accepts a config without it, but **`stagr plan` and `stagr apply` require it**: the generated workflows publish their check runs as this App. |
 | `publisher.private_key_secret` | Optional, used with `publisher`. The **name** of the repository secret that holds the App's private key. Default `STAGR_APP_PRIVATE_KEY`. Never the key itself. |
 | `labels.human_merge` | A change-request with this label is **never** merged automatically (a human keeps merge authority). Default `human-merge`. |
 
@@ -224,10 +224,13 @@ If you ever see a secret value in a log or comment, treat it as compromised and 
 ## 4. Setup steps
 
 > **Prerequisite — the Codex GitHub App (only for `openai` stages).** A stage with `provider: openai`
-> runs **Codex**, which requires the **Codex GitHub App** to be installed on the repo/org and
-> configured to review pull requests — that app performs the review and acts on the `@codex` comments
-> the generated workflows post. Install it **before** relying on the pipeline and confirm on a test PR
-> that the reviews run.
+> runs **Codex**, which requires the **Codex GitHub App** to be installed on the repo/org and the
+> repository to be connected to Codex code review, so that Codex acts on the `@codex review` and
+> `@codex security review` comments the generated workflows post. The generated workflows request
+> every review themselves, in the order the stage graph sets, so Codex's own **automatic** code and
+> security review are not needed; if they are on, Codex reviews the same commit twice and its
+> security review can start together with the code review. Install the App **before** relying on the
+> pipeline and confirm on a test PR that the reviews run.
 
 1. Add `.agentic/config.yml` (section 3), starting from a `profile` and a `platform`, and adding
    `stages` only for finer control. The shipped skills need no copy; see the `skill` field in

@@ -37,7 +37,7 @@ behavioural fixture with a stubbed platform API).
 | Findings persist after the iteration cap | **Escalate** (stop looping) |
 | Fix reintroduces a prior finding (oscillation) | Circuit breaker trips → **Escalate** |
 | Review never returns / backend error | Fail-closed **Blocked**; retry within cap; then **Escalate** |
-| Code + security review would run concurrently | **[target]** Security is **deferred** until code review converges (never concurrent); this repository's hand-written workflows do this today, the `standard` profile leaves the stages independent |
+| Code + security review would run concurrently | Security is **deferred** until code review passes: the `standard` profile makes `security` depend on `review`, and this repository's hand-written workflows also wait until the code review has converged |
 
 ## 3. Checks, statuses, and reruns
 
@@ -100,8 +100,8 @@ behavioural fixture with a stubbed platform API).
 | Invalid config | `validate_config()` fails before rendering (schema → publisher block → profile → dependency refs and cycles → provider/backend resolution → skill files) — never renders from a broken config |
 | `${{ }}` injected into a secret-name or stage-id field | The schema pattern rejects it |
 | Config targets an unsupported schema version | Rejected by the schema (only `version: 2` is accepted) |
-| Required secret absent (by name) | Nothing checks that a named secret exists **[target]**: `stagr doctor` (planned, issue #203) will list the **required secret names**, but an environment probe is not planned yet. A missing secret fails only when the workflow runs — verifying existence is manual. The model-consuming stage then fails loud rather than guessing |
-| Unresolved model on a model-consuming backend | Fail loud; never guess a version (Codex supplies its own model, so the rule does not apply to it) |
+| Required secret absent (by name) | Nothing checks that a named secret exists **[target]**: `stagr doctor` (planned, issue #203) will list the **required secret names**, but an environment probe is not planned yet. A missing secret fails only when the workflow runs — verifying existence is manual |
+| No model set for a stage | No model is bound and the backend chooses; see [Model resolution](../CONFIGURATION.md#3a-model-resolution) |
 
 ## 9. Fully positive path
 

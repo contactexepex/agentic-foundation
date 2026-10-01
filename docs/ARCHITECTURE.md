@@ -45,7 +45,7 @@ The toolkit is deliberately split so each concern can change without disturbing 
 | **2. Provider adapters** | Talk to a model vendor (Claude / OpenAI / Gemini / local / gateway). Give true provider-agnosticism. | `providers`, `defaults.models` |
 | **3. Agent tools** | Execute a stage. The tool is derived from the provider (`openai` → Codex); roadmap adapters wrap other OSS agents. | `stages[].provider` (or `stages[].backend` to pin) |
 | **4. Platform/SCM adapters** | Render the neutral pipeline into a concrete CI system and normalize concepts (PR↔MR, roles, checks). | `platform` |
-| **5. CLI** | Today: `help`, `plan` (list the files a config produces) and `apply` (write them). Planned: `init`, `doctor`. | — |
+| **5. CLI** | The `stagr` command; see [CLI.md](CLI.md). | — |
 
 The **contract never names a language, a vendor SDK, or a CI system directly** — those
 live in layers 2–4, so a repo swaps any of them by editing config, not workflows.
@@ -72,9 +72,8 @@ contract layer**: a stage names a **provider**, and the toolkit derives the codi
 `backend` is a plain string. The tool follows the provider; an explicit `backend` override lets you
 pin one or adopt a roadmap adapter later without touching the rest of the pipeline.
 
-The GitHub renderer renders only backends that are started by a pull-request comment (the
-`PR_COMMENT` invocation kind, which is how Codex runs). Validation (V-S08) rejects a backend that
-needs any other kind on GitHub.
+What the GitHub renderer can render today is set out under `stages` in
+[CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 
@@ -95,30 +94,23 @@ Why the split:
   ready stage without writing one.
 - **No vendor/model assumptions** in a skill, and **no secrets** — skills are templates.
 
-Starter skills: `code-review`, `security-review`. Validation (V-S06) fails if a stage names a skill
-whose `SKILL.md` file is missing. The catalog may grow (`planning`, `execution-plan`,
+Starter skills: `code-review`, `security-review`. How a stage's skill is found and overridden is set
+out in the `skill` field of [CONFIGURATION.md](CONFIGURATION.md). The catalog may grow (`planning`, `execution-plan`,
 `unit-test-authoring`, `integration-test`, `docs`, `release-notes`).
 
 ## 4. Provider/model resolution
 
-Per stage, the model resolves **most-specific-first**:
-
-1. **Stage model** — `stages[].model.default`
-2. **Org/account default** — `defaults.models.<provider>.default`
-
-There is **no hidden toolkit fallback**: for a stage whose backend consumes a contract model, if
-neither layer yields a model the toolkit **fails loudly** and never guesses a version. An `openai`
-stage (Codex) supplies its own model, so the rule does not apply to it. This is how "same provider,
-different models" or "mix providers" is expressed — independently per stage.
+Each stage resolves its own model, so "same provider, different models" or "mix providers" is
+expressed independently per stage. The precedence is set out in
+[Model resolution](CONFIGURATION.md#3a-model-resolution).
 
 ---
 
 ## 5. Platform neutrality
 
 The contract is written once and rendered per platform. `platform.type` selects the
-renderer (`github` ships first; `gitlab`, `azure_devops`, `bitbucket`, `gitea` follow).
-The renderer normalizes platform
-concepts:
+renderer (the values are listed under `platform` in [CONFIGURATION.md](CONFIGURATION.md); GitHub
+ships first). The renderer normalizes platform concepts:
 
 | Neutral concept | GitHub | GitLab | Azure DevOps |
 |---|---|---|---|
@@ -133,28 +125,20 @@ The same `.agentic/config.yml` therefore drives any of them; only layer 4 differ
 
 ## 6. Easy vs. granular
 
-- **Newcomer:** set `profile` + `platform`. The profile expands to a default stage graph. Model IDs
-  come from `defaults`.
+- **Newcomer:** set `profile` + `platform`. The profile expands to a default stage graph.
 - **Expert:** define `stages` explicitly — per-stage provider/model/backend/triggers/gate/
   dependencies.
 
-Profiles and explicit stages compose: listed stages are **merged onto** the profile's
-(same id overrides), so you can accept the standard graph and tweak just one stage.
-
-Profile expansions:
-
-| Profile | Stages |
-|---|---|
-| `minimal` | review (blocking) |
-| `standard` | review (blocking), then security (blocking), which starts after the review passes |
-| `custom` | none — you define every stage |
+Profiles and explicit stages compose, so you can accept the standard graph and tweak just one
+stage. What each profile expands to, and how listed stages merge onto it, is set out under `profile`
+and `stages` in [CONFIGURATION.md](CONFIGURATION.md).
 
 ---
 
 ## 7. Cross-cutting invariants
 
-- **Secrets** are referenced by **name** only; never logged, printed, stored, or placed
-  in config.
+- **Secrets** are referenced by **name** only; see
+  [Secret handling](CONFIGURATION.md#3b-secret-handling-non-negotiable).
 - **Language-agnostic**: the contract never names a language. How a repo declares what "green"
   means is designed in `design-docs/09-check-stages.md`; the config does not read it yet.
 
@@ -162,11 +146,14 @@ Profile expansions:
 
 ## 8. Status & roadmap
 
+- **What renders today:** GitHub is the only platform, and only stages whose backend is started by a
+  pull-request comment render — today the Codex `review` and `security` stages. Other stage types
+  (build, test, deploy, custom) are declared and validated but not rendered yet.
+
 - **M1 — contract layer and neutral core (current):** schema, config validation, profiles,
   provider/backend/model resolution, and the stage graph.
 - **M2 — GitHub renderer (current):** per-stage, routing, and governance (merge-gate) workflows built
   from the graph. The renderer returns artifacts and never writes files.
-- **M3 — CLI (in progress):** `help`, `plan` and `apply` are done (issues #201, #202); `doctor`
-  (issue #203) and `init` are next.
+- **M3 — CLI (in progress):** see [CLI.md](CLI.md) for the commands that exist and the planned ones.
 - **M4 — more backends & platforms:** OpenHands/SWE-agent/PR-Agent adapters; `claude-code-cli`
   backend; GitLab and Azure DevOps renderers.

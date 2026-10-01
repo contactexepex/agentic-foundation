@@ -87,11 +87,13 @@ See [governance-and-limits.md](governance-and-limits.md) for the lane rules and
 
 A **profile** expands to a default dev-lane stage graph so the common repo configures a handful
 of lines. Profiles compose with explicit stages (a listed stage merges onto the profile's stage
-of the same id). Profile expansions are defined in [dev-lane.md](dev-lane.md#profiles).
+of the same id). Profile expansions are set out under `profile` in
+[CONFIGURATION.md](../CONFIGURATION.md).
 
 ## Platform renderer
 
 The contract is written once and **rendered** per platform. `platform.type` selects the renderer;
-**GitHub ships first**, others (`gitlab`, `azure_devops`, `bitbucket`) follow as pure renderers.
+**GitHub ships first**, others follow as pure renderers (the values are listed under `platform` in
+[CONFIGURATION.md](../CONFIGURATION.md)).
 Neutrality is a design principle enforced by keeping platform specifics in the renderer layer, not
 a near-term deliverable — see [roadmap.md](roadmap.md).
