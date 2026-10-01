@@ -1,186 +1,143 @@
-# Stagr Neutral Core — GitHub + Codex Implementation Mapping
+# Stagr Neutral Core — GitHub Adapter and Codex Backend Mapping
 
-**Status:** Design phase — not yet implemented
+**Status:** Target design. What is built today is in
+[ARCHITECTURE.md, section 8](../docs/ARCHITECTURE.md#8-status--roadmap).
 
 ---
 
 ## Overview
 
-This document maps the neutral architecture objects to the current GitHub + Codex
-implementation, identifies where the current implementation deviates from the contract,
-and defines what the correct implementation looks like.
+This document holds everything GitHub-specific: how the GitHub adapter maps the neutral model,
+how it supplies facts to the rules engine and carries out its effects, and how the Codex backend
+fits. The last section describes this repository's own hand-written workflows, which are our
+process and not a product feature.
 
-> This document describes the **current state** and the **target state**. It is an
-> input to the implementation work, not a specification of the neutral core itself.
+The neutral documents (00–07, 09) name no platform; when they need a GitHub detail, they point
+here. GitHub-specific parts of the check-stage design stay in `09-check-stages.md`, sections 8
+and 9.
 
 ---
 
-## Neutral-to-GitHub object mapping
+## Neutral-to-GitHub mapping
 
-| Neutral concept | GitHub implementation |
+| Neutral concept | GitHub |
 |---|---|
-| `StageTrigger.PR_OPENED` | `pull_request_target: [opened, reopened, ready_for_review]` |
-| `StageTrigger.PR_UPDATED` | `pull_request_target: [synchronize]` |
-| `InvocationKind.PR_COMMENT` | `gh pr comment <pr> --body-file <file>` via CODEX_PAT |
-| `EvidenceKind.REVIEW_RESULT` | Codex bot comment containing `codex-pull-request-review-summary` |
-| `EvidenceKind.COMMENT_MATCH` | PR comment from the PAT account containing the in-flight marker |
-| `StageResultSignal` | Check Run created by the Stagr GitHub App with name `stagr/stage/<stageId>` (target); commit status not permitted on GitHub V1 |
-| `RouteClassification` | Check Run created by the Stagr GitHub App (target); commit status with context `Publish fast review result` (current — to be migrated) |
-| `TrustPolicy.trustedRoles` | `author_association` ∈ `["OWNER","MEMBER","COLLABORATOR"]` |
-| `TrustPolicy.requireSameRepo` | `head.repo.full_name == GITHUB_REPOSITORY` check |
-| `TrustPolicy.humanMergeLabel` | `human-merge` label |
-| Foundation lane (merge when all gate conditions hold) | Auto-merge via `auto-merge-foundation-prs.yml` |
-| Human-gated lane | `human-merge` label present → gate stops |
+| Change (`02-canonical-stage-model.md`) | Pull request, the first change kind implemented |
+| Revision | The pull request's head commit SHA, always the full 40 characters |
+| `platform.scm`, `platform.ci` | `github` |
+| `StageTrigger.CHANGE_OPENED` | `pull_request_target: [opened, reopened, ready_for_review]` |
+| `StageTrigger.CHANGE_UPDATED` | `pull_request_target: [synchronize]` |
+| `StageTrigger.MANUAL` | `workflow_dispatch` |
+| `InvocationKind.COMMENT_COMMAND` | `gh pr comment <pr> --body-file <file>` with the trusted commenter token |
+| `InvocationKind.CI_STEP` | A GitHub Action step. Not rendered: V-S08 rejects it |
+| `InvocationKind.RUN_COMMANDS` | The untrusted work job of the stage workflow (`09-check-stages.md`, section 8) |
+| `InvocationKind.READ_RESULT` | A job that reads Check Runs (`09-check-stages.md`, section 8, capability 9) |
+| `EvidenceKind.REVIEW_RESULT` | Codex bot comment containing `codex-pull-request-review-summary` and its review table |
+| `EvidenceKind.COMMENT_MATCH` | A pull request (issue) comment evaluated against the backend-defined selector |
+| `EvidenceKind.CHECK_RESULT` | A Check Run on the head commit, matched by name and `.app.id` |
+| `EvidenceKind.WORKFLOW_RESULT` | `needs.<work job>.result` |
+| Result carrier of a `StageResultSignal` | Check Run `stagr/stage/<stageId>` written by the Stagr GitHub App, with the signal as JSON in `output.summary` |
+| Result carrier of a `RouteClassification` | Check Run `stagr/route-classification` written by the Stagr GitHub App |
+| Gate result | The check of the governance workflow's job, required by branch protection |
+| Publisher identity | The Stagr GitHub App (`platform.publisher.app_id`) |
+| `producedBy` / `createdBy` identity | A GitHub login. A login ending in `[bot]` matches only a Bot actor, never a person with a similar name |
+| `AuthorRole` | `author_association`: `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR` |
+| Same-repository rule | `head.repo.full_name == GITHUB_REPOSITORY` |
+| Review discussions (`DiscussionPolicy`) | Unresolved review threads on the pull request |
+| Secret reference | `${{ secrets.<NAME> }}` |
+| Engine file | `.github/stagr/engine.py`, run by every generated workflow with `python3` |
 
 ---
 
-## Current workflow → artifact class mapping
+## The rules engine on GitHub: facts in, effects out
 
-| Current workflow file | Artifact class | Stage |
-|---|---|---|
-| none: the Codex App reviews every new commit by itself | Stage execution artifact | `review` |
-| `request-final-security-review.yml` | Stage execution artifact | `security` |
-| `fast-ai-code-review.yml` | Routing artifact | (pipeline-level) |
-| `auto-merge-foundation-prs.yml` | Governance / merge artifact | (pipeline-level) |
+Every generated workflow runs the one engine file (`06-runtime-boundary.md`, "The engine file").
+The runtime source is no longer pasted into each workflow.
 
----
-
-## Review order: security declares its dependency on review
-
-### What the config declares
-
-```yaml
-stages:
-  - id: review
-    type: review
-    depends_on: []
-
-  - id: security
-    type: security
-    depends_on: [review]      # starts after the code review has passed
-```
-
-The `standard` profile declares this dependency (`09-check-stages.md`, section 10), and so does
-this repository's own `.agentic/config.yml`, so the renderer enforces it.
-
-### What the current implementation does
-
-`request-final-security-review.yml` contains a hand-written wait:
-
-```bash
-code_row="$(grep -i 'Code Review' <<<"$summary" | head -1 || true)"
-grep -qi 'Completed' <<<"$code_row" \
-  || { echo "code review is not yet completed; skipping."; return 0; }
-code_sha="$(grep -oE '[0-9a-f]{7,40}' <<<"$code_row" | head -1 | tr -d '\`' || true)"
-[[ -n "$code_sha" && "$head_sha" == "$code_sha"* ]] \
-  || { echo "code review is bound to a different head; skipping."; return 0; }
-```
-
-Before the dependency was declared, this violated **Renderer Invariant R1**: a renderer must
-not enforce a dependency between two stages unless it is declared in
-`NormalizedStage.dependencies`. With `security.dependencies = [review]` the same ordering is
-declared, and the generated stage enforces it through the dependency rule (start only when
-`review` is `COMPLETED` + `PASS` for the head) instead of by reading Codex comment rows.
-
-Whether the Codex backend truly fails on a concurrent code and security review has not been
-isolated (`07-validation.md`), and OpenAI's documentation describes both reviews as
-independently triggerable. The dependency is therefore a default, not a proof: a repository
-that removes it gets two independent stages, which the next section describes.
+- **Facts** come from the event payload and the GitHub API (`gh`): the pull request (state,
+  draft, `author_association`, head repository, base branch, mergeability), its head SHA, the event
+  name, the Check Runs on the head, comments, review threads, and `needs.<work job>.result`.
+- **Effects** are carried out by the workflow step that ran the engine: posting the invocation
+  comment, and creating or updating a Check Run (a stage result or the gate result).
 
 ---
 
-## Target design: stage execution artifacts
+## Trust on GitHub
 
-Both stage execution artifacts trigger on every push to an eligible PR. With the declared
-dependency, the security artifact then waits until `review` has passed for the head; a
-repository that removes the dependency has two fully independent artifacts.
+### Privileged contexts and tokens
 
-### Declared StageTriggers vs reconciliation events
+The privileged CI context is `pull_request_target`. A write-capable platform token is
+`GITHUB_TOKEN` with write scopes, or the `id-token: write` permission that requests an OIDC token.
 
-There is an important distinction in the GitHub implementation between two categories of
-workflow triggers:
+### `pull_request_target` safety
 
-| Category | GitHub event | What it means |
-|---|---|---|
-| **Declared StageTrigger** | `pull_request_target: [synchronize]` | Maps to `StageTrigger.PR_UPDATED`; starts a new invocation |
-| **Reconciliation event** | `issue_comment: [created, edited]` | Wakes the workflow to check if a pending invocation has completed |
-| **Reconciliation event** | `check_suite: [completed]` | Wakes the workflow to check if a pending invocation has completed |
+GitHub's `pull_request_target` event gives a workflow access to repository secrets and
+write-capable tokens, even when triggered by a fork pull request. This is a known
+repository-compromise vector. The PlatformRenderer **must** enforce the following when
+generating workflows that use `pull_request_target` with secrets:
 
-`issue_comment` and `check_suite` events do **not** map to any `StageTrigger` value.
-They are renderer-internal wakeups used by the reconciliation loop to observe backend
-completion after an invocation has been posted. They never cause a new invocation to be
-posted on their own. See `06-runtime-boundary.md` for the reconciliation model.
+- The workflow must verify `author_association` is in `trustedRoles` before using any
+  secret.
+- The workflow must verify the pull request head is from the same repository
+  (`head.repo.full_name == GITHUB_REPOSITORY`) before proceeding.
+- The workflow must never check out, execute, or evaluate pull request head content inside a job
+  that holds secrets.
+- All of the above checks must be enforced in-script (a `pull_request_target` job-level
+  `if:` cannot safely guard these conditions because the pull request fields are not available
+  for all trigger events).
 
-### review stage execution artifact
+### Result carriers
 
-```
-Declared triggers (StageTrigger.PR_OPENED + StageTrigger.PR_UPDATED):
-  pull_request_target [opened, reopened, ready_for_review]  ← PR_OPENED
-  pull_request_target [synchronize]                          ← PR_UPDATED
-    → Resolve PR, enforce TrustPolicy, check idempotency, check routing
-    → If all pass: post @codex review with in-flight marker
-    → Emit StageResultSignal (state=RUNNING, conclusion=UNKNOWN)
+A Check Run is associated with the GitHub App that creates it, so its publisher's App id is
+verifiable. Commit statuses carry no App identity and are forgeable by any token with
+`statuses: write`, so they are **never** used for a `StageResultSignal` or a
+`RouteClassification`. The governance workflow verifies that each Check Run it reads was written
+by the Stagr App (`StageResultSpec.provenance.publisherIdentity`) and rejects any other.
 
-Reconciliation events (implementation detail, not StageTrigger):
-  issue_comment [created, edited] OR check_suite [completed]
-    → Resolve PR, check EvidenceSpec for headSha
-    → If evidence found: evaluate GateDispositionSpec, emit updated StageResultSignal
-    → (state=COMPLETED, conclusion=PASS|BLOCKED)
-```
-
-### security stage execution artifact
-
-```
-Same structure as review.
-Declared triggers: pull_request_target [opened, reopened, ready_for_review, synchronize]
-  (PR_OPENED → opened/reopened/ready_for_review; PR_UPDATED → synchronize)
-Reconciliation events: issue_comment [created, edited], check_suite [completed]
-```
-
-Both artifacts fire on the same declared StageTrigger events (`PR_OPENED` and
-`PR_UPDATED`). With `depends_on: [review]` the security artifact's eligibility check
-(below) waits until `review` has passed; without it neither waits for the other.
-
-### Codex Evidence path
-
-The current Codex `@codex security review` invocation via PR comment may not reliably
-update the Security Review row in the Codex summary comment — this was the reason the
-current implementation uses the comment-ordering fallback. The EvidenceSpec for the
-security stage must describe an evidence path that actually works for this invocation
-method. **Until this is verified empirically, the EvidenceSpec for the security stage
-should not assume the Codex summary row is reliably updated by a PR-comment–triggered
-security review.**
-
-Options to investigate:
-1. Does `@codex security review` posted as a PR comment update the Codex summary row?
-   If yes, use `REVIEW_RESULT` evidence.
-2. If not, does the Codex bot post a separate completion comment? Use `COMMENT_MATCH`
-   evidence targeting that comment's format.
-3. Is there a native Codex Security Review configuration (not comment-triggered) that
-   produces reliable summary row updates? If so, use that invocation path and update
-   the EvidenceSpec accordingly.
-
-The EvidenceSpec for the security stage must be determined empirically before the stage
-execution artifact for security is implemented.
+Writing Check Runs needs the `checks: write` permission in the stage and routing workflows, and
+the Stagr App needs the Checks read and write permission. These are PlatformRenderer
+responsibilities, not `ExecutionPlan` fields. `stagr doctor` V-E03 checks the repository's
+workflow permissions and V-E02 checks that the App is installed with these capabilities
+(`07-validation.md`).
 
 ---
 
-## StageResultSignal: what needs to be added
+## Reconciliation events on GitHub
 
-The current implementation does not emit normalized `StageResultSignal` values. The
-auto-merge gate (`auto-merge-foundation-prs.yml`) directly reads Codex summary comment
-rows instead of normalized signals.
+| Neutral event (`06-runtime-boundary.md`) | GitHub event |
+|---|---|
+| A comment is created or edited on the change | `issue_comment: [created, edited]` |
+| A result on the revision completes | `check_run: [completed]`, `check_suite: [completed]` |
+| Scheduled sweep | `schedule` (every 5 minutes) |
 
-To conform to the architecture:
+These events never map to a `StageTrigger` and never post a new invocation on their own. How the
+generated workflow uses them is in "Reconciliation and result signaling" below.
 
-1. Each stage execution artifact must emit a `StageResultSignal` as a **Check Run**
-   (not a commit status) after evaluating its EvidenceSpec. The Check Run carries the
-   Stagr GitHub App's publisher identity; the governance artifact verifies the App ID
-   matches `StageResultSpec.provenance.publisherIdentity` before trusting the result.
-2. The governance artifact (`auto-merge-foundation-prs.yml`) must read these Check Runs
-   (verifying publisher identity) instead of Codex comment rows.
-3. This decouples the governance artifact from Codex-specific output formats and makes
-   it work correctly with any future backend.
+---
+
+## Codex backend
+
+- **Evidence.** The `review` stage uses `REVIEW_RESULT`: the Code Review row of the Codex
+  summary comment, with `COMPLETED`. The `security` stage uses `COMMENT_MATCH` on the marker Codex
+  embeds in the same summary comment, `<!-- codex-security-review:v1 {..."status":"completed"} -->`,
+  matched with the compound selector `codex-security-review:v1 status=completed`
+  (`06-runtime-boundary.md`).
+- **Spike A (invocation independence).** `@codex review` and `@codex security review` are
+  independently triggerable comments. The order of the two reviews is a default of the `standard`
+  profile (`09-check-stages.md`, section 10), not a backend requirement.
+- **Spike B (finding correlation).** The GitHub API exposes no field that reliably ties a review
+  thread to the stage invocation that produced it when both reviews run under the same Codex bot
+  identity on the same head commit. The Codex backend therefore uses the shared-scope mode of
+  `06-runtime-boundary.md` (`invocationCorrelation = null`): every unresolved Codex-bot thread on
+  the head blocks both stages.
+- **Candidate bindings for `invocationCorrelation`**, should a backend need one. The binding must
+  use a field the GitHub review-thread API actually exposes; a back-reference to the triggering
+  issue comment is not available.
+  - A `pull_request_review_id`, if the backend creates one formal pull request review per stage
+    invocation.
+  - A backend-emitted correlation marker in every finding comment body.
+  - A backend-specific task or invocation id exposed in the backend's completion artifact and
+    echoed into each finding.
 
 ---
 
@@ -194,40 +151,39 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   "Dependency wake-ups" below. `reconcile` runs on `issue_comment` events for a pull request, and
   only when the comment author is a declared evidence producer. `sweep` runs on a schedule (every 5
   minutes) and runs the same routine for every open pull request. Every stage has `reconcile`
-  and `sweep`, because every plan must declare evidence (see below). Each job has an explicit `github.event_name` condition, so
-  a wakeup never re-runs the backend, and `synchronize` is never a wakeup. `check_suite` is not
-  used to observe evidence in V1: that serves check-based evidence, which V1 rejects (see below).
+  and `sweep`, because every plan must declare evidence (see below). Each job has an explicit
+  `github.event_name` condition, so a wakeup never re-runs the backend, and `synchronize` is never
+  a wakeup. `check_suite` is not used to observe evidence in V1: that serves check-based evidence,
+  which V1 rejects (see below).
 - **State is observed, not remembered.** Every run re-reads the pull request, its comments, its
   review threads and the stage's Check Run for the current head. Missed, repeated or reordered
   events therefore cannot produce a wrong signal; the sweep is only a backstop.
 - **One Check Run per stage and head.** Only the `execute` job creates it. `reconcile` and
   `sweep` update it in place. Governance rejects duplicates and cannot repair them, so creation
   has a single owner that is already serialized by the stage's concurrency group.
-- **Terminal states.** `completed` + `pass` and `failed` are final for wakeups and the sweep. A
-  `failed` signal is retried only by re-running the stage's `execute` job. `blocked` is
-  re-evaluated on every wakeup, so resolving threads turns it into `pass` without a new push. A
-  write happens only when the signal changed.
-- **Evidence is authenticated.** Only comments written by `EvidenceSpec.produced_by` count. A
-  login ending in `[bot]` matches only a Bot account, never a person with a similar name.
-  Evidence must also be bound to the current head commit.
+- **Terminal states.** The reconciliation termination rule is in `06-runtime-boundary.md`. On
+  GitHub, a `failed` signal is retried only by re-running the stage's `execute` job, and a write
+  happens only when the signal changed.
+- **Evidence is authenticated.** Only comments written by `EvidenceSpec.produced_by` count, and
+  evidence must be bound to the current head commit.
 - **Findings.** For `NO_OPEN_THREADS`, an unresolved thread counts when its first comment is by
   `FindingScopeSpec.created_by` and, if the scope is head-bound, when its review commit is the
   current head. A thread whose review commit is unknown counts as open (fail closed).
 - **Rejected at render time** (`stagr apply` fails; nothing weaker is generated): evidence kinds
   other than `REVIEW_RESULT` and `COMMENT_MATCH`; evidence that is not head-bound or has no
-  `produced_by`; `invocation_correlation`; any invocation kind other than `PR_COMMENT`; and plans
-  with no evidence, because a `PR_COMMENT` invocation finishes asynchronously and nothing else
-  could prove it finished.
-- **Events without a pull request** (`workflow_dispatch`, `issues`) publish no signal.
-- **Invocation and idempotency (`PR_COMMENT` backends).** The `execute` job has one step,
-  "Invoke backend (idempotent)", that runs the same runtime in `invoke` mode. In this order it
+  `produced_by`; `invocation_correlation`; any invocation kind other than `COMMENT_COMMAND`; and
+  plans with no evidence, because a `COMMENT_COMMAND` invocation finishes asynchronously and
+  nothing else could prove it finished.
+- **Events without a pull request** (`workflow_dispatch`) publish no signal.
+- **Invocation and idempotency (`COMMENT_COMMAND` backends).** The `execute` job has one step,
+  "Invoke backend (idempotent)", that runs the engine in `invoke` mode. In this order it
   (1) skips if the pull request is not eligible or the event's head is stale; (2) skips if the
   `EvidenceSpec` already holds for the current head (completion guard); (3) skips if a still-valid
   in-flight marker exists for this stage and this exact head; (4) otherwise posts the backend
-  comment (`Invocation.params["body"]`) with the marker
-  `<!-- stagr:stage:<stageId>:<headSha>:expires:<UTC ISO8601> -->` appended. A skipped step exits
-  successfully, so the "Publish result signal" step still runs and reports `running` or the
-  completed result. This step runs inside the stage's concurrency group.
+  comment (`Invocation.params["body"]`) with the in-flight marker of `06-runtime-boundary.md`
+  appended, its expiry in UTC. A skipped step exits successfully, so the "Publish result signal"
+  step still runs and reports `running` or the completed result. This step runs inside the
+  stage's concurrency group.
 - **The in-flight marker is authenticated.** Comments on a public repository are written by
   anyone, so a forged far-future marker could otherwise stop an invocation for ever. A marker
   counts only if the comment's author is the account that owns the invoke token (its id, login
@@ -241,25 +197,22 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
 - **Lease length** is `Invocation.params["lease_minutes"]` (backend-defined; 30 when absent),
   checked at render time: an integer from 1 to 1440, anything else fails `stagr apply`. `body`
   must be non-empty text and the plan must declare a resolved `TRUSTED_COMMENTER_TOKEN` secret.
-- **Credentials.** Only the invoke step holds the backend secret. It reaches the runtime as
-  `TRUSTED_COMMENTER_TOKEN`, and the runtime hands it to `gh` as `GH_TOKEN` for that step only.
+- **Credentials.** Only the invoke step holds the backend secret. It reaches the engine as
+  `TRUSTED_COMMENTER_TOKEN`, and the engine hands it to `gh` as `GH_TOKEN` for that step only.
   The App installation token is never present in the invoke step; the eligibility step,
   `reconcile` and `sweep` hold only the App token (`reconcile` and `sweep` with
   `permissions: {}`).
-- **Eligibility.** The first step after the token is "Check eligibility". It runs the runtime in
-  `eligibility` mode and writes `proceed=true` or `proceed=false` to the step output; the invoke
-  step runs only when it is `true`, and a failed eligibility step also stops it. The same eligibility code runs in `publish`,
-  `reconcile` and `sweep`, so no mode can act on a pull request another mode refused. In order, the
-  first failing check decides: (1) the pull request is open, not a draft, written by a trusted
-  role, not a fork the fork policy refuses (`ForkPolicy.DENY`, or a privileged stage), and the
-  event's head is still the pull request's current head; (2) route applicability; (3) for a
-  wake-up, the stage's own signal is not already final; (4) dependencies. An ineligible run
-  invokes nothing and writes no signal. The "Publish result signal" step still runs and repeats
-  the same checks, so an ineligible run publishes nothing. The invoke step keeps its own
-  pull-request checks (it has no App token, so it cannot read Check Runs); route and dependencies
-  are decided once by the eligibility step just before it.
+- **Eligibility.** The first step after the token is "Check eligibility". It runs the engine's
+  eligibility checks (`06-runtime-boundary.md`, "Eligibility") and writes `proceed=true` or
+  `proceed=false` to the step output; the invoke step runs only when it is `true`, and a failed
+  eligibility step also stops it. The same eligibility code runs in `publish`, `reconcile` and
+  `sweep`, so no mode can act on a pull request another mode refused. An ineligible run invokes
+  nothing and writes no signal; the "Publish result signal" step still runs and repeats the same
+  checks, so it publishes nothing either. The invoke step keeps its own pull-request checks (it
+  has no App token, so it cannot read Check Runs); route and dependencies are decided once by the
+  eligibility step just before it.
 - **Route applicability.** When `RoutingPolicy.fast_path` is configured, the rendered
-  configuration carries the stage ids of the FAST and NORMAL routes, and the runtime reads the
+  configuration carries the stage ids of the FAST and NORMAL routes, and the engine reads the
   `stagr/route-classification` Check Run for the current head. It is trusted only if the Stagr
   App wrote it, it is bound to the head, it is completed, and its title is exactly
   `RouteClassification=FAST` or `RouteClassification=NORMAL`; two Stagr runs are an error, and
@@ -267,15 +220,13 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   routing workflow starts at the same moment as the stage workflow, so a classification that is
   still missing is waited for (up to 3 minutes, only in the eligibility step); after that the stage
   fails closed and starts on its next execute run.
-- **Dependencies.** For each stage in `NormalizedStage.dependencies` the runtime reads that
+- **Dependencies.** For each stage in `NormalizedStage.dependencies` the engine reads that
   stage's Check Run (`stagr/stage/<id>`) for the current head. It counts only if it is the single
   Check Run of that name written by the Stagr App, and the JSON in `output.summary` has
   `schemaVersion` 1 and states the same stage id and head SHA. `state` and `conclusion` come from
-  that payload, never from the native Check Run fields. The stage starts only when every
-  dependency is `completed` + `pass`. A dependency that is missing, unreadable, for another head,
-  running, blocked or `failed` means "not yet": nothing is invoked and nothing is written, and the
-  stage starts when the dependency later passes (`02-canonical-stage-model.md`). Two Stagr runs for
-  one dependency are an error and nothing is written.
+  that payload, never from the native Check Run fields. The dependency rule
+  (`06-runtime-boundary.md`) then decides; while it says "wait", nothing is invoked and nothing is
+  written. Two Stagr runs for one dependency are an error and nothing is written.
 - **Dependency wake-ups.** A stage with dependencies also subscribes to `check_run: completed`
   and `check_suite: completed`, so it starts when the upstream signal first passes, without a new
   push. These events fire for every check in the repository, so the `execute` job's `if:` lets
@@ -316,29 +267,29 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   reopen, `ready_for_review`, or a manual re-run of the workflow). A new push starts a new head
   and is invoked normally. This narrows the recovery rule in `06-runtime-boundary.md`, which
   allows the sweep to re-post.
-- **Other invocation kinds.** The GitHub renderer renders only `PR_COMMENT`. A backend whose plan
-  needs another kind (`CI_COMPONENT`) is rejected by V-S08
-  (`07-validation.md`), and the renderer itself refuses it.
+- **Other invocation kinds.** The GitHub renderer renders only `COMMENT_COMMAND`. A backend whose
+  plan needs another kind (`CI_STEP`) is rejected by V-S08 (`07-validation.md`), and the renderer
+  itself refuses it.
 - **Stagr App permissions** used at run time: Checks (write), Pull requests (read) and Issues
   (read).
 
 ---
 
-## Where the review order lives
+## This repository's hand-written workflows (our process, not the product)
 
-The order of the two reviews is declared in the neutral config
-(`security` with `depends_on: [review]`, from the `standard` profile) and enforced by the rendered
-stage through the dependency rule. Nothing in the rendered artifacts orders the reviews on its
-own.
+This repository still runs hand-written workflows. They stay until dogfooding (#257) replaces
+each one with generated workflows (#265, section 6, item B6):
 
----
+| Workflow | What it does | Replaced by |
+|---|---|---|
+| none: the Codex App reviews every new commit by itself | Code review | The generated `review` stage |
+| `request-final-security-review.yml` | Requests the security review once the code review has converged | The generated `security` stage |
+| `fast-ai-code-review.yml` | Classifies the route | The generated routing workflow |
+| `auto-merge-foundation-prs.yml` | Merges a ready pull request | GitHub's own auto-merge, with the Stagr gate result as a required check (#265, section 7) |
 
-## Summary of changes needed in the implementation
+The **`human-merge` label** and the two merge lanes belong to this repository's process only
+(`AGENTS.md`, "Merge lanes"); the product has neither (#265, addendum, decision 23).
 
-| Item | Change required |
-|---|---|
-| `request-final-security-review.yml` | Replace the hand-written code-review-completion wait with the declared dependency (`security` starts once `review` is `PASS` for the head). Add `pull_request_target: [opened, reopened, ready_for_review, synchronize]` triggers (PR_OPENED + PR_UPDATED). |
-| `request-final-security-review.yml` | Add in-flight idempotency marker with lease (`<!-- stagr:stage:<id>:<sha>:expires:<time> -->`). Emit `StageResultSignal` as Check Run (not commit status); verify publisher App identity in governance. |
-| `auto-merge-foundation-prs.yml` | Read `StageResultSignal` Check Runs (verify publisher identity) instead of Codex summary comment rows. Routing signal also migrated to Check Run. |
-| New: provider configuration | Add secret alias → platform secret name mapping (TRUSTED_COMMENTER_TOKEN → REMEDIATION_TOKEN) to provider config. |
-| Verify empirically | Test whether `@codex security review` PR comment reliably updates the Codex summary Security Review row before implementing the EvidenceSpec. |
+`request-final-security-review.yml` orders the two reviews with its own wait on the Codex summary
+rows. A generated `security` stage orders them through its declared `depends_on: [review]` and
+the dependency rule instead (Renderer Invariant R1, `04-render-time-architecture.md`).

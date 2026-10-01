@@ -1,6 +1,7 @@
 # Stagr Neutral Core — Provider, Backend, and Model
 
-**Status:** Design phase — not yet implemented
+**Status:** Target design. What is built today is in
+[ARCHITECTURE.md, section 8](../docs/ARCHITECTURE.md#8-status--roadmap).
 
 ---
 
@@ -34,7 +35,7 @@ Examples:
 
 | Provider | Backend | What it does |
 |---|---|---|
-| `openai` | `codex` | Posts `@codex review` or `@codex security review` as a PR comment |
+| `openai` | `codex` | Posts `@codex review` or `@codex security review` as a comment on the change |
 | `openai` | `generic` | Calls the OpenAI Chat Completions API directly |
 | `anthropic` | `generic` | Calls the Anthropic Messages API directly |
 | `deepseek` | `generic` | Calls the DeepSeek API directly |
@@ -59,8 +60,9 @@ provider: openai, backend: codex  → default model: (backend-defined)
 provider: deepseek  → default backend: generic
 ```
 
-Defaults are registered per provider by the BackendRenderer registry. No defaults are
-hardcoded in the neutral contract itself — they are part of the backend registration.
+Each provider's default backend is part of the backend's registration with the core, not of the
+neutral contract. How backends are described and allowed is designed in Plan C (#265, section 2,
+decision 11).
 
 After default resolution, every stage with an `agent` executor always has non-null
 `provider`, `backend`, and either an explicit `model` or a documented backend default (null
@@ -101,8 +103,7 @@ SecretRef {
 ```
 
 `ExecutionPlan.requiredSecrets` contains `SecretRef[]`. The PlatformRenderer maps each
-`alias` to the platform's secret reference syntax (e.g., GitHub's
-`${{ secrets.OPENAI_API_KEY }}`).
+`alias` to the platform's secret reference syntax (`08-github-codex-mapping.md` for GitHub).
 
 ### How aliases are resolved
 

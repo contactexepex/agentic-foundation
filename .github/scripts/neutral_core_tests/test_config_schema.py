@@ -2,7 +2,7 @@
 
 The schema lists exactly the keys the neutral pipeline reads. Keys that only the retired legacy
 renderer read were deleted, not deprecated: inside a Stagr namespace they are now unknown keys and
-are rejected; at the top level, unknown keys are ignored (design-docs/01-neutral-config-contract.md).
+are rejected; at the top level, the current schema still ignores unknown keys.
 """
 from __future__ import annotations
 

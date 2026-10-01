@@ -1,15 +1,17 @@
 # Stagr Neutral Core — Governance and Trust
 
-**Status:** Design phase — not yet implemented
+**Status:** Target design. What is built today is in
+[ARCHITECTURE.md, section 8](../docs/ARCHITECTURE.md#8-status--roadmap).
 
 ---
 
 ## Overview
 
 This document defines the three policy objects that govern pipeline eligibility,
-routing, and merge decisions: **TrustPolicy**, **RoutingPolicy**, and **MergePolicy**.
+routing, and the gate result: **TrustPolicy**, **RoutingPolicy**, and **MergePolicy**.
 All three are derived at normalization time and passed to the PlatformRenderer in
-`RenderContext`. None of them is re-derived at run time.
+`RenderContext`. None of them is re-derived at run time. The rules engine applies them
+(`06-runtime-boundary.md`).
 
 ---
 
@@ -17,30 +19,31 @@ All three are derived at normalization time and passed to the PlatformRenderer i
 
 `TrustPolicy` declares who and what Stagr-generated automation may act on behalf of.
 It is security-critical: Stagr generates workflows that post comments using
-trusted-user credentials and run in privileged CI contexts (e.g., GitHub's
-`pull_request_target`). The TrustPolicy ensures these privileges are never exercised
-on behalf of untrusted or fork-sourced work.
+trusted-user credentials and run in privileged CI contexts. The TrustPolicy ensures these
+privileges are never exercised on behalf of untrusted or fork-sourced work.
 
 ```
 TrustPolicy {
-  trustedRoles:    AuthorRole[]   // e.g. [OWNER, MEMBER, COLLABORATOR]
-  forkPolicy:      ForkPolicy     // how fork PRs are handled (see ForkPolicy below)
-  humanMergeLabel: string         // label name that forces the human-gated lane
-                                  // (e.g. "human-merge"); never auto-merged when present
+  trustedRoles: AuthorRole[]   // e.g. [OWNER, MEMBER, COLLABORATOR]
+  forkPolicy:   ForkPolicy     // how changes from forks are handled (see ForkPolicy below)
 }
 ```
+
+> **Identity roles are redesigned in Plan B.** `AuthorRole` and `trustedRoles` stay as they are
+> here until Plan B replaces them with neutral identity roles and an org-configurable mapping
+> (#265, section 2, decision 10).
 
 ### ForkPolicy
 
 | Value | Meaning |
 |---|---|
-| `DENY` | Fork PRs never drive any stage execution. The stage execution artifact exits immediately when the PR head originates from a fork. This is the secure default. |
-| `ALLOW_UNPRIVILEGED` | Fork PRs may drive stages that require no elevated platform capabilities (no `requiredSecrets`, no write-capable platform tokens). Privileged stages still refuse fork PRs. |
+| `DENY` | Changes from forks never drive any stage execution. The stage execution artifact exits immediately when the change comes from a fork. This is the secure default. |
+| `ALLOW_UNPRIVILEGED` | Changes from forks may drive stages that require no elevated platform capabilities (no `requiredSecrets`, no write-capable platform tokens). Privileged stages still refuse them. |
 
 > **`privilegedStages` is derived, not operator-declared.** A stage is privileged if it
 > requires any elevated platform capability, which includes: `ExecutionPlan.requiredSecrets`
 > is non-empty, OR the stage execution artifact requires a write-capable platform token
-> (e.g., `GITHUB_TOKEN` with write scopes, or `id-token: write` for OIDC). These are
+> (including a token that can request an identity token from the platform). These are
 > determined by the BackendRenderer and PlatformRenderer at render time. Stagr derives the
 > privileged set automatically; the operator does not need to, and must not, duplicate this
 > in the config. Operator duplication would create a second source of truth that drifts from
@@ -48,51 +51,32 @@ TrustPolicy {
 
 ### AuthorRole
 
-| Value | Meaning (GitHub mapping) |
+| Value | Meaning |
 |---|---|
 | `OWNER` | Repository owner |
 | `MEMBER` | Organization member |
 | `COLLABORATOR` | Explicit collaborator |
 | `CONTRIBUTOR` | First-time or external contributor (NOT trusted by default) |
 
+How each platform reports these roles is in the platform mapping (`08-github-codex-mapping.md`
+for GitHub).
+
 ### TrustPolicy rules
 
-1. **Fork PRs are controlled by `forkPolicy`.** When `forkPolicy: DENY` (the default),
-   any PR where the head branch originates from a forked repository must not trigger any
-   stage execution artifact. When `forkPolicy: ALLOW_UNPRIVILEGED`, fork PRs may trigger
-   unprivileged stages only; privileged stages must still refuse fork PRs.
+1. **Changes from forks are controlled by `forkPolicy`.** When `forkPolicy: DENY` (the
+   default), a change whose source is a forked repository must not trigger any stage execution
+   artifact. When `forkPolicy: ALLOW_UNPRIVILEGED`, it may trigger unprivileged stages only;
+   privileged stages must still refuse it.
 
-2. **Untrusted authors never drive automation.** A PR author whose `author_association`
-   is not in `trustedRoles` must not trigger any privileged stage.
+2. **Untrusted authors never drive automation.** An author whose role is not in
+   `trustedRoles` must not trigger any privileged stage.
 
-3. **Privileged workflows are identified automatically.** A stage is privileged when its
-   `ExecutionPlan.requiredSecrets` is non-empty, or when the stage execution artifact
-   requires a write-capable platform token (e.g., `GITHUB_TOKEN` write scopes, OIDC
-   `id-token: write`). A PlatformRenderer must verify that privileged workflows use
-   `pull_request_target` (not `pull_request`) and never check out or execute PR head
-   content inside a privileged job.
-
-4. **The human-merge label is a hard stop.** When the label named in `humanMergeLabel`
-   is present on a PR, the governance artifact must refuse to auto-merge regardless of
-   all other conditions. This is not configurable per-PR at run time; it is rendered
-   into the governance artifact as a fixed hard stop.
-
-### GitHub `pull_request_target` safety
-
-GitHub's `pull_request_target` event gives a workflow access to repository secrets and
-write-capable tokens, even when triggered by a fork PR. This is a known
-repository-compromise vector. The PlatformRenderer **must** enforce the following when
-generating workflows that use `pull_request_target` with secrets:
-
-- The workflow must verify `author_association` is in `trustedRoles` before using any
-  secret.
-- The workflow must verify the PR head is from the same repository (`head.repo.full_name
-  == GITHUB_REPOSITORY`) before proceeding.
-- The workflow must never check out, execute, or evaluate PR head content inside a job
-  that holds secrets.
-- All of the above checks must be enforced in-script (a `pull_request_target` job-level
-  `if:` cannot safely guard these conditions because the PR fields are not available for
-  all trigger events).
+3. **Privileged jobs are identified automatically and never run change content.** A stage is
+   privileged when its `ExecutionPlan.requiredSecrets` is non-empty, or when the stage execution
+   artifact requires a write-capable platform token. A PlatformRenderer must render privileged
+   jobs from the trusted base's definition, never from the change, and must never check out or
+   execute change content inside a privileged job. How the GitHub renderer meets this is in
+   `08-github-codex-mapping.md`.
 
 ---
 
@@ -123,7 +107,7 @@ RouteStageMap {
 
 ### Route classification
 
-At run time, the routing artifact classifies a PR head commit into one of two routes:
+At run time, the routing artifact classifies a change's revision into one of two routes:
 
 | Route | Meaning |
 |---|---|
@@ -153,86 +137,62 @@ At run time, the routing artifact emits a `RouteClassification` signal:
 
 ```
 RouteClassification {
-  route:   FAST | NORMAL
-  headSha: string
+  route:    FAST | NORMAL
+  revision: string
 }
 ```
 
-Head SHA binding is mandatory. A `RouteClassification` without a `headSha` cannot be
-safely consumed because a stale FAST classification for a prior commit could cause the
-governance artifact to skip blocking stages for a new commit.
+Revision binding is mandatory. A `RouteClassification` without a `revision` cannot be
+safely consumed because a stale FAST classification for a prior revision could cause the
+governance artifact to skip blocking stages for a new revision.
 
 **Provenance requirement.** The governance artifact must only consume a
-`RouteClassification` that was published by the Stagr-generated routing artifact using an
-authenticated platform identity. On GitHub, this means the routing artifact must publish
-the signal as a **Check Run** (which carries the authenticated GitHub App identity of the
-publisher) rather than a commit status (which any `statuses: write` actor can forge). The
-governance artifact must verify the Check Run's App identity matches the expected routing
-artifact identity before treating the route classification as authoritative.
+`RouteClassification` that the Stagr-generated routing artifact published on a result carrier
+bound to the revision and written by the publisher identity, the same carrier as a
+`StageResultSignal` (`06-runtime-boundary.md`, "Signal emission"). The governance artifact must
+verify the publisher identity before treating the route classification as authoritative.
 
 ---
 
 ## MergePolicy
 
-`MergePolicy` declares merge eligibility requirements. It is derived entirely at
+`MergePolicy` declares what the gate result requires. It is derived entirely at
 normalization time from the config and the TrustPolicy. It is never re-derived at run
 time.
 
 ```
 MergePolicy {
-  blockingStageIds: string[]              // derived: all stages where gate == BLOCKING
-  discussionPolicy: DiscussionPolicy | null  // null = no discussion requirement
-  requireHeadBound: boolean               // true = all StageResultSignals must match current headSha
+  blockingStageIds:     string[]                 // derived: all stages where gate == BLOCKING
+  discussionPolicy:     DiscussionPolicy | null  // null = no discussion requirement
+  requireRevisionBound: boolean                  // true = every StageResultSignal must match
+                                                 // the current revision
 }
 ```
 
 ### DiscussionPolicy
 
 `DiscussionPolicy` is the neutral representation of the "zero unresolved discussions"
-requirement. It is neutral — it does not name GitHub-specific objects.
+requirement. It is neutral — it does not name platform-specific objects; the GitHub mapping is in
+`08-github-codex-mapping.md`.
 
 ```
 DiscussionPolicy {
   requireResolved: boolean   // true = all open review discussions must be resolved
-                             // before the merge gate passes
+                             // before the gate result passes
 }
 ```
 
-Platform mappings:
-- **GitHub**: "unresolved discussions" = unresolved review threads on the PR
-- **GitLab**: "unresolved discussions" = unresolved MR discussion threads
+When `discussionPolicy` is null, the gate does not check discussion state.
 
-When `discussionPolicy` is null, the merge gate does not check discussion state.
+### The gate result
 
-### Two merge lanes
-
-**Foundation lane:** For PRs that build or maintain the toolkit itself.
-Merges automatically once all of the following are true:
-- PR is open, non-draft, same-repo, targets the default branch
-- Author association is in `TrustPolicy.trustedRoles`
-- `TrustPolicy.humanMergeLabel` is NOT present on the PR
-- No merge conflict
-- All CI checks and commit statuses for **blocking stages** are green; `NON_BLOCKING`
-  stage statuses are informational and do not hold the gate
-- `StageResultSignal` for every stage in `RequiredStageIds` shows `conclusion = PASS`
-  for the current head SHA, where:
-  `RequiredStageIds = ApplicableStages(RouteClassification.route) ∩ blockingStageIds`
-- `discussionPolicy` is satisfied: if `discussionPolicy.requireResolved` is true, zero
-  open review discussions remain (checked via platform API — separate from `StageResultSignal`)
-- `RouteClassification.headSha` matches the current head SHA
-
-**Human-gated lane:** Any PR that carries `TrustPolicy.humanMergeLabel`
-is automatically placed in the human-gated lane. This is a hard
-stop: the governance artifact enforces all conditions but does not auto-merge. A human
-must perform the merge.
-
-> When in doubt, apply the human-merge label. The foundation lane is an optimization
-> for well-understood, provably-safe merges; anything that requires human judgment
-> must carry the label.
+The governance artifact publishes one gate result, and the platform's own merge mechanism
+merges; Stagr never merges (#265, section 2, decision 4). The conditions of the gate result are
+in `06-runtime-boundary.md`, "Gate evaluation".
 
 An external check (for example SonarCloud) is an observed stage (`09-check-stages.md`), so it
 is a stage like any other: it is in `blockingStageIds` when blocking, and an absent result
-blocks the merge.
+keeps the gate from passing.
 
 ### MergePolicy derivation
 
@@ -244,22 +204,3 @@ blockingStageIds = [stage.id for stage in normalizedStages if stage.gate == BLOC
 
 This list is fixed at render time. The governance artifact receives it as a constant;
 it never evaluates stage gate values at run time.
-
-### Merge gate conditions (complete list)
-
-The governance artifact passes if and only if all of the following hold:
-
-1. PR is open, non-draft, same-repo, targeting the default branch
-2. PR author association ∈ `TrustPolicy.trustedRoles`
-3. `TrustPolicy.humanMergeLabel` is NOT present
-4. No merge conflict
-5. Every commit status and check run for **BLOCKING stages** is in a green (passing)
-   terminal state. `NON_BLOCKING` stage statuses are reported but do not hold the gate.
-6. Routing status (`RouteClassification`) is published and terminal for the current `headSha`
-7. For every `stageId` in `RequiredStageIds`: a `StageResultSignal` with
-   `headSha = currentHead` and `conclusion = PASS` exists, where:
-   `RequiredStageIds = ApplicableStages(RouteClassification.route) ∩ MergePolicy.blockingStageIds`
-   Stages not applicable to the current route are excluded — their absence is not a blocker.
-8. `discussionPolicy`: if `discussionPolicy` is non-null and `requireResolved` is true,
-   zero open review discussions remain (checked via platform discussion API — a separate
-   governance condition not derived from `StageResultSignal`)
