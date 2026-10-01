@@ -107,7 +107,8 @@ workflow requests the delta review automatically. Limit the total remediation â†
 to two iterations; if material findings remain after that, escalate to a human rather than looping.
 
 After every delta review, whether the findings were fixed, declined or both: if the judge does not
-resolve a finding, escalate to a human (apply `human-merge`) rather than looping.
+accept a **declined** finding, escalate to a human (apply `human-merge`) rather than looping. A fixed
+finding the judge does not resolve follows the two-iteration limit above.
 If Codex review is unavailable, report the PR as awaiting independent review â€” never substitute
 self-review for it.
 
