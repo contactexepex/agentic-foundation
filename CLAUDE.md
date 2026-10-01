@@ -100,12 +100,14 @@ finding stays declined unless Codex presents new evidence in the delta review. O
 cycle per finding is the limit.
 
 When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
-the delta review manually, since no push fires the per-push workflow. If the judge does not resolve
-a finding after the delta review, escalate to a human (apply `human-merge`) rather than looping.
+the delta review manually, since no push fires the per-push workflow.
 
 For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The per-push
 workflow requests the delta review automatically. Limit the total remediation → delta-review loop
 to two iterations; if material findings remain after that, escalate to a human rather than looping.
+
+After every delta review, whether the findings were fixed, declined or both: if the judge does not
+resolve a finding, escalate to a human (apply `human-merge`) rather than looping.
 If Codex review is unavailable, report the PR as awaiting independent review — never substitute
 self-review for it.
 
