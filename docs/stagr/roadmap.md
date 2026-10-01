@@ -8,9 +8,9 @@ GitHub first**, and **name the agent-backend seam now, ship one GitHub-native ba
 
 | Area | Today | This design adds |
 |---|---|---|
-| Dev-lane core | Stagr renders a workflow per Codex `review`/`security` stage, a routing workflow, and a governance (merge-gate) workflow. This repository's hand-written workflows also run validate, implement, thread cleanup, and the foundation auto-merge gate | Formalizes the **ordered gate** (security/SAST before integration/perf/custom) and the readiness predicate |
+| Dev-lane core | Stagr renders a workflow per Codex `review`/`security` stage, a routing workflow, and a governance (merge-gate) workflow. This repository's hand-written workflows also run validate, thread cleanup, and the foundation auto-merge gate | Formalizes the **ordered gate** (security/SAST before integration/perf/custom) and the readiness predicate |
 | Trust/correctness | SHA-bound, fail-closed, base-controlled, scheduled sweep — **built** in this repository's hand-written gate (PR #22/#25/#27). Security review is serialized **within its own workflow** (residual cross-workflow window — see trust doc) | States them as **invariants with required tests**; adds **anti-tamper via org rulesets**; closes the review window + base-retarget binding |
-| Backends | `codex` (review/security) renders on GitHub; `claude-code-action` (implement) has a backend renderer but cannot be rendered on GitHub yet | Names the **agent-backend seam** (cloud/CLI as future adapters) |
+| Backends | `codex` (review/security) is the only backend renderer and renders on GitHub | Names the **agent-backend seam** (cloud/CLI as future adapters) |
 | Governance | no budget or guardrail keys in the contract | **[target]** loop caps, cost ceiling, circuit breaker, and **escalation** terminal states — not yet rendered |
 | Audit | decision events **in scope but not emitted** (no emitter ships) | First-class **decision record + provenance** stream and orchestrator seam — all **[target]** |
 | Onboarding | per-repo config written by hand; the CLI offers `help`, `plan` and `apply` — `init` and `doctor` (#203) are planned | **Org-scoped** provisioning + **org-default/per-repo override** |
@@ -25,11 +25,11 @@ The demo-grade, provably-correct lane on GitHub.
   gate cannot be edited away ([trust-and-correctness.md](trust-and-correctness.md)).
 - Render **budgets, loop caps, and escalation** terminal states
   ([governance-and-limits.md](governance-and-limits.md)).
-- Keep the **GitHub-native backends** (`claude-code-action`, `codex`); name the seam only.
+- Keep the **GitHub-native backend** (`codex`); name the seam only.
 - Emit a **minimal decision record** on gate outcomes and merge
   ([audit-and-provenance.md](audit-and-provenance.md)).
 
-**Done when:** a trusted PR runs implement → review loop → security/SAST → tests → provably-ready,
+**Done when:** a trusted PR runs review loop → security/SAST → tests → provably-ready,
 human-approved merge, with every [edge-cases.md](edge-cases.md) row covered by a test.
 
 ### Phase-1 hardening backlog (surfaced by design review)
@@ -37,14 +37,9 @@ human-approved merge, with every [edge-cases.md](edge-cases.md) row covered by a
 Specific **[target]** items the design docs reference — each is a gap between today's shipped
 behaviour and the stated design:
 
-- **Approved-story trigger.** Wire the `implement` stage to an approved-story **issue label** (this
-  repository's hand-written implementer is `workflow_dispatch` only; Stagr cannot render `implement` yet). ([dev-lane.md](dev-lane.md))
 - **Budget enforcement + finite default.** There are no budget keys today; add loop-iteration caps, a
   cost ceiling, a circuit breaker, and a **finite default** so an unconfigured repo is never
   unbounded. ([governance-and-limits.md](governance-and-limits.md))
-- **Implementer write isolation.** The Claude implementer job holds `contents`/`pull-requests: write`
-  directly; move agent writes behind a buffered, separately-scoped apply step.
-  ([security-and-secrets.md](security-and-secrets.md))
 - **Exact-SHA review binding.** Drop the abbreviated-SHA **prefix** fallback in the review predicates
   in favour of the full machine-readable marker/object. ([trust-and-correctness.md](trust-and-correctness.md))
 - **Auto-merge sweep ordering.** Add oldest-updated-first ordering to the merge sweep (the
@@ -77,9 +72,6 @@ behaviour and the stated design:
   ([onboarding-and-config.md](onboarding-and-config.md))
 - **Base-retarget evidence binding.** Invalidate/rerun validate + review when a PR is retargeted to a
   new base (evidence is head-SHA-bound only today). ([trust-and-correctness.md](trust-and-correctness.md))
-- **Provider secret wiring.** Render the resolved `providers.<p>.api_key_secret` name into
-  `implementor.yml` instead of hardcoding `ANTHROPIC_API_KEY`.
-  ([onboarding-and-config.md](onboarding-and-config.md))
 - **Fork build-token hardening.** Prevent a fork PR's build commands from reading even the
   read-scoped `GITHUB_TOKEN` in Validate. ([security-and-secrets.md](security-and-secrets.md))
 - **Durable audit outbox.** A durable outbox / sink delivery-acknowledgement so a decision record

@@ -36,10 +36,8 @@ scoped to the stage:
   agent's output cannot exercise a broad token directly.
 - No stage is granted a capability "just in case."
 
-**Current state, stated honestly (this repository's hand-written workflows; Stagr does not render an implementer yet) — neither agent lane is read-only today:**
+**Current state, stated honestly (this repository's hand-written workflows) — the agent lane is not read-only today:**
 
-- The **Claude implementer job** runs `claude-code-action` **with `contents: write` and
-  `pull-requests: write`** on the same job — no buffered-output / separately-scoped apply step.
 - The **Codex review and security lanes** carry the **remediation PAT** (`CODEX_PAT`, a real-user
   credential with **Contents R/W + Pull Requests R/W**) to author review comments as a trusted user.
   The PAT is exposed **step-wide**: it is set in the environment of the **whole orchestration shell
@@ -49,12 +47,9 @@ scoped to the stage:
 
 So the least-privilege, buffered-apply, and minimal-commenting-identity goals above (including
 splitting PAT login/post into separately-scoped steps) are **[target] hardening items**
-([roadmap.md](roadmap.md)), not enforced guarantees today. **Honest limitation:** the implementer's
-`GITHUB_TOKEN` holds `contents: write` + `pull-requests: write`, so **absent a server-side ruleset it
-can push to the default branch or call the merge API** — the "work on a feature branch" behaviour is
-**prompt-driven, not enforced**; a scoped publisher and/or a required ruleset is **[target]**. What
-*does* hold today: secrets are name-referenced and redacted, the PAT is never handed to the model, and
-**fork PRs drive no privileged lane**.
+([roadmap.md](roadmap.md)), not enforced guarantees today. What *does* hold today: secrets are
+name-referenced and redacted, the PAT is never handed to the model, and **fork PRs drive no
+privileged lane**.
 
 ## Secrets model
 

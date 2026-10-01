@@ -5,9 +5,8 @@ gate that decides when the PR is **provably ready**.
 
 > **Shipped vs. target for this lane (read first).** What renders today is narrower than the full
 > flow below:
-> - **implement** cannot be rendered by Stagr yet: the GitHub renderer only renders backends started
->   by a pull-request comment, and validation (V-S08) rejects an `implement` stage. This repository's
->   hand-written implementer workflows start on `workflow_dispatch` only. The **review→fix loop is
+> - **implement** is not a Stagr stage: implementing a story belongs to the future development module (decision record #265).
+>   In this repository a person or an agent session opens the PR. The **review→fix loop is
 >   not auto-driven** — after a finding, an **external actor** (a human, or an orchestrator) pushes
 >   the fix, and the review lane only *re-requests* Codex on the new commit. An automatic
 >   finding→remediation trigger with a bounded loop is **[target]**.
@@ -31,9 +30,9 @@ gate that decides when the PR is **provably ready**.
 
 ```
 approved story issue
-      │  (trigger: workflow_dispatch [shipped]; approved-story label [target])
+      │  (not part of Stagr: the future development module)
       ▼
-[implement]  Claude opens a PR
+[implement]  an implementer opens a PR
       │  (trigger: PR opened/updated)
       ▼
 [code-review]  Codex reviews ──► fix pushed by an external actor ──► new commit re-triggers review
@@ -61,7 +60,7 @@ for the repo and is itself a blocking check. Stagr does not render it yet; its d
 
 | Stage | Trigger | Gate | Loop / ordering rule |
 |---|---|---|---|
-| **implement** | not renderable by Stagr yet; this repo's hand-written workflow uses manual `workflow_dispatch`; approved-story **issue label** **[target]** | n/a (produces the PR) | one PR per story |
+| **implement** | not a Stagr stage; belongs to the future development module (decision record #265) | n/a (produces the PR) | one PR per story |
 | **validate / CI** | PR opened/updated, push | blocking | build + unit tests must pass on the head |
 | **code-review** (Codex) | PR opened/updated (`synchronize`) | advisory or blocking | re-runs on each push **unless fast-path skips a trivial head** (shipped default `fast_path: on`); converges only when **zero open review threads** on the current head |
 | **security-review** (Codex) | PR opened/updated (`standard` profile: independent of code review); **[target]** code review completed + clean on head | blocking **when configured** (blocking in the `standard` profile) | **[target]** runs once, after code review converges; **never concurrent** (best-effort) |
@@ -148,9 +147,8 @@ The **shipped** expansions today (id — gate):
 ## Handoffs (the GitHub-artifact seams)
 
 - **In:** the Planning toolkit creates an **approved story issue** (with dependency metadata).
-  Stagr cannot render an `implement` stage yet; this repository's hand-written implementer is started
-  by `workflow_dispatch`. Consuming the story **issue label** directly is **[target]**
-  ([roadmap.md](roadmap.md)). Either way, stagr does not
+  Turning that story into a PR belongs to the future development module (decision record #265), not to Stagr.
+  Stagr does not
   decide *which* story is ready — that ordering is the orchestrator's (see
   [audit-and-provenance.md](audit-and-provenance.md)).
 - **Out:** on merge, stagr emits a **merge event + decision record**; the CD toolkit and the
