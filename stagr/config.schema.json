@@ -150,7 +150,7 @@
         "provider": { "type": "string", "minLength": 1, "description": "Provider id for this stage. Omit to inherit defaults.provider." },
         "backend": { "type": "string", "minLength": 1, "description": "Backend that performs the stage. Omit to use the provider's default backend (`openai` -> `codex`)." },
         "model": { "$ref": "#/$defs/modelBinding" },
-        "skill": { "type": "string", "minLength": 1, "description": "Skill id: the stage's methodology lives in .agentic/skills/<id>/SKILL.md." },
+        "skill": { "type": "string", "minLength": 1, "description": "Skill id: the stage's methodology. Resolves to the repository's .agentic/skills/<id>/SKILL.md when present, otherwise to the shipped stagr/templates/skills/<id>/SKILL.md." },
         "triggers": {
           "type": "array",
           "items": { "enum": ["pr_opened", "pr_updated", "manual", "issue_labeled"] }

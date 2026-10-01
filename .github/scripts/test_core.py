@@ -65,6 +65,8 @@ from neutral_core_tests.test_skill_validator import (
     test_v_s06_stage_id_named_in_error,
     test_v_s06_mixed_stages_only_missing_files_fail,
     test_v_s06_empty_stages_passes,
+    test_v_s06_shipped_skill_passes_without_a_repository_copy,
+    test_v_s06_repository_copy_outside_the_skills_directory_is_rejected,
 )
 from neutral_core_tests.test_defaults import (
     test_defaults_provider_propagates,
@@ -209,6 +211,8 @@ _TESTS = [
     test_v_s06_stage_id_named_in_error,
     test_v_s06_mixed_stages_only_missing_files_fail,
     test_v_s06_empty_stages_passes,
+    test_v_s06_shipped_skill_passes_without_a_repository_copy,
+    test_v_s06_repository_copy_outside_the_skills_directory_is_rejected,
     test_defaults_provider_propagates,
     test_defaults_explicit_provider_not_overridden,
     test_defaults_model_resolved_from_defaults,

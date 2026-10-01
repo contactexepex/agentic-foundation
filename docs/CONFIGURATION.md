@@ -156,7 +156,7 @@ same `id` overrides). Each stage is one agent. One provider has a default backen
 | `provider` | **The primary knob.** `openai` runs Codex. Omit to inherit `defaults.provider`. |
 | `backend` | Optional. The tool that performs the stage, as a plain string. Omit it: the default follows the provider (`openai` → `codex`). |
 | `model.default` | Optional model ID for this stage; overrides `defaults.models.<provider>.default`. |
-| `skill` | Skill id. The stage's methodology lives in `.agentic/skills/<id>/SKILL.md`, and validation fails if that file is missing. Starter skills ship under `stagr/templates/skills/`: `code-review` and `security-review`. |
+| `skill` | Skill id: the stage's methodology. Stagr uses your repo's `.agentic/skills/<id>/SKILL.md` when it exists (copy a shipped skill there and edit it to override it), otherwise the skill Stagr ships under [`stagr/templates/skills/`](https://github.com/exepex/agentic-foundation/tree/main/stagr/templates/skills): `code-review` and `security-review`. Validation (V-S06) fails if neither exists. |
 | `triggers` | Any of `pr_opened`, `pr_updated`, `manual`, `issue_labeled`. |
 | `gate` | `advisory` (reported, never blocks merge) or `blocking` (the merge gate requires the stage to pass). Omit for `advisory`. |
 | `depends_on` | Ids of stages that must pass before this one starts (defines the graph). Unknown ids and cycles are rejected. |
@@ -230,11 +230,8 @@ If you ever see a secret value in a log or comment, treat it as compromised and 
 > that the reviews run.
 
 1. Add `.agentic/config.yml` (section 3), starting from a `profile` and a `platform`, and adding
-   `stages` only for finer control. Put each `skill` a stage names at `.agentic/skills/<id>/SKILL.md`;
-   the starter skills, `code-review` and `security-review`, are the folders under
-   [`stagr/templates/skills/`](https://github.com/exepex/agentic-foundation/tree/main/stagr/templates/skills)
-   in this repository (they also ship inside the installed package, next to the `stagr` module). Copy
-   them into `.agentic/skills/`; `stagr plan` fails with V-S06 for any stage whose skill file is missing.
+   `stages` only for finer control. The shipped skills need no copy; see the `skill` field in
+   section 3 for how a skill is found and overridden.
 2. Create the secrets your providers need (section 2) in your CI/SCM secret store.
 3. Create the Stagr GitHub App and its private-key secret, and put the App's ID in
    `platform.publisher.app_id` ([Publisher](#publisher-stagr-github-app)).

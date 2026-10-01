@@ -101,7 +101,7 @@ stages:
     provider: openai        # API/credential provider id
     backend: codex          # invocation mechanism (defaults per provider)
     # model: { default: gpt-4o }   # optional; omit to use the backend's default
-    skill: code-review      # skill id → .agentic/skills/<id>/SKILL.md
+    skill: code-review      # skill id → shipped skill, or the repo's .agentic/skills/<id>/SKILL.md
     gate: blocking          # blocking | advisory (default blocking)
     triggers:               # StageTrigger[]: when this stage runs
       - pr_opened

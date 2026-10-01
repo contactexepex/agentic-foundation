@@ -92,12 +92,9 @@ being rebuilt (see [docs/CLI.md](docs/CLI.md)).
    For a reproducible, auditable install, pin the URL to a commit SHA (or a release tag) instead of
    `main` — see [docs/CLI.md](docs/CLI.md).
 2. Run `stagr help` to see the available commands.
-3. In your target repo, write `.agentic/config.yml` by hand, and copy the two starter skill folders,
-   `code-review` and `security-review`, from
-   [`stagr/templates/skills/`](https://github.com/exepex/agentic-foundation/tree/main/stagr/templates/skills)
-   into `.agentic/skills/` (they are also inside the installed package). Every stage's skill must exist
-   there, or `plan` fails with V-S06. The full field reference, provider→secret mapping, and
-   troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
+3. In your target repo, write `.agentic/config.yml` by hand. The starter skills ship with Stagr, so no
+   other file is needed. The full field reference (including how to override a skill),
+   provider→secret mapping, and troubleshooting are in **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 4. Run `stagr plan` in the repo root to validate the config and list the files it produces (nothing is
    written), then `stagr apply` to write those same files under `.github/workflows/`.
 

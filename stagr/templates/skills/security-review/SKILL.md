@@ -4,7 +4,7 @@ name: Security Review
 stage_type: security
 version: 1
 # Provider-, model-, backend-, and language-agnostic. No secrets, no vendor
-# assumptions. Rendered per repo; to customize, copy this file to
+# assumptions. Shipped with Stagr; to customize, copy this file to
 # .agentic/skills/<id>/SKILL.md in your repo and edit the copy.
 ---
 

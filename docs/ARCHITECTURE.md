@@ -84,7 +84,7 @@ Two distinct concepts, cleanly layered so the domain knowledge is reusable and p
 
 | Concept | Is | Lives in | Referenced by |
 |---|---|---|---|
-| **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `.agentic/skills/<id>/SKILL.md` in your repo (reference copies ship in `stagr/templates/skills/<id>/`) | `stages[].skill` |
+| **Skill** | The reusable *methodology/content* for a task — checklist, rubric, output format. Provider/backend/language-agnostic. | `stagr/templates/skills/<id>/SKILL.md` (shipped); a repo overrides one with its own `.agentic/skills/<id>/SKILL.md` | `stages[].skill` |
 | **Stage** | An agent *placed in the pipeline graph* (with `depends_on`, overrides). | `.agentic/config.yml` `stages[]` | the pipeline |
 
 Why the split:

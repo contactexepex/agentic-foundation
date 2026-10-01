@@ -83,7 +83,7 @@ AgentExecutor {                 // an AI backend does the work (review, security
   provider:     string          // e.g. "openai", "anthropic", "deepseek"
   backend:      string          // e.g. "codex", "claude-code", "generic"
   model:        string | null   // e.g. "gpt-4o"; null = backend default
-  skill:        string          // skill id → .agentic/skills/<id>/SKILL.md
+  skill:        string          // skill id → shipped skill, or the repo's .agentic/skills/<id>/SKILL.md
 }
 
 CommandsExecutor {              // a CI job rendered by Stagr runs the commands

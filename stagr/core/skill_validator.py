@@ -1,13 +1,14 @@
 """Static validation V-S06: skill file existence.
 
-For each stage where ``skill`` is not None, the referenced skill id must resolve
-to an existing ``.agentic/skills/<id>/SKILL.md`` file.  A missing file raises
-:class:`~stagr.core.models.StaticValidationError` naming the expected path.
+For each stage where ``skill`` is not None, the referenced skill id must resolve to a
+``SKILL.md`` file. A repository's own copy, ``.agentic/skills/<id>/SKILL.md``, is used when
+present, so a repository overrides a shipped skill by keeping its own copy. Otherwise the skill
+must be one the toolkit ships, ``stagr/templates/skills/<id>/SKILL.md``. A skill found in
+neither place raises :class:`~stagr.core.models.StaticValidationError` naming both paths.
 
-Stages with ``skill=None`` are skipped — they do not
-require a skill file.  Stages with ``enabled: false`` are skipped because
-disabled stages are removed before normalization and never participate in the
-active pipeline.
+Stages with ``skill=None`` are skipped — they do not require a skill file. Stages with
+``enabled: false`` are skipped because disabled stages are removed before normalization and
+never participate in the active pipeline.
 
 Design source: design-docs/07-validation.md (V-S06).
 """
@@ -19,6 +20,8 @@ from typing import Any
 
 from .models import StaticValidationError
 
+SHIPPED_SKILLS_DIRECTORY = Path(__file__).resolve().parent.parent / "templates" / "skills"
+
 
 def validate_skill_file_existence(
     stages: list[dict[str, Any]],
@@ -26,9 +29,9 @@ def validate_skill_file_existence(
 ) -> None:
     """Raise StaticValidationError (V-S06) for any stage whose skill file is absent.
 
-    Iterates over ``stages`` and, for each enabled stage where ``skill`` is not
-    ``None``, checks that the file
-    ``<project_root>/.agentic/skills/<skill_id>/SKILL.md`` exists on disk.
+    Iterates over ``stages`` and, for each enabled stage where ``skill`` is not ``None``,
+    checks that ``<project_root>/.agentic/skills/<skill_id>/SKILL.md`` or the shipped
+    ``stagr/templates/skills/<skill_id>/SKILL.md`` exists on disk.
 
     Args:
         stages: Stage dicts to validate.  Each must be a dict.  The ``skill``
@@ -38,8 +41,9 @@ def validate_skill_file_existence(
             directory that contains ``.agentic/config.yml``.
 
     Raises:
-        StaticValidationError: V-S06 when a required skill file is missing,
-            naming the stage id and the expected file path.
+        StaticValidationError: V-S06 when a skill id escapes its directory, when the
+            repository's copy resolves outside ``.agentic/skills``, or when the skill file
+            exists in neither place, naming the stage id and both paths.
     """
     for stage in stages:
         if not stage.get("enabled", True):
@@ -47,32 +51,40 @@ def validate_skill_file_existence(
         skill_id = stage.get("skill")
         if skill_id is None:
             continue
+        stage_id = stage.get("id", "<unknown>")
         skill_path_obj = Path(skill_id)
         if skill_path_obj.is_absolute() or ".." in skill_path_obj.parts:
             raise StaticValidationError(
                 f"V-S06: skill id '{skill_id}' contains path-escaping components; "
                 f"skill ids must be simple identifiers"
             )
-        expected_skill_file = project_root / ".agentic" / "skills" / skill_id / "SKILL.md"
-        if not expected_skill_file.is_file():
-            stage_id = stage.get("id", "<unknown>")
+        repository_skill_file = project_root / ".agentic" / "skills" / skill_id / "SKILL.md"
+        if repository_skill_file.is_file():
+            _require_inside_repository_skills(stage_id, repository_skill_file, project_root)
+            continue
+        shipped_skill_file = SHIPPED_SKILLS_DIRECTORY / skill_id / "SKILL.md"
+        if not shipped_skill_file.is_file():
             raise StaticValidationError(
-                f"V-S06: stage '{stage_id}' references skill '{skill_id}' "
-                f"but the expected file does not exist: {expected_skill_file}"
+                f"V-S06: stage '{stage_id}' references skill '{skill_id}' but no skill file "
+                f"exists: neither the repository's {repository_skill_file} nor the shipped "
+                f"{shipped_skill_file}"
             )
-        skills_base = project_root / ".agentic" / "skills"
-        try:
-            real_file = expected_skill_file.resolve()
-            # Use project_root.resolve() as the trusted anchor and append the skills path
-            # lexically.  If skills_base.resolve() were used instead, a symlink at
-            # .agentic/skills would make both real_file and real_skills_base resolve into
-            # the same external directory, defeating the confinement check entirely.
-            real_skills_base = project_root.resolve() / ".agentic" / "skills"
-            if not str(real_file).startswith(str(real_skills_base) + os.sep):
-                stage_id = stage.get("id", "<unknown>")
-                raise StaticValidationError(
-                    f"V-S06: stage '{stage_id}' skill file resolves outside the project "
-                    f"skills directory (possible symlink escape): {expected_skill_file}"
-                )
-        except OSError:
-            pass  # resolve() failed for an unusual reason; is_file() check already handled missing files
+
+
+def _require_inside_repository_skills(
+    stage_id: str, repository_skill_file: Path, project_root: Path
+) -> None:
+    try:
+        real_file = repository_skill_file.resolve()
+        # Use project_root.resolve() as the trusted anchor and append the skills path
+        # lexically.  If the skills directory were resolved instead, a symlink at
+        # .agentic/skills would make both paths resolve into the same external directory,
+        # defeating the confinement check entirely.
+        real_skills_base = project_root.resolve() / ".agentic" / "skills"
+    except OSError:
+        return  # resolve() failed for an unusual reason; is_file() already confirmed the file
+    if not str(real_file).startswith(str(real_skills_base) + os.sep):
+        raise StaticValidationError(
+            f"V-S06: stage '{stage_id}' skill file resolves outside the project "
+            f"skills directory (possible symlink escape): {repository_skill_file}"
+        )

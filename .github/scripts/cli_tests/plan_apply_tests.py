@@ -241,7 +241,7 @@ def test_symlinked_and_directory_targets_are_refused() -> None:
 
 
 def test_the_documented_minimal_config_plans_cleanly() -> None:
-    """The starter config in docs/CONFIGURATION.md plans cleanly in an empty repo plus the copied starter skills."""
+    """The starter config in docs/CONFIGURATION.md plans cleanly in an empty repo (shipped skills)."""
     guide_text = (REPOSITORY_ROOT / "docs" / "CONFIGURATION.md").read_text(encoding="utf-8")
     example_start = guide_text.index("# Minimal config")
     minimal_config_text = guide_text[example_start:guide_text.index("```", example_start)]

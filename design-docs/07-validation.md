@@ -67,7 +67,9 @@ config.
 
 ### V-S06 — Skill file existence
 
-Each agent stage's `skill` resolves to an existing `.agentic/skills/<id>/SKILL.md` file.
+Each agent stage's `skill` resolves to an existing file: the repository's own
+`.agentic/skills/<id>/SKILL.md` when present (an override), otherwise the shipped
+`stagr/templates/skills/<id>/SKILL.md`.
 Stages with a `commands` or `observed` executor have no skill.
 
 ### V-S07 — BackendRenderer availability
