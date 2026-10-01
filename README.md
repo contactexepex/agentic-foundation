@@ -152,9 +152,8 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
   (`request-codex-review-on-push.yml`); the deterministic router (`fast-ai-code-review.yml`)
   routes every PR to Codex (the fast path is disabled here, so docs are reviewed too).
 - **`Validate`** (`validate.yml`) is the CI gate. Review threads that a later commit made outdated,
-  with Codex-only comments, **auto-resolve** (`resolve-fixed-codex-review-threads.yml`); the **judge**
-  resolves every other thread once it has ruled on the finding (`AGENTS.md`, "Agent roles"). The
-  **fail-closed foundation gate**
+  with Codex-only comments, **auto-resolve** (`resolve-fixed-codex-review-threads.yml`); who resolves
+  every other thread is set in `AGENTS.md`, "Review threads". The **fail-closed foundation gate**
   (`auto-merge-foundation-prs.yml`) merges provably-ready PRs. Humans keep authority via
   `human-merge`. All of these workflows are hand-written for this repository; none is a Stagr feature.
 
