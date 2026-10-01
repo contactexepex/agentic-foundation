@@ -131,8 +131,13 @@ Validation rules (static, fail `stagr plan` and `stagr apply`):
    never a display name or login (those are mutable and forgeable). On GitHub it is the numeric
    App registration id, the `.app.id` of a check run the tool posted; a number or a quoted
    string is accepted and normalized to a string. The platform renderer rejects any other form.
+   It also rejects the platform's own CI identity (on GitHub, GitHub Actions, App id 15368):
+   every workflow in the repository shares it, so a pull request could add a job with the
+   observed name and satisfy the stage. The team's own CI on the platform is a `commands` stage
+   instead.
 4. There is **no `secrets` key**: a managed stage never receives a secret (section 4, E2). A
-   check that needs a credential runs in the team's own CI and is `observed`.
+   check that needs a credential runs in a tool with its own author identity (for example
+   SonarCloud, or another CI that reports through its own App) and is `observed`.
 5. Unknown keys are rejected. `build` becomes a recognized Stagr key.
 
 There are no `matrix`, `services`, `cache`, `container`, `env`, `if`, `retries` or artifact
@@ -242,26 +247,28 @@ cancelled and the operator runs it again. Nothing ever turns green because of it
 
 An observed stage has no work unit. One trusted job reads the **newest** result named
 `observe.check` for the current head, whose authenticated author identity equals
-`observe.producer`, and publishes the signal. The newest result is the one that started last:
-when the producer has run more than once on the same head, the latest evidence wins, as for
-managed stages (section 3).
+`observe.producer`, and publishes the signal. The newest result is the one the platform created
+last (on GitHub, the highest check-run id); it is chosen by creation, not by start time, because
+a queued result has not started yet. When the producer has run more than once on the same head,
+the latest evidence wins, as for managed stages (section 3).
 
 | Result of the producer | Signal |
 |---|---|
 | success | `COMPLETED` + `PASS` |
 | completed, not success (failure, cancelled, skipped, neutral, timed out) | `COMPLETED` + `FAILED` |
-| not present, or still running | no result / `RUNNING` |
+| not present | no result |
+| queued or still running | `RUNNING` |
 
 Results with the same name from any other author identity are ignored, so nobody else can
 satisfy the stage by creating a check with that name. The job runs on pull request events, when
-the producer's result is **created, re-requested or completed**, when a producer that runs on the
-platform's own CI **finishes** (the platform does not announce results that its own CI creates),
-and on a schedule. The tool must post its result on the change: a tool that never posts one is
-not supported as an observed stage, and its stage stays without a result and blocks. Waking when
+the producer's result is **created, re-requested or completed**, and on a schedule. The tool must
+post its result on the change: a tool that never posts one is not supported as an observed
+stage, and its stage stays without a result and blocks. Waking when
 the producer *starts* matters: a producer that re-runs a check after an earlier success flips
 the signal from `PASS` to `RUNNING` at the start of the re-run, not at its end. Because the job
 only reads and derives, running it again is always safe, so a missed event is corrected by the
-next run. SonarCloud is an observed stage
+next run. Safety never depends on a wake-up: a missed one only lengthens the window that
+section 3 accepts. SonarCloud is an observed stage
 like any other, and an absent result blocks.
 
 ## 7. Merge gate
@@ -282,12 +289,12 @@ provides these capabilities; a renderer that cannot provide one refuses to rende
 | 1 | Ephemeral runners | GitHub-hosted runners (self-hosted only if ephemeral) |
 | 2 | Work unit without credentials; read-only, non-stored repository token | separate job with `permissions: contents: read`, checkout with `persist-credentials: false`, no App token step |
 | 3 | Job definition from the trusted base | `pull_request_target` |
-| 4 | Platform-attested outcome of the work unit, readable by publish | `needs.<work job>.result`. GitHub reports a timeout as `cancelled` (section 9, fact 2), so publish records the reason "timed out" when the work job's run time, read from the jobs API, reached its `timeout-minutes` |
+| 4 | Platform-attested outcome of the work unit, readable by publish | `needs.<work job>.result`. GitHub reports a timeout as `cancelled` (section 9, fact 2), so publish records the reason "timed out" when the work job's run time, read from the jobs API with publish's `actions: read` permission, reached its `timeout-minutes`. Known limit: a cancel requested shortly before the limit can be recorded as "timed out"; both fail the stage the same way |
 | 5 | Runs of one stage per change request never overlap; a push cancels older-head work | one concurrency group per stage and pull request; `cancel-in-progress` only on `synchronize` |
 | 6 | Result carrier authored by the publisher identity and bound to a head | Check Run written by the Stagr App |
 | 7 | Wake-up when another stage's result changes | `check_run` / `check_suite` completed |
 | 8 | Per-job timeout | `timeout-minutes` |
-| 9 | Observed stages only: list results by name and authenticated author identity for a head, and wake when such a result is created, re-requested or completed, or when a producer on the platform's own CI finishes | Check Runs API: every result for the head with that name, matched on `.app.id`; the one that started last wins (`filter=latest` is not enough, section 9, fact 4); `check_run` created, rerequested, completed; `workflow_run` completed for a GitHub Actions producer (section 9, fact 7) |
+| 9 | Observed stages only: list results by name and authenticated author identity for a head, and wake when such a result is created, re-requested or completed | Check Runs API: every result for the head with that name, matched on `.app.id`; the highest check-run id wins (`filter=latest` is not enough, section 9, fact 4); `check_run` created, rerequested, completed. GitHub Actions (App id 15368) is rejected as a producer (section 2, rule 3) |
 
 Other platforms (GitLab, Azure DevOps, Bitbucket, Jenkins) are added later as one column of
 this table each, checked against that vendor's documentation at that time. None is claimed now.
@@ -304,10 +311,9 @@ is built (item S below). Throwaway workflows ran on 2026-09-30 in the test repos
 | 2 | `needs.<work job>.result` reports failure, timeout, cancelled and skipped, and a publish job with `always()` still runs after each | **Corrected.** Publish runs after each. GitHub reports `success`, `failure`, `cancelled` and `skipped`, but a **timeout is reported as `cancelled`**, in `needs.<work job>.result` and in the check-run conclusion alike ([timeout](https://github.com/exepex/spring-angular-book-management/actions/runs/36748905937), [cancelled](https://github.com/exepex/spring-angular-book-management/actions/runs/36748910303)). Publish therefore tells them apart by run time (section 8, capability 4) |
 | 3 | A `pull_request_target` job can check out the head SHA with a read-only, non-stored token and no App token | **Verified.** The head matched, no credential stayed in `.git`, and a write with the token was refused with HTTP 403 ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36748953700)) |
 | 4 | The Check Runs API with `filter=latest` returns one result per name and author after a re-run | **Corrected.** It holds for a re-run inside one workflow run ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749923387)). Separate runs on the same head each stay "latest", because `filter=latest` works per check suite ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749380522)). Stagr therefore lists every result and takes the one that started last (section 6) |
-| 5 | A `check_run` created, rerequested or completed event from a foreign producer starts a workflow for the pull request | **Verified for created and completed**, from SonarCloud and CodeQL ([created](https://github.com/exepex/spring-angular-book-management/actions/runs/36749001079), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36749059157)). Rerequested was not exercised |
+| 5 | A `check_run` created, rerequested or completed event from a foreign producer starts a workflow for the pull request | **Verified for created and completed**, from SonarCloud and CodeQL ([created](https://github.com/exepex/spring-angular-book-management/actions/runs/36749001079), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36749059157)). Rerequested was not exercised; the design does not depend on it (section 6) |
 | 6 | `cancel-in-progress` accepts an expression | **Verified.** A push cancelled the older head's work; a manual run and a re-run cancelled nothing ([cancelled run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749940333)) |
-| 7 | A `workflow_run` completed event starts a workflow when a GitHub Actions producer finishes on a pull request (added by owner decision 17, #265) | **Verified** on 2026-10-01. The event named the producer's head and `pull_requests=[15]` ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36828554910)) |
-| 8 | A result written by the Stagr App starts a `check_run` workflow (section 8, capability 7) | **Verified** on 2026-10-01. Both created and completed started the workflow within about three seconds, naming the pull request ([write](https://github.com/exepex/spring-angular-book-management/actions/runs/36836277797), [created](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298185), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298452)). The App needs the Checks read and write permission to write results |
+| 7 | A result written by the Stagr App starts a `check_run` workflow (section 8, capability 7) | **Verified** on 2026-10-01. Both created and completed started the workflow within about three seconds, naming the pull request ([write](https://github.com/exepex/spring-angular-book-management/actions/runs/36836277797), [created](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298185), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298452)). The App needs the Checks read and write permission to write results |
 
 Also observed:
 
@@ -315,7 +321,9 @@ Also observed:
   next run in the group waits during that time, so runs still never overlap.
 - Results created by GitHub Actions itself (App id 15368) never started a `check_run` workflow:
   about 20 such results during the test, against 19 wake-ups that all came from SonarCloud and
-  CodeQL. A GitHub Actions producer is therefore woken through `workflow_run` instead (fact 7).
+  CodeQL. GitHub Actions is not an observed producer anyway (section 2, rule 3).
+- Check-run ids rose with creation time throughout the test, which section 6 relies on to pick
+  the newest result.
 
 If a fact turns out false, this document is corrected first, then the code.
 
@@ -405,10 +413,12 @@ separately, and G needs the latter.
 
 **E. Observed stages.**
 - Done when: an observed stage behaves exactly as section 6 and runs on pull request events,
-  the producer's created, re-requested and completed events and a schedule; the GitHub
-  renderer rejects a producer that is not a numeric App id.
-- Test: a vector per row of the section 6 table plus a wrong-producer case; a producer re-run
-  after `PASS` turns the signal to `RUNNING` when the re-run starts; governance interop.
+  the producer's created, re-requested and completed events and a schedule; the newest result
+  is chosen by creation; the GitHub renderer rejects a producer that is not a numeric App id
+  and rejects GitHub Actions (App id 15368).
+- Test: a vector per row of the section 6 table plus a wrong-producer case and a GitHub Actions
+  producer case; a queued re-run after `PASS` turns the signal to `RUNNING` when it is created;
+  governance interop.
 
 **F. Merge gate check.**
 - Done when: the governance workflow blocks on every non-`PASS` state of a blocking stage and
@@ -436,11 +446,15 @@ separately, and G needs the latter.
 | 2 | Gate defaults to blocking for every kind | Owner confirmed |
 | 3 | `build:` is the single home of the `build` and `unit-test` commands | Owner confirmed |
 | 4 | Delivery: this document plus one issue per item S and A–H | Owner confirmed |
-| 5 | Executor model instead of a provider on every stage | Proposed default |
-| 6 | Newest attempt wins, achieved by non-overlapping runs (no leases or tokens) | Proposed default |
-| 7 | Dependents wait on any non-`PASS` upstream | Proposed default |
-| 8 | Security waits for review; reviews wait for `build` | Proposed default |
-| 9 | Advisory exists only for `commands` and `observed` stages | Proposed default |
+| 5 | Executor model instead of a provider on every stage | Owner confirmed (#265) |
+| 6 | Newest attempt wins, achieved by non-overlapping runs (no leases or tokens) | Owner confirmed (#265); runs verified not to overlap (section 9, fact 1) |
+| 7 | Dependents wait on any non-`PASS` upstream | Owner confirmed (#265) |
+| 8 | Security waits for review; reviews wait for `build` | Owner confirmed (#265). Unit tests move into `build` (#265); that change to this document follows separately |
+| 9 | Advisory exists only for `commands` and `observed` stages | Owner confirmed (#265) |
+| 10 | A timeout is told from a cancel by the work job's run time, with the known limit of section 8, capability 4 | Owner confirmed (#265) |
+| 11 | An observed stage takes the newest result, chosen by creation | Owner confirmed (#265) |
+| 12 | An observed stage counts only a result the tool posts on the change; a tool that never posts one is not supported | Owner confirmed (#265) |
+| 13 | The platform's own CI identity (GitHub Actions) is not an observed producer; that CI is a `commands` stage | Owner confirmed (#265) |
 
 ## 14. Not in scope
 
