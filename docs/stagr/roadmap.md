@@ -50,7 +50,7 @@ behaviour and the stated design:
   on `review` (the two are independent today; design-docs/09 section 10 proposes the dependency).
   ([dev-lane.md](dev-lane.md))
 - **Minimal commenting identity for the security-review lane.** Replace the broad remediation PAT
-  (`CODEX_PAT`, Contents + PR R/W) used by the Codex security-review lane with a narrowly-scoped
+  (`REMEDIATION_TOKEN`, Contents + PR R/W) used by the Codex security-review lane with a narrowly-scoped
   commenting identity. ([security-and-secrets.md](security-and-secrets.md))
 - **Single review dispatch.** One authority that starts both the code and the security review (today
   the Codex App starts the code review by itself), so "never concurrent" is guaranteed, not

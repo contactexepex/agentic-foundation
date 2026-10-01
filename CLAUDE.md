@@ -2,26 +2,25 @@
 
 @AGENTS.md
 
-This file adds Claude Code-specific implementation instructions. `AGENTS.md` is the shared source of
-truth for this repository's architecture, security, testing, and Git rules. Follow the more
-restrictive instruction if two overlap.
+This file holds only Claude Code's own working steps. Every rule of this repository — review, merge,
+security, Git, coding standards — lives in `AGENTS.md`, imported above. This file names the
+`AGENTS.md` section and never restates the rule.
 
 ## Role
 
-Claude Code is the primary implementation agent. For each authorized task, Claude owns the focused
-implementation, relevant validation/tests, commit, push, pull request, and fixes for accepted Codex
-findings. Codex is the independent reviewer. Claude must not merge, approve its own work, bypass the
-foundation gate, weaken required checks, or invent toolkit design decisions.
+Claude Code is the implementer described in `AGENTS.md`, "Agent roles". For each authorized task,
+Claude owns the implementation, its tests, the commit, the push, the pull request, and the fixes for
+accepted review findings.
 
 ## Start every implementation
 
 1. Read the task and extract explicit acceptance criteria.
 2. Read this file and the imported `AGENTS.md` contract.
-3. Inspect `git status`, the branch, and recent history. Never edit or commit on `main`; create or
-   resume a task-specific feature branch first.
+3. Inspect `git status`, the branch, and recent history, and work on a task branch (`AGENTS.md`,
+   "Git and pull-request rules").
 4. Read the smallest authoritative set of files needed (schema, template, docs) before changing them.
-5. If a design decision is absent, ambiguous, or contradictory, stop and ask the smallest precise
-   human question (see `AGENTS.md`). Do not guess.
+5. On a missing, ambiguous or contradictory design decision, stop as set out in `AGENTS.md`,
+   "Mandatory stop condition: design ambiguity".
 
 Before editing, check whether the branch or PR already contains equivalent work; resume it rather
 than duplicating branches, commits, or PRs.
@@ -36,93 +35,26 @@ than duplicating branches, commits, or PRs.
   - `python -m py_compile` on any changed `.py`
 - Read the exact failure, fix the root cause, and rerun the narrowest failing check first.
 - Allow at most three attempts for the same failing condition, then stop and report evidence.
-- Never disable, skip, or downgrade a legitimate test, security check, or quality gate to pass.
 
 ## Commit and open the pull request
 
 Self-review with `git diff --check`, `git diff --stat`, `git diff`, and `git status`; remove debug
 artifacts and unrelated changes. Commit only after self-review and relevant validation pass.
 
-Push the task branch and open one PR targeting `main`, **ready for review — never a draft** — so Codex
-review runs immediately; never hand-merge it. The PR description states the task and acceptance
-criteria, what changed and why, checks run with results, and assumptions or open questions. **Every
-PR is sent to Codex for code + security review; findings block the merge as unresolved threads** (see
-"Codex review handoff"). Code and security review run in sequence, never concurrently: the code review
-iterates per push, then a single security review runs as the final pre-merge step (the `standard`
-profile declares the same order: `security` depends on `review`). The gate requires a
-head-bound *code* review AND a head-bound *security* review to have completed, plus zero unresolved
-threads. The fast-path lane is disabled for this repository (`.agentic/config.yml` →
-`routing.fast_path.enabled: false`), so every PR — documentation included — goes through Codex review;
-nothing merges without it.
+Push the task branch and open one PR as set out in `AGENTS.md`, "Git and pull-request rules". The PR
+description states the task and acceptance criteria, what changed and why, checks run with results,
+and assumptions or open questions. Then drive the PR to provably ready in its lane (`AGENTS.md`,
+"Merge lanes").
 
-Know the merge lane (see `AGENTS.md`). A **foundation** PR is merged automatically by the
-`Auto-merge foundation PRs` gate once green and Codex-clean — do not hand-merge and do not wait on a
-human for the merge; just drive it to provably-ready. A PR needing human judgment MUST carry the
-`human-merge` label. When unsure, apply `human-merge`.
+## Review findings
 
-## Codex review handoff
-
-After opening the PR, hand it to Codex for an independent code and security review. Evaluate each
-finding — review comments require judgment, not blind acceptance.
-
-**Accept** a finding when it identifies a real problem in the actual change:
-- A genuine correctness or logic error reproducible with valid or realistically reachable inputs
-  (including adversarial inputs at untrusted system boundaries).
-- A concrete security risk with a plausible exploit path under realistic operator config.
-- A broken API/schema contract. (Stagr has zero consumers, so backward-compatibility and migration
-  findings do not apply; see `AGENTS.md`, "Pre-release: zero consumers".)
-- A meaningful gap in test coverage for changed code paths or closely related behavior.
-
-**Decline** a finding when it does not meet that bar. Grounds for declining:
-- **Speculative**: the failure scenario requires operator choices or config combinations that no
-  realistic user would make, or that existing schema/validation already prevents.
-- **Over-engineered**: the proposed fix adds significant complexity without proportionate benefit to
-  real-world correctness or safety — the simpler current code works correctly for all real inputs.
-- **Already enforced**: the concern is already addressed by schema validation, a test, or a
-  runtime enforcement mechanism in the codebase. A documented convention alone does not count:
-  documentation describes intent, not enforcement.
-- **Style/cosmetic**: no functional, correctness, or security impact.
-- **Migration or compatibility**: asks for a migration path, compatibility layer, or deprecated alias.
-  Stagr is pre-release with zero consumers.
-- **Operator-conformance guard on reference templates, schemas, or config files**: the finding asks
-  for extra test assertions, validation, or guardrails against hypothetical future operator edits to
-  a reference template, schema, or configuration file. These artifacts declare the contract;
-  conformance is the operator's responsibility — the same model used by Kubernetes, GitHub Actions,
-  Azure DevOps, and every widely-adopted configuration-driven tool. If an operator deviates from the
-  declared contract, the tool fails — that is correct and expected. A test validates that the
-  *shipped artifact* conforms to its own contract; it does not pre-emptively guard against every way
-  an operator could later break conformance.
-
-**How to decline**: reply once on the thread with the specific evidence-based reason (cite the
-existing guard, the unrealistic precondition, or why the complexity cost exceeds the benefit).
-
-Who resolves threads, how many fix rounds are allowed, and when to escalate are set in `AGENTS.md`,
-"Review threads".
-
-When **all** findings are declined (no code push): post `@codex review` on the PR to trigger
-the delta review manually, since Codex reviews by itself only when new commits are pushed.
-
-For accepted findings: fix, add/adjust checks, rerun validation, commit, and push. The Codex App
-reviews the new commit by itself, which is the delta review.
-
-If Codex review is unavailable, report the PR as awaiting independent review — never substitute
-self-review for it.
+Judge each finding against `AGENTS.md`, "Evaluating review findings", and answer it as set out in
+`AGENTS.md`, "Review threads". For an accepted finding: fix it, add or adjust checks, rerun
+validation, commit, and push.
 
 ## Coding standards
 
-All production and test Python code must satisfy the coding standards defined in `AGENTS.md`
-(see "Coding standards"). Key rules that affect every implementation:
-
-- **Naming** — every class, method, function, variable, parameter, and argument must be named so
-  that reading the identifier alone reveals its purpose. Abbreviations and single-letter names are
-  forbidden except for loop counters in a scope shorter than three lines.
-- **Class size** — no Python class body (logic or test) may exceed **350 lines**. Configuration
-  files (YAML, JSON, TOML) are exempt. When a class grows beyond 350 lines, decompose it into
-  focused, well-named classes. Do not fragment code unnecessarily — balanced decomposition is the
-  goal. When a test module grows beyond 350 lines, extract logical groups into a sub-package
-  following the `render_tests/` pattern; the runner command in `validate.yml` remains unchanged.
-- **Modules** are the right boundary when grouping related classes and functions; using modules is
-  perfectly acceptable and encouraged.
+All production and test Python code follows `AGENTS.md`, "Coding standards".
 
 ## Resume safely
 

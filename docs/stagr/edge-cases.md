@@ -21,7 +21,7 @@ behavioural fixture with a stubbed platform API).
 | Base is not the default branch | **Blocked** (out of the gate's scope) |
 | Untrusted author | Automation does not run; **Blocked** |
 | `human-merge` label present | Hard stop for the **auto-merge lane** only; does **not** block human-lane readiness (a human may still merge) |
-| PR changes a protected file (default `.github/workflows/**`, `.agentic/**`) | **Control-plane guard**: left for a human — never auto-merged |
+| PR changes a protected file (default `.github/workflows/**`, `.agentic/**`) | **Control-plane guard [target]**: left for a human — never auto-merged. Not enforced by this repository's gate today |
 | Merge conflict (`mergeable=false`) | **Blocked** (fail-closed) |
 | Behind / not clean (`mergeable_state != clean`: behind, blocked, unstable, dirty) | **Blocked** |
 | Mergeability still computing (`mergeable=null`) | **Blocked** (fail-closed until GitHub reports `true`) |
@@ -113,4 +113,4 @@ behavioural fixture with a stubbed platform API).
 
 For each row above there must be a static assertion or a behavioural fixture (stubbed platform
 API) proving the stated behaviour. A row without a test is an **open gap**, and stagr's definition
-of done ([`../../CLAUDE.md`](../../CLAUDE.md)) is not met until it is covered.
+of done ([`../../AGENTS.md`](../../AGENTS.md), "Definition of done") is not met until it is covered.

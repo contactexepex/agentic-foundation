@@ -2,15 +2,13 @@ name: Fast AI Code Review
 
 # Deterministic review router — no model call, no secrets.
 #
-# The fast-path lane is DISABLED for this repository (.agentic/config.yml -> routing.fast_path.enabled:
-# false): every PR — documentation included — is routed to Codex, the independent reviewer. This is a
-# shared toolkit whose docs other people rely on, so no change merges without review. (The fast-path
-# remains a toolkit capability other repos can enable; it is simply off here.)
+# The fast-path lane is disabled for this repository, so every PR is routed to Codex (AGENTS.md,
+# "Git and pull-request rules"; the setting is .agentic/config.yml -> routing.fast_path.enabled).
 #
 # It runs as pull_request_target so the trusted workflow definition comes from the base branch and the
 # required `Publish fast review result` status can be published on the PR head. No PR content is checked
 # out or executed, and no repository secret is used. The merge gate reads the resulting success status
-# and then requires a head-bound Codex code review; every Codex finding blocks the merge as a thread.
+# together with the other merge conditions in AGENTS.md, "Merge lanes".
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, edited]
@@ -27,7 +25,7 @@ permissions:
   statuses: write
 
 env:
-  # The published commit-status context. Keep it identical to the branch-protection required check.
+  # The published commit-status context. The merge gate reads this exact name.
   REVIEW_STATUS_CONTEXT: Publish fast review result
 
 jobs:

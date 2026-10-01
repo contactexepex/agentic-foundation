@@ -1,14 +1,10 @@
 name: Auto-merge foundation PRs
 
-# Two-lane merge policy — see AGENTS.md "Merge lanes".
+# The foundation-lane merge gate. The two lanes and the full list of merge conditions are set in
+# AGENTS.md, "Merge lanes"; this workflow enforces them. A PR with the `human-merge` label is never
+# merged here.
 #
-# FOUNDATION (engineering-platform) PRs auto-merge once they are provably green and Codex-clean, so
-# the human is not the bottleneck for building the pipeline itself. PRODUCT / knowledge PRs (the
-# reviewed-knowledge output of a snapshot run) are excluded from auto-merge and stay human-gated;
-# they are marked with the `human-merge` label, which this gate treats as a hard stop.
-#
-# SECURITY POSTURE (this workflow writes to the default branch, and branch protection is not
-# enforceable on this repository's plan, so the workflow is the gate):
+# SECURITY POSTURE (this workflow writes to the default branch, so the workflow is the gate):
 #   * It runs only as pull_request_target / pull_request_review / issue_comment / check_suite /
 #     schedule / workflow_dispatch — never on a `pull_request` trigger — so the workflow definition
 #     and token always come from the trusted base branch, never from PR head.
@@ -17,14 +13,11 @@ name: Auto-merge foundation PRs
 #   * It is FAIL-CLOSED: every gate must positively prove mergeability. Any missing signal, unknown
 #     state, or API error results in "skip, do not merge" — never a merge on doubt. A skipped PR is
 #     simply re-evaluated on the next event or scheduled sweep.
-#   * Eligibility requires: open, not draft, not already merged, head in THIS repo (no forks), base
-#     is the default branch, a trusted author association, and NO `human-merge` label.
 #   * The merge is conditional on the evaluated head SHA (`sha=` on the merge call), so a PR whose
 #     head moved between evaluation and merge is not merged with stale approval.
 #
-# It uses the workflow GITHUB_TOKEN (contents+PR write) to merge. Known limitation: a merge pushed
-# with GITHUB_TOKEN does not itself trigger downstream workflows (e.g. a future deploy-on-merge);
-# that will be wired separately when deploy-on-merge is added.
+# It uses the workflow GITHUB_TOKEN (contents+PR write) to merge. A merge pushed with GITHUB_TOKEN
+# does not itself trigger other workflows.
 on:
   pull_request_target:
     types: [labeled, unlabeled, opened, reopened, synchronize, ready_for_review]

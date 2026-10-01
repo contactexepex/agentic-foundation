@@ -3,13 +3,13 @@ name: Request Codex security review (final pre-merge)
 # Requests exactly ONE Codex security review, as the FINAL step before merge — after the code review
 # has converged (the Codex code review is "Completed" for the current head and there are no unresolved
 # review threads). The Codex App runs the code review itself, on PR open and on every new commit; the
-# security review is requested only here, so the two never run concurrently: Codex's cloud backend
-# errors when a code and a security review run at the same time on one PR.
+# security review is requested only here, so the two never run at the same time (AGENTS.md, "Git and
+# pull-request rules").
 #
-# IMPORTANT — the Codex App must be configured to run only the CODE review automatically, on PR open and
-# on new commits (not the security review). Whether the App auto-runs a security review on open is a ChatGPT-side App
-# setting this toolkit cannot render; if it is left on, the App's native security review races the code
-# review on every open and re-hits the same backend concurrency error this workflow exists to prevent.
+# IMPORTANT — the Codex App must be configured to run only the CODE review automatically, on PR open
+# and on new commits (not the security review). Whether the App auto-runs a security review on open is
+# a ChatGPT-side App setting this toolkit cannot render; if it is left on, the App's native security review runs at the
+# same time as the code review on every open, which this workflow exists to prevent.
 # This workflow is the SOLE trigger of the security review.
 #
 # It runs on: comment activity (Codex edits its "Review Summary" comment to "Completed" when the code
@@ -20,8 +20,8 @@ name: Request Codex security review (final pre-merge)
 # whose last finding was just resolved would never be re-evaluated and the merge gate would deadlock.
 # It performs only GitHub API work (reads the PR, its review threads, and Codex's summary comment; posts
 # one comment) — no PR content is checked out or executed. The comment is posted with the
-# narrowly-scoped remediation PAT so it is authored by a trusted user (Codex honours "@codex" commands
-# from a real user).
+# REMEDIATION_TOKEN personal access token (Contents and Pull requests read/write) so it is authored by
+# a trusted user (Codex honours "@codex" commands from a real user).
 on:
   issue_comment:
     types: [created, edited]

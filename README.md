@@ -138,13 +138,13 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 
 - **Codex reviews** the code of every new commit by itself (a Codex App setting), and the final
   security review is requested once the code review is clean (`request-final-security-review.yml`);
-  the deterministic router (`fast-ai-code-review.yml`) routes every PR to Codex (the fast path is
-  disabled here, so docs are reviewed too).
+  the deterministic router (`fast-ai-code-review.yml`) routes every PR to Codex. The review process
+  is set in `AGENTS.md`, "Git and pull-request rules".
 - **`Validate`** (`validate.yml`) is the CI gate. Review threads that a later commit made outdated,
   with Codex-only comments, **auto-resolve** (`resolve-fixed-codex-review-threads.yml`); who resolves
   every other thread is set in `AGENTS.md`, "Review threads". The **fail-closed foundation gate**
-  (`auto-merge-foundation-prs.yml`) merges provably-ready PRs. Humans keep authority via
-  `human-merge`. All of these workflows are hand-written for this repository; none is a Stagr feature.
+  (`auto-merge-foundation-prs.yml`) merges provably-ready PRs; the conditions and the `human-merge`
+  stop are set in `AGENTS.md`, "Merge lanes". All of these workflows are hand-written for this repository; none is a Stagr feature.
 
 > Status: **neutral core + GitHub renderer, dogfooded.** The platform-neutral stage-graph schema,
 > profiles, provider/backend/model resolution, and the GitHub renderer (per-stage, routing, and
