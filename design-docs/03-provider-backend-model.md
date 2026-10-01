@@ -139,8 +139,8 @@ platform secret name). It becomes required when the platform secret names differ
 the aliases the backend declares.
 
 > **V1 decision:** Provider configuration lives in `config.yml` under the `providers:`
-> block. A separate `.agentic/providers.yml` is not needed in V1. Keeping everything in
-> one file simplifies the operator experience and the Stagr CLI's config loading path.
+> block. Keeping everything in one file simplifies the operator experience and the Stagr
+> CLI's config loading path.
 
 ---
 
