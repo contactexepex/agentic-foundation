@@ -15,7 +15,7 @@
     },
 
     "platform": {
-      "description": "The SCM/CI platform this repo lives on. The contract is platform-neutral; a per-platform renderer maps it to that system's pipeline. Only the GitHub renderer exists today.",
+      "description": "The SCM/CI platform this repo lives on. The contract is platform-neutral; a per-platform renderer maps it to that system's pipeline. Which renderers exist today is in docs/ARCHITECTURE.md, section 8.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -65,7 +65,7 @@
     },
 
     "defaults": {
-      "description": "Fallbacks for stages that do not set their own provider or model. If nothing resolves the run fails loudly (there is no hidden toolkit fallback).",
+      "description": "Fallbacks for stages that do not set their own provider or model. A stage left with no provider after these fallbacks fails validation; a stage with no model binds none and the backend chooses (see docs/CONFIGURATION.md, Model resolution).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -173,7 +173,7 @@
       "additionalProperties": false,
       "properties": {
         "secrets": {
-          "description": "Secret alias map: keys are SecretRef.alias names used by this provider's BackendRenderer; values are the environment-variable names where the actual secret lives at run time. Never the secret values themselves. Example: {\"TRUSTED_COMMENTER_TOKEN\": \"REMEDIATION_TOKEN\"}.",
+          "description": "Secret alias map: keys are SecretRef.alias names used by this provider's BackendRenderer; values are the NAMES of the CI secrets that hold them (rendered as `secrets.<name>`). Never the secret values themselves. Example: {\"TRUSTED_COMMENTER_TOKEN\": \"REMEDIATION_TOKEN\"}.",
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/secretName" }
         }

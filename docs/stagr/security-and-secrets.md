@@ -1,8 +1,8 @@
 # Security & secrets — least privilege and principal isolation
 
-stagr renders workflows that hold real credentials (model API keys, a push token, a remediation
-PAT) and drive untrusted PR content past them. The rendered pipeline must be secure **by
-construction**, not by convention. This page states the guarantees; the threat model is in
+stagr renders workflows that hold real credentials (the publisher App's private key and a real-user
+personal access token) and drive untrusted PR content past them. The rendered pipeline must be secure
+**by construction**, not by convention. This page states the guarantees; the threat model is in
 [trust-and-correctness.md](trust-and-correctness.md), and the base contract in
 [`../../AGENTS.md`](../../AGENTS.md).
 

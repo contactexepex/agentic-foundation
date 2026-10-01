@@ -14,14 +14,9 @@ below for what renders today.
 
 Its value is **integration, governance, and portability** — never agent capability.
 
-> **Status (today):** the supported platform is **GitHub**. The GitHub renderer builds a workflow per
-> stage, a routing workflow, and a governance (merge-gate) workflow, but only for stages started by a
-> pull-request comment — today the Codex `review` and `security` stages. `stagr plan` lists
-> those files and `stagr apply` writes them; `init` and `doctor` are planned. **Other stage types**
-> (build, test, deploy, custom) and **other platforms** (GitLab, Bitbucket, Azure DevOps, …)
-> are the roadmap in §7. This
-> one-sentence identity and Sections 2–6 describe the target this roadmap converges on, not
-> everything that renders today.
+> **Status (today):** this one-sentence identity and Sections 2–6 describe the target, not
+> everything that renders today. What exists today is in [ARCHITECTURE.md](ARCHITECTURE.md),
+> section 8; the in-scope roadmap is §7 below.
 
 ## 2. The line we never cross: declare · initialize · govern — never execute
 
@@ -58,8 +53,8 @@ The toolkit's job is to let a repo declare **its own "definition of ready-to-app
 large org is **not** just CI, but an arbitrary, ordered graph of gates (build, unit,
 integration, security review, code review, license/compliance, custom) — and to **orchestrate and
 gate** that graph on its platform (today GitHub; more platforms in §7). It orchestrates and governs
-those stages; it never *is* any of them. (This is the target; §7 tracks what renders today vs. what
-is still roadmap.)
+those stages; it never *is* any of them. (This is the target; what renders today is in
+[ARCHITECTURE.md](ARCHITECTURE.md), section 8, and §7 is the roadmap.)
 
 ## 4. The litmus test (apply to every feature and every config key)
 
@@ -85,10 +80,10 @@ If the latter, **reference it by name — don't re-declare it.**
 
 "Configurable" must never mean "overwhelming." **Advanced ≠ unlimited.**
 
-1. **Minimal by default.** The common path is a handful of lines — a `profile`, a `platform`, and one
-   model binding for model-consuming stages. A newcomer never sees the advanced surface.
+1. **Minimal by default.** The common path is a handful of lines — a `profile` and a `platform`. A
+   newcomer never sees the advanced surface.
 2. **Progressive disclosure.** Advanced blocks are opt-in; deleting any one falls back to a sensible
-   default. Fail loud only where silence would be unsafe (e.g. an unresolved model).
+   default. Fail loud only where silence would be unsafe (e.g. a stage with no provider).
 3. **Curated, capped advanced surface.** Advanced options are *selected and limited*, not exhaustive.
    Even a power user should never face 100+ knobs. If a feature needs many keys, it is probably
    doing-the-work (§4) — reject it.
@@ -106,8 +101,8 @@ Ordered by fit to the identity; each is control-plane, not runtime:
 
 1. **Zero-config onboarding** — detect language/build/platform → propose a default `.agentic/config.yml`
    (the planned `stagr init` + front-door skill), so the toolkit "just works" when dropped into a repo.
-2. **Multi-stage "definition of ready"** — the security review is a gated stage in the graph that
-   starts after the code review passes (`security` depends on `review`). Still
+2. **Multi-stage "definition of ready"** — the code and security reviews are gated stages in the graph
+   (how each profile orders them is under `profile` in [CONFIGURATION.md](CONFIGURATION.md)). Still
    roadmap: first-class build / test / custom gate stages in the graph and the merge gate, beyond the
    code and security reviews.
 3. **More platform renderers** — GitLab, Bitbucket, Azure DevOps (contract → native pipeline mapping

@@ -16,10 +16,8 @@ gate that decides when the PR is **provably ready**.
 > - **SAST/quality, build, test, integration-test, performance, custom** stages are **[target]** — no
 >   workflow renders them today (the GitHub renderer renders only the Codex `review` and `security`
 >   stages). Their rows and ordering below describe the intended graph.
-> - the **`review` and `security` stages are independent** in the `standard` profile — neither has
->   `depends_on`. "Security waits for code review" is a **[target]** default (see
->   [design-docs/09-check-stages.md](../../design-docs/09-check-stages.md) section 10) and the rule
->   of this repository's own hand-written review process.
+> - the stage order each profile sets, including whether `security` waits for `review`, is under
+>   `profile` in [CONFIGURATION.md](../CONFIGURATION.md).
 > - the **merge gate below is implemented today only by this repository's hand-written foundation
 >   gate** (`auto-merge-foundation-prs.yml`), not by Stagr. Stagr's governance workflow renders a
 >   smaller check: blocking stages must pass. Human-lane readiness depends on an
@@ -38,7 +36,7 @@ approved story issue
 [code-review]  Codex reviews ──► fix pushed by an external actor ──► new commit re-triggers review
       │        (loop until ZERO open review threads; the fix push is NOT auto-driven today — see note)
       ▼  (only after code review has converged: completed + clean on head)
-[security-review]  Codex security review  ── target: runs ONCE, after code review; independent today
+[security-review]  Codex security review  ── runs after the code review
       +  [sast/quality integrations]  Sonar / Checkmarx (if configured) ── must be clean
       │  (all security findings addressed, zero open security comments)
       ▼
@@ -63,7 +61,7 @@ for the repo and is itself a blocking check. Stagr does not render it yet; its d
 | **implement** | not a Stagr stage; belongs to the future development module (decision record #265) | n/a (produces the PR) | one PR per story |
 | **validate / CI** | PR opened/updated, push | blocking | build + unit tests must pass on the head |
 | **code-review** (Codex) | PR opened/updated (`synchronize`) | advisory or blocking | re-runs on each push **unless fast-path skips a trivial head** (shipped default `fast_path: on`); converges only when **zero open review threads** on the current head |
-| **security-review** (Codex) | PR opened/updated (`standard` profile: independent of code review); **[target]** code review completed + clean on head | blocking **when configured** (blocking in the `standard` profile) | **[target]** runs once, after code review converges; **never concurrent** (best-effort) |
+| **security-review** (Codex) | PR opened/updated, in the order the profile sets ([CONFIGURATION.md](../CONFIGURATION.md), `profile`); **[target]** code review completed + clean on head | blocking **when configured** (blocking in the `standard` profile) | **[target]** runs once, after code review converges; **never concurrent** (best-effort) |
 | **sast / quality** (Sonar, Checkmarx) **[target]** | PR opened/updated | blocking (if configured) | grouped with security; clean **before** integration/perf/custom — *not rendered today* |
 | **integration-test** **[target]** | after security clean (or as configured) | blocking (if configured) | default: **after** the security group — *not rendered today* |
 | **performance-test** (a `test`/`custom` stage) **[target]** | after integration (or as configured) | blocking (if configured) | default: after integration — *not rendered today* |
@@ -77,13 +75,13 @@ integration/performance/custom stages **by default**. This ordering is **configu
 `depends_on`** — a repo that wants integration tests in parallel with security can express that —
 but the default keeps the expensive and the risky stages behind the cheap security gate.
 
-### Why security review is sequenced after code review (target)
+### Why security review is sequenced after code review
 
 This repository's contract (`AGENTS.md`) runs the two reviews in sequence, and its hand-written
 workflows trigger the security review **only after** the code-review loop has converged (completed
 and clean on the exact head). Whether the Codex backend really fails on a concurrent pair is not
-verified, so for Stagr this is a **[target]** default, not a proof; today the `standard` profile
-leaves the two stages independent. See
+verified, so the order is a default, not a proof; the stage order each profile sets is under
+`profile` in [CONFIGURATION.md](../CONFIGURATION.md). See
 [trust-and-correctness.md](trust-and-correctness.md#sequencing-code-vs-security-review).
 
 ## The merge gate — the definition of "provably ready"
@@ -128,20 +126,13 @@ last-read race) is in [trust-and-correctness.md](trust-and-correctness.md).
 
 A profile expands to a default dev-lane graph; explicit stages merge onto it (same id overrides).
 
-The **shipped** expansions today (id — gate):
-
-| Profile | Stages **[shipped]** |
-|---|---|
-| `minimal` | review (**blocking**) |
-| `standard` | review (**blocking**), security (**blocking**) — independent, neither has `depends_on` |
-| `custom` | none — every stage is declared |
+The shipped expansions are set out under `profile` in [CONFIGURATION.md](../CONFIGURATION.md).
 
 > **Scope note.** Planning and deploying are **not** dev-lane stages — under the refined dev-lane
 > scope they belong to the **Planning** and **CD** sibling toolkits
 > ([overview.md](overview.md#scope-alignment-with-older-docs)), so no stagr profile emits them.
 >
-> **[target] gap.** The shipped profiles have no build or test stage, and `security` does not wait
-> for `review`. The design target adds both (see
+> **[target] gap.** The shipped profiles have no build or test stage. The design target adds them (see
 > [design-docs/09-check-stages.md](../../design-docs/09-check-stages.md) section 10).
 
 ## Handoffs (the GitHub-artifact seams)
