@@ -67,8 +67,7 @@ def run_execute_job(
         run_step("eligibility", runtime.MODE_ELIGIBILITY)
         outcome.output_text = output_path.read_text()
         outcome.proceed = "proceed=true" in outcome.output_text
-        has_invocation = config_document.get("invocation") is not None
-        if outcome.exit_codes["eligibility"] == 0 and outcome.proceed and has_invocation:
+        if outcome.exit_codes["eligibility"] == 0 and outcome.proceed:
             run_step("invoke", runtime.MODE_INVOKE, TRUSTED_COMMENTER_TOKEN=COMMENTER_TOKEN)
         job_failed = any(code != 0 for code in outcome.exit_codes.values())
         run_step("publish", runtime.MODE_PUBLISH,

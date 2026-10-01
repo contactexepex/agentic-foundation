@@ -90,7 +90,7 @@ def test_v_s08_github_renderer_declares_only_what_it_really_renders() -> None:
     from stagr.platforms.github.renderer import GitHubPlatformRenderer
 
     assert GitHubPlatformRenderer.SUPPORTED_INVOCATION_KINDS == frozenset({InvocationKind.PR_COMMENT}), (
-        "GitHubPlatformRenderer must declare exactly {PR_COMMENT}; other kinds render placeholder steps"
+        "GitHubPlatformRenderer must declare exactly {PR_COMMENT}; it cannot wire any other kind"
     )
 
 

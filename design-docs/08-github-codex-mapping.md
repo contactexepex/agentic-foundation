@@ -193,8 +193,8 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   stage that declares dependencies, on the `check_run` / `check_suite` wake-ups described under
   "Dependency wake-ups" below. `reconcile` runs on `issue_comment` events for a pull request, and
   only when the comment author is a declared evidence producer. `sweep` runs on a schedule (every 5
-  minutes) and runs the same routine for every open pull request. `reconcile` and `sweep` exist
-  only for plans that declare evidence. Each job has an explicit `github.event_name` condition, so
+  minutes) and runs the same routine for every open pull request. Every stage has `reconcile`
+  and `sweep`, because every plan must declare evidence (see below). Each job has an explicit `github.event_name` condition, so
   a wakeup never re-runs the backend, and `synchronize` is never a wakeup. `check_suite` is not
   used to observe evidence in V1: that serves check-based evidence, which V1 rejects (see below).
 - **State is observed, not remembered.** Every run re-reads the pull request, its comments, its
@@ -215,8 +215,9 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   current head. A thread whose review commit is unknown counts as open (fail closed).
 - **Rejected at render time** (`stagr apply` fails; nothing weaker is generated): evidence kinds
   other than `REVIEW_RESULT` and `COMMENT_MATCH`; evidence that is not head-bound or has no
-  `produced_by`; `invocation_correlation`; and plans with no evidence whose invocation finishes
-  asynchronously (`PR_COMMENT`, `WORKFLOW_DISPATCH`).
+  `produced_by`; `invocation_correlation`; any invocation kind other than `PR_COMMENT`; and plans
+  with no evidence, because a `PR_COMMENT` invocation finishes asynchronously and nothing else
+  could prove it finished.
 - **Events without a pull request** (`workflow_dispatch`, `issues`) publish no signal.
 - **Invocation and idempotency (`PR_COMMENT` backends).** The `execute` job has one step,
   "Invoke backend (idempotent)", that runs the same runtime in `invoke` mode. In this order it
@@ -247,8 +248,7 @@ This is how the generated `stage-<id>.yml` implements the reconciliation model i
   `permissions: {}`).
 - **Eligibility.** The first step after the token is "Check eligibility". It runs the runtime in
   `eligibility` mode and writes `proceed=true` or `proceed=false` to the step output; the invoke
-  step (and the placeholder steps of other invocation kinds) run only when it is `true`, and a
-  failed eligibility step also stops them. The same eligibility code runs in `publish`,
+  step runs only when it is `true`, and a failed eligibility step also stops it. The same eligibility code runs in `publish`,
   `reconcile` and `sweep`, so no mode can act on a pull request another mode refused. In order, the
   first failing check decides: (1) the pull request is open, not a draft, written by a trusted
   role, not a fork the fork policy refuses (`ForkPolicy.DENY`, or a privileged stage), and the

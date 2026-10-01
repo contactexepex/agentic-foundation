@@ -10,6 +10,7 @@ from neutral_core_tests.github_platform_renderer_tests.helpers import (
 )
 from stagr.core.enums import StageResultSignalKind
 from stagr.core.models import StageResultProvenance, StageResultSpec
+from stagr.platforms.github.action_pins import APP_TOKEN_ACTION_REF
 
 from neutral_core_tests.github_platform_renderer_tests.test_governance_structure.helpers import (
     _render_governance_to_string,
@@ -55,8 +56,8 @@ def test_governance_workflow_references_publisher_app_id_in_token_step() -> None
 def test_governance_workflow_app_token_step_uses_pinned_sha() -> None:
     """App token acquisition step uses the pinned commit SHA."""
     yaml_content = _render_governance_to_string()
-    assert "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e" in yaml_content, (
-        "App token action must use the pinned commit SHA per supply-chain integrity rules"
+    assert f"uses: {APP_TOKEN_ACTION_REF}" in yaml_content, (
+        "App token step must use the shared pin from stagr.platforms.github.action_pins"
     )
 
 

@@ -26,7 +26,6 @@ from neutral_core_tests.github_platform_renderer_tests.test_workflow_structure i
     test_result_signaling_step_uses_app_token,
     test_stage_artifact_has_correct_path,
     test_backend_invocation_step_env_is_plan_driven,
-    test_backend_invocation_step_has_no_env_when_plan_has_no_secrets,
     test_app_token_action_uses_pinned_sha,
 )
 from neutral_core_tests.github_platform_renderer_tests.test_result_spec import (
@@ -110,7 +109,6 @@ GITHUB_PLATFORM_RENDERER_TESTS = [
     test_result_signaling_step_uses_app_token,
     test_stage_artifact_has_correct_path,
     test_backend_invocation_step_env_is_plan_driven,
-    test_backend_invocation_step_has_no_env_when_plan_has_no_secrets,
     test_app_token_action_uses_pinned_sha,
     test_render_stage_returns_stage_render,
     test_stage_result_spec_signal_kind_is_check_run,
@@ -189,7 +187,6 @@ __all__ = [
     "test_result_signaling_step_uses_app_token",
     "test_stage_artifact_has_correct_path",
     "test_backend_invocation_step_env_is_plan_driven",
-    "test_backend_invocation_step_has_no_env_when_plan_has_no_secrets",
     "test_app_token_action_uses_pinned_sha",
     "test_render_stage_returns_stage_render",
     "test_stage_result_spec_signal_kind_is_check_run",

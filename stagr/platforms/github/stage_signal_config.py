@@ -10,15 +10,15 @@ here, at ``stagr apply`` time, instead of degrading into a weaker check at run t
 - evidence kinds other than the comment-based ``REVIEW_RESULT`` and ``COMMENT_MATCH``;
 - evidence that is not head-bound, has an unknown ``sha_field``, or lacks ``produced_by``;
 - ``FindingScopeSpec.invocation_correlation`` (GitHub V1 has no reliable binding for it);
-- a plan without evidence whose invocation completes asynchronously (``PR_COMMENT`` or
-  ``WORKFLOW_DISPATCH``): nothing could ever prove it finished, and reporting PASS after merely
-  posting the request would be a false signal;
+- any invocation kind other than ``PR_COMMENT``: the GitHub renderer cannot wire it;
+- a plan without evidence: a ``PR_COMMENT`` invocation completes asynchronously, so nothing could
+  ever prove it finished, and reporting PASS after merely posting the request would be a false
+  signal;
 - a ``PR_COMMENT`` invocation (issue #205) without a non-empty ``params["body"]``, without the
   ``TRUSTED_COMMENTER_TOKEN`` secret it must be posted with, or with a ``params["lease_minutes"]``
   that is not an integer from 1 to ``MAX_LEASE_MINUTES``. The lease defaults to 30 minutes.
 - (issue #207) a dependency on a stage that is not in the render context, on itself, or whose id or
   the publisher App id is not plain text that is safe to place inside a workflow ``if:`` expression.
-Other invocation kinds are not posted by this runtime yet and carry no ``invocation`` document.
 
 Eligibility data (issue #207) travels in the same document: ``dependencies`` (each upstream stage id
 with the name of the Check Run that carries its signal) and ``routing`` (the Check Run that carries
@@ -56,9 +56,6 @@ STAGE_CHECK_RUN_NAME_PREFIX = "stagr/stage"
 _STAGE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _APP_ID_PATTERN = re.compile(r"^[0-9]{1,20}$")
 
-# Invocations that run to completion inside the execute job, so the job's own outcome is the proof.
-_SYNCHRONOUS_INVOCATION_KINDS = frozenset({InvocationKind.CI_COMPONENT, InvocationKind.API_CALL})
-
 # The "Code Review" row of the Codex review-summary table; see the runtime's REVIEW_RESULT handling.
 _REVIEW_SUMMARY_SHA_FIELD = "review_summary_sha"
 
@@ -75,16 +72,6 @@ class StageSignalConfig:
 
     document: dict[str, Any]
     evidence_producers: tuple[str, ...]
-
-    @property
-    def posts_pull_request_comment_invocation(self) -> bool:
-        """True when the execute job posts the backend request itself (``invoke`` mode)."""
-        return self.document["invocation"] is not None
-
-    @property
-    def has_asynchronous_evidence(self) -> bool:
-        """True when completion is observed later (reconcile/sweep) rather than at execute time."""
-        return bool(self.document["evidence"])
 
     @property
     def upstream_check_run_names(self) -> tuple[str, ...]:
@@ -112,9 +99,10 @@ def build_stage_signal_config(
     check_run_name: str,
 ) -> StageSignalConfig:
     """Return the validated runtime configuration for ``stage``; raise ValueError if unsupported."""
+    invocation_document = _build_invocation_document(stage, plan)
+    _require_completion_evidence(stage, plan)
     evidence_documents = [_build_evidence_document(stage, spec) for spec in plan.evidence]
     gate_document = _build_gate_document(stage, plan)
-    _reject_unprovable_completion(stage, plan)
     trust_policy = render_context.trust_policy
     document = {
         "schemaVersion": 1,
@@ -126,7 +114,7 @@ def build_stage_signal_config(
         "privilegedStage": bool(plan.required_secrets),
         "evidence": evidence_documents,
         "gate": gate_document,
-        "invocation": _build_invocation_document(stage, plan),
+        "invocation": invocation_document,
         "dependencies": _build_dependency_documents(stage, render_context, publisher_app_id),
         "routing": _build_routing_document(render_context),
     }
@@ -199,10 +187,8 @@ def _build_gate_document(stage: NormalizedStage, plan: ExecutionPlan) -> dict[st
         _require_valid_login(stage, scope.created_by, "FindingScopeSpec.created_by")
         created_by, head_sha_bound = scope.created_by, scope.head_sha
     elif gate.kind is GateDispositionKind.EXPLICIT_PASS_MARKER:
-        if not gate.selector.strip() or not plan.evidence:
-            raise ValueError(
-                f"Stage '{stage.id}': EXPLICIT_PASS_MARKER needs a selector and evidence to scan."
-            )
+        if not gate.selector.strip():
+            raise ValueError(f"Stage '{stage.id}': EXPLICIT_PASS_MARKER needs a selector.")
     return {
         "kind": gate.kind.value,
         "selector": gate.selector,
@@ -211,10 +197,13 @@ def _build_gate_document(stage: NormalizedStage, plan: ExecutionPlan) -> dict[st
     }
 
 
-def _build_invocation_document(stage: NormalizedStage, plan: ExecutionPlan) -> dict[str, Any] | None:
+def _build_invocation_document(stage: NormalizedStage, plan: ExecutionPlan) -> dict[str, Any]:
     invocation = plan.invocation
     if invocation.kind is not InvocationKind.PR_COMMENT:
-        return None
+        raise ValueError(
+            f"Stage '{stage.id}': the GitHub renderer can only wire a PR_COMMENT invocation; got "
+            f"{invocation.kind.name}."
+        )
     body = invocation.params.get("body")
     if not isinstance(body, str) or not body.strip():
         raise ValueError(
@@ -277,13 +266,12 @@ def _build_routing_document(render_context: RenderContext) -> dict[str, Any] | N
     }
 
 
-def _reject_unprovable_completion(stage: NormalizedStage, plan: ExecutionPlan) -> None:
-    if plan.evidence or plan.invocation.kind in _SYNCHRONOUS_INVOCATION_KINDS:
+def _require_completion_evidence(stage: NormalizedStage, plan: ExecutionPlan) -> None:
+    if plan.evidence:
         return
     raise ValueError(
-        f"Stage '{stage.id}': a {plan.invocation.kind.name} invocation completes asynchronously "
-        f"but the plan declares no EvidenceSpec, so nothing could prove it finished. Declare "
-        f"evidence, or use a synchronous invocation (CI_COMPONENT or API_CALL)."
+        f"Stage '{stage.id}': a PR_COMMENT invocation completes asynchronously but the plan "
+        f"declares no EvidenceSpec, so nothing could prove it finished. Declare evidence."
     )
 
 

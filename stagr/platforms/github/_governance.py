@@ -21,19 +21,12 @@ Security invariants maintained by the generated workflow:
 from __future__ import annotations
 
 from stagr.core.models import RenderContext, StageResultSpec
+from stagr.platforms.github.action_pins import APP_TOKEN_ACTION_REF
 
 # Expected schemaVersion in the StageResultSignal JSON payload stored in
 # a Check Run's output.summary field.  Must match the version emitted by
 # stage execution artifacts at run time.
 _EXPECTED_STAGE_RESULT_SIGNAL_SCHEMA_VERSION = "1"
-
-# Pinned commit SHA for actions/create-github-app-token v1.11.1.  Update
-# after auditing the release when upgrading.  Mutable tags are prohibited
-# per AGENTS.md supply-chain integrity requirement.
-_APP_TOKEN_ACTION_REF = (
-    "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e"
-    "  # v1.11.1"
-)
 
 # Width of the indentation block for run: | script content in the generated
 # YAML (offset from the left edge of the file).
@@ -100,7 +93,7 @@ def generate_governance_workflow_yaml(
         "    steps:\n"
         "      - name: Acquire Stagr App installation token\n"
         "        id: app-token\n"
-        f"        uses: {_APP_TOKEN_ACTION_REF}\n"
+        f"        uses: {APP_TOKEN_ACTION_REF}\n"
         "        with:\n"
         f'          app-id: "{publisher_app_id}"\n'
         f'          private-key: "{private_key_expr}"\n'

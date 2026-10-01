@@ -11,7 +11,6 @@ from neutral_core_tests.stage_signal_tests.eligibility_fixtures import (
 from neutral_core_tests.stage_signal_tests.fake_github import FakeGitHubApi
 from neutral_core_tests.stage_signal_tests.fixtures import (
     OLD_HEAD_SHA,
-    always_pass_gate,
     build_config_document,
     build_pull_request,
     build_world,
@@ -66,13 +65,7 @@ def test_fork_pull_request_with_the_deny_policy_gets_nothing() -> None:
 
 def test_fork_pull_request_with_allow_unprivileged_proceeds_for_a_non_privileged_stage() -> None:
     fake = _world_with(is_fork=True)
-    document = _stage_document(
-        denyForks=False, privilegedStage=False, evidence=[], gate=always_pass_gate(), invocation=None)
-    outcome = run_execute_job(fake, document)
-    assert outcome.proceed is True and set(outcome.exit_codes.values()) == {0}, outcome.transcripts
-    assert fake.comments_posted_by_writes() == [], "a non-privileged stage posts no backend request"
-    (check_run,) = fake.check_runs
-    assert '"conclusion":"pass"' in check_run["output"]["summary"]
+    _assert_started(fake, run_execute_job(fake, _stage_document(denyForks=False, privilegedStage=False)))
 
 
 def test_fork_pull_request_with_allow_unprivileged_is_still_refused_for_a_privileged_stage() -> None:

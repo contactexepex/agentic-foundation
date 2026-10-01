@@ -1,15 +1,20 @@
 """Tests for routing workflow generation (issue #195).
 
 Covers: fast_path=null emits NORMAL immediately without path analysis;
-classify_route_from_changed_files classifies all-match as FAST and any-mismatch as NORMAL;
+the generated classify script routes all-match as FAST and any-mismatch as NORMAL;
 generated workflow's first step references the configured private_key_secret name.
 """
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
 from stagr.core.models import FastPathPolicy, PathMatchSpec, RouteStageMap
 from stagr.platforms.github.routing_workflow import (
     ROUTE_CLASSIFICATION_CHECK_RUN_NAME,
-    classify_route_from_changed_files,
     generate_routing_workflow_yaml,
 )
 
@@ -44,20 +49,47 @@ def test_fast_path_null_produces_normal_immediately() -> None:
 
 
 # ------------------------------------------------------------------
-# classify_route_from_changed_files — behavioral tests
+# Generated classify script — behavioral tests (runs the real script)
 # ------------------------------------------------------------------
 
+def _run_generated_classify_script(fast_path_patterns: tuple[str, ...], changed_file_paths: list[str]) -> str:
+    """Render the routing workflow, run its embedded classify script, and return the route."""
+    routing_workflow_yaml = generate_routing_workflow_yaml(
+        fast_path_policy=FastPathPolicy(
+            match=PathMatchSpec(paths=fast_path_patterns),
+            stages=RouteStageMap(fast=(), normal=("review",)),
+        ),
+        publisher_app_id="99001",
+        publisher_private_key_secret="STAGR_APP_PRIVATE_KEY",
+    )
+    workflow_lines = routing_workflow_yaml.splitlines()
+    script_start = workflow_lines.index("          python3 - <<'PYEOF'") + 1
+    script_end = workflow_lines.index("          PYEOF", script_start)
+    classify_script = "\n".join(line[10:] for line in workflow_lines[script_start:script_end])
+    patterns_b64 = next(
+        line.split("'")[1] for line in workflow_lines if "FAST_PATH_PATTERNS_B64: '" in line
+    )
+    with tempfile.TemporaryDirectory() as output_directory:
+        github_output_path = os.path.join(output_directory, "github_output")
+        script_environment = {
+            "FILES_JSON": json.dumps(changed_file_paths),
+            "CHANGED_FILES_COUNT": str(len(changed_file_paths)),
+            "API_RECORD_COUNT": str(len(changed_file_paths)),
+            "FAST_PATH_PATTERNS_B64": patterns_b64,
+            "GITHUB_OUTPUT": github_output_path,
+        }
+        subprocess.run(
+            [sys.executable, "-"], input=classify_script, text=True, check=True, env=script_environment
+        )
+        with open(github_output_path, encoding="utf-8") as github_output:
+            return github_output.read().strip().removeprefix("route=")
+
+
 def test_all_paths_match_classifies_as_fast() -> None:
-    """classify_route_from_changed_files returns FAST when all changed paths match a pattern."""
-    changed_file_paths = [
-        "docs/index.md",
-        "docs/api/reference.md",
-        "docs/guide/getting-started.md",
-    ]
-    fast_path_patterns = ["docs/*", "docs/**"]
-    classification = classify_route_from_changed_files(
-        changed_file_paths=changed_file_paths,
-        fast_path_patterns=fast_path_patterns,
+    """The generated classify script routes FAST when every changed path matches a pattern."""
+    classification = _run_generated_classify_script(
+        ("docs/*", "docs/**"),
+        ["docs/index.md", "docs/api/reference.md", "docs/guide/getting-started.md"],
     )
     assert classification == "FAST", (
         f"All paths match 'docs/*' or 'docs/**'; expected FAST but got {classification!r}"
@@ -65,15 +97,10 @@ def test_all_paths_match_classifies_as_fast() -> None:
 
 
 def test_any_path_mismatch_classifies_as_normal() -> None:
-    """classify_route_from_changed_files returns NORMAL when any changed path does not match."""
-    changed_file_paths = [
-        "docs/index.md",
-        "stagr/core/models.py",  # does not match docs/* patterns
-    ]
-    fast_path_patterns = ["docs/*", "docs/**"]
-    classification = classify_route_from_changed_files(
-        changed_file_paths=changed_file_paths,
-        fast_path_patterns=fast_path_patterns,
+    """The generated classify script routes NORMAL when any changed path does not match."""
+    classification = _run_generated_classify_script(
+        ("docs/*", "docs/**"),
+        ["docs/index.md", "stagr/core/models.py"],
     )
     assert classification == "NORMAL", (
         f"'stagr/core/models.py' does not match docs/* patterns; "

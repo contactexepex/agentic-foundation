@@ -128,11 +128,13 @@ def test_invoke_step_carries_every_declared_secret_and_only_those() -> None:
         "PROVIDER_API_KEY", "TRUSTED_COMMENTER_TOKEN"}
 
 
-def test_other_invocation_kinds_keep_placeholder_steps_and_never_run_invoke_mode() -> None:
+def test_other_invocation_kinds_are_rejected_at_render_time() -> None:
     stage = build_stage()
-    for kind in (InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
+    for kind in (InvocationKind.WORKFLOW_DISPATCH, InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
         plan = dataclasses.replace(build_execution_plan(), invocation=Invocation(kind=kind))
-        document = parse_workflow(render_workflow_text(plan, stage))
-        names = list(_steps(document))
-        assert "Invoke backend (stub)" in names and "Check idempotency (stub)" in names
-        assert '"STAGR_MODE": "invoke"' not in json.dumps(document["jobs"])
+        try:
+            render_workflow_text(plan, stage)
+        except ValueError as error:
+            assert "can only wire a PR_COMMENT invocation" in str(error), str(error)
+            continue
+        raise AssertionError(f"expected ValueError for {kind.name}")

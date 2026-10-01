@@ -95,13 +95,6 @@ def test_pr_comment_invocation_needs_the_resolved_trusted_commenter_secret() -> 
         _expect_render_rejection(dataclasses.replace(plan, required_secrets=secrets), stage, "TRUSTED_COMMENTER_TOKEN")
 
 
-def test_other_invocation_kinds_render_without_an_invocation_document() -> None:
-    plan, stage = build_codex_plan()
-    for kind in (InvocationKind.WORKFLOW_DISPATCH, InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
-        other_plan = dataclasses.replace(plan, invocation=Invocation(kind=kind))
-        assert _build_document(other_plan, stage)["invocation"] is None
-
-
 # ---- run time: the embedded configuration is re-validated ----
 
 
@@ -116,20 +109,13 @@ def test_runtime_rejects_an_invocation_it_cannot_perform_exactly() -> None:
     _expect_runtime_rejection("pr_comment", "Invalid STAGR_STAGE_CONFIG")
 
 
-def test_runtime_accepts_a_document_without_an_invocation_rule() -> None:
+def test_runtime_rejects_a_document_without_an_invocation_rule() -> None:
+    _expect_runtime_rejection(None, "Invalid STAGR_STAGE_CONFIG")
     document = build_config_document()
     del document["invocation"]
-    assert runtime.StageRuntimeConfig.from_json_text(json.dumps(document)).invocation_rule is None
-    document["invocation"] = None
-    assert runtime.StageRuntimeConfig.from_json_text(json.dumps(document)).invocation_rule is None
-
-
-def test_invoke_mode_without_an_invocation_rule_fails_closed() -> None:
-    document = build_config_document(invocation=None)
-    config = runtime.StageRuntimeConfig.from_json_text(json.dumps(document))
-    invoker = runtime.BackendInvoker(config, object(), "octo/repo", lambda: None)
     try:
-        invoker.invoke_if_needed(runtime.ReconcileRequest(runtime.MODE_INVOKE, 7))
-    except runtime.RuntimeConfigError:
+        runtime.StageRuntimeConfig.from_json_text(json.dumps(document))
+    except runtime.RuntimeConfigError as error:
+        assert "Invalid STAGR_STAGE_CONFIG" in str(error), str(error)
         return
     raise AssertionError("expected RuntimeConfigError")

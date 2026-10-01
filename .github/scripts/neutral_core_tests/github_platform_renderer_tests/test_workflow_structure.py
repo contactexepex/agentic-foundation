@@ -5,6 +5,8 @@ backend invocation step, and security invariant for privileged stages.
 """
 from __future__ import annotations
 
+import re
+
 from neutral_core_tests.github_platform_renderer_tests.helpers import (
     TEST_PUBLISHER_APP_ID,
     TEST_PUBLISHER_PRIVATE_KEY_SECRET,
@@ -13,8 +15,9 @@ from neutral_core_tests.github_platform_renderer_tests.helpers import (
     build_renderer,
     build_stage,
 )
-from stagr.core.enums import StageGate, StageTrigger
+from stagr.core.enums import StageTrigger
 from stagr.core.models import SecretRef
+from stagr.platforms.github.action_pins import APP_TOKEN_ACTION_REF
 
 
 def _render_to_string(
@@ -270,26 +273,14 @@ def test_backend_invocation_step_env_is_plan_driven() -> None:
     )
 
 
-def test_backend_invocation_step_has_no_env_when_plan_has_no_secrets() -> None:
-    """Backend invocation step has no env block when the plan declares no secrets."""
-    yaml_content = _render_to_string(required_secrets=())
-
-    invoke_backend_index = yaml_content.find("Invoke backend")
-    assert invoke_backend_index != -1, "Must have 'Invoke backend' step"
-    publish_result_index = yaml_content.find("Publish result", invoke_backend_index)
-    assert publish_result_index != -1, "Must have 'Publish result' step after backend step"
-    backend_step_block = yaml_content[invoke_backend_index:publish_result_index]
-
-    # There should be no env: key in the backend step block when no secrets are declared.
-    assert "env:" not in backend_step_block, (
-        "Backend step must not emit an env block when the plan has no required_secrets"
-    )
-
-
 def test_app_token_action_uses_pinned_sha() -> None:
-    """App token acquisition step uses the pinned commit SHA, not a mutable tag."""
+    """App token acquisition step uses the shared pin, and the pin is a full commit SHA."""
     yaml_content = _render_to_string()
-    assert "actions/create-github-app-token@a6de09a5e3e8eb40028eda38d7ad96aea41ac75e" in yaml_content, (
-        "App token action must use the pinned commit SHA per supply-chain integrity rules; "
+    assert f"uses: {APP_TOKEN_ACTION_REF}" in yaml_content, (
+        "App token step must use the shared pin from stagr.platforms.github.action_pins"
+    )
+    pinned_ref = APP_TOKEN_ACTION_REF.split()[0].split("@", 1)[1]
+    assert re.fullmatch(r"[0-9a-f]{40}", pinned_ref), (
+        f"App token action must be pinned to a full commit SHA, not '{pinned_ref}'; "
         "mutable tags like @v1 are not permitted"
     )

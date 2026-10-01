@@ -18,12 +18,8 @@ from stagr.core.enums import (
     StageKind,
 )
 from stagr.core.models import (
-    CorrelationSpec,
-    EvidenceSpec,
-    FindingScopeSpec,
     GateDispositionSpec,
     Invocation,
-    TrustPolicy,
 )
 from stagr.platforms.github.stage_signal_config import build_stage_signal_config
 
@@ -74,7 +70,7 @@ def test_codex_review_plan_produces_the_expected_runtime_document() -> None:
         "invocation": {"kind": "pr_comment", "body": "@codex review", "leaseMinutes": 30},
         "dependencies": [], "routing": None,
     }
-    assert config.has_asynchronous_evidence and config.evidence_producers == ("chatgpt-codex-connector[bot]",)
+    assert config.evidence_producers == ("chatgpt-codex-connector[bot]",)
 
 
 def test_fork_policy_allow_unprivileged_disables_deny_forks() -> None:
@@ -147,23 +143,22 @@ def test_finding_author_must_be_a_github_login() -> None:
     _expect_rejection(dataclasses.replace(plan, gate_disposition=gate), stage, "created_by")
 
 
-def test_asynchronous_invocation_without_evidence_is_rejected() -> None:
+def test_plan_without_evidence_is_rejected() -> None:
     stage = build_stage()
-    for kind in (InvocationKind.PR_COMMENT, InvocationKind.WORKFLOW_DISPATCH):
+    plan = dataclasses.replace(build_execution_plan(), evidence=())
+    _expect_rejection(plan, stage, "no EvidenceSpec")
+
+
+def test_invocation_kinds_other_than_pr_comment_are_rejected() -> None:
+    stage = build_stage()
+    for kind in (InvocationKind.WORKFLOW_DISPATCH, InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
         plan = dataclasses.replace(build_execution_plan(), invocation=Invocation(kind=kind))
-        _expect_rejection(plan, stage, "no EvidenceSpec")
+        _expect_rejection(plan, stage, "can only wire a PR_COMMENT invocation")
 
 
-def test_synchronous_invocation_without_evidence_is_accepted_and_needs_no_wakeups() -> None:
+def test_explicit_pass_marker_requires_a_selector() -> None:
     stage = build_stage()
-    for kind in (InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
-        plan = dataclasses.replace(build_execution_plan(), invocation=Invocation(kind=kind))
-        assert not _build(plan, stage).has_asynchronous_evidence
-
-
-def test_explicit_pass_marker_requires_a_selector_and_evidence() -> None:
-    stage = build_stage()
-    gate = GateDispositionSpec(kind=GateDispositionKind.EXPLICIT_PASS_MARKER, selector="stagr:pass")
+    gate = GateDispositionSpec(kind=GateDispositionKind.EXPLICIT_PASS_MARKER, selector=" ")
     plan = dataclasses.replace(build_execution_plan(), gate_disposition=gate)
     _expect_rejection(plan, stage, "EXPLICIT_PASS_MARKER")
 

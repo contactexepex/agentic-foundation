@@ -233,7 +233,7 @@ class StageRuntimeConfig:
     privileged_stage: bool
     evidence_rules: tuple[EvidenceRule, ...]
     gate_rule: GateRule
-    invocation_rule: InvocationRule | None = None
+    invocation_rule: InvocationRule
     dependency_rules: tuple[DependencyRule, ...] = ()
     route_rule: RouteRule | None = None
 
@@ -265,7 +265,7 @@ class StageRuntimeConfig:
                     created_by=gate_document["createdBy"],
                     head_sha_bound=bool(gate_document["headShaBound"]),
                 ),
-                invocation_rule=cls._parse_invocation_rule(document.get("invocation")),
+                invocation_rule=cls._parse_invocation_rule(document["invocation"]),
                 dependency_rules=tuple(
                     DependencyRule(stage_id=item["stageId"], check_run_name=item["checkRunName"])
                     for item in document["dependencies"]
@@ -278,9 +278,7 @@ class StageRuntimeConfig:
         return config
 
     @staticmethod
-    def _parse_invocation_rule(invocation_document: Mapping[str, Any] | None) -> InvocationRule | None:
-        if invocation_document is None:
-            return None
+    def _parse_invocation_rule(invocation_document: Mapping[str, Any]) -> InvocationRule:
         return InvocationRule(
             kind=invocation_document["kind"],
             body=invocation_document["body"],
@@ -299,6 +297,8 @@ class StageRuntimeConfig:
 
     def reject_unsupported_rules(self) -> None:
         """Fail closed on any rule this runtime cannot evaluate exactly (never a weaker check)."""
+        if not self.evidence_rules:
+            raise RuntimeConfigError("At least one evidence rule is required to prove completion")
         for rule in self.evidence_rules:
             is_supported_review_result = (
                 rule.kind == EVIDENCE_KIND_REVIEW_RESULT
@@ -323,10 +323,8 @@ class StageRuntimeConfig:
             raise RuntimeConfigError(f"Unsupported gate disposition kind: {gate.kind!r}")
         if gate.kind == GATE_KIND_NO_OPEN_THREADS and not gate.created_by:
             raise RuntimeConfigError("NO_OPEN_THREADS requires the finding author (createdBy)")
-        if gate.kind == GATE_KIND_EXPLICIT_PASS_MARKER and not (
-            gate.selector and self.evidence_rules
-        ):
-            raise RuntimeConfigError("EXPLICIT_PASS_MARKER requires a selector and evidence")
+        if gate.kind == GATE_KIND_EXPLICIT_PASS_MARKER and not gate.selector:
+            raise RuntimeConfigError("EXPLICIT_PASS_MARKER requires a selector")
         self._reject_unsupported_invocation_rule()
         self._reject_unsupported_eligibility_rules()
 
@@ -347,8 +345,6 @@ class StageRuntimeConfig:
 
     def _reject_unsupported_invocation_rule(self) -> None:
         rule = self.invocation_rule
-        if rule is None:
-            return
         if rule.kind != INVOCATION_KIND_PR_COMMENT:
             raise RuntimeConfigError(f"Unsupported invocation kind: {rule.kind!r}")
         if not isinstance(rule.body, str) or not rule.body.strip():
@@ -1195,18 +1191,13 @@ class StageReconciler:
         is_publish = request.mode == MODE_PUBLISH
         if is_publish and request.job_status == JOB_STATUS_FAILURE:
             return FAILED_SIGNAL
-        evidence_bodies: tuple[str, ...] = ()
-        if self._config.evidence_rules:
-            issue_comments = self._github_api.get_items(
-                f"repos/{self._repository}/issues/{pull.number}/comments?per_page=100"
-            )
-            evidence = self._evidence_evaluator.evaluate(issue_comments, pull.head_sha)
-            if not evidence.is_present:
-                return RUNNING_SIGNAL if is_publish else None
-            evidence_bodies = evidence.matched_bodies
-        elif not is_publish:
-            return None  # completion is the invocation's own outcome, known only to publish mode
-        conclusion = self._gate_evaluator.evaluate(pull.number, pull.head_sha, evidence_bodies)
+        issue_comments = self._github_api.get_items(
+            f"repos/{self._repository}/issues/{pull.number}/comments?per_page=100"
+        )
+        evidence = self._evidence_evaluator.evaluate(issue_comments, pull.head_sha)
+        if not evidence.is_present:
+            return RUNNING_SIGNAL if is_publish else None
+        conclusion = self._gate_evaluator.evaluate(pull.number, pull.head_sha, evidence.matched_bodies)
         return StageSignal(STATE_COMPLETED, conclusion)
 
 
@@ -1341,8 +1332,6 @@ class BackendInvoker:
 
     def invoke_if_needed(self, request: ReconcileRequest) -> ReconcileResult:
         invocation_rule = self._config.invocation_rule
-        if invocation_rule is None:
-            raise RuntimeConfigError("invoke mode needs an invocation rule in STAGR_STAGE_CONFIG")
         pull = PullRequestView.from_api(
             self._github_api.get_object(f"repos/{self._repository}/pulls/{request.pull_number}")
         )
@@ -1351,9 +1340,7 @@ class BackendInvoker:
             return ReconcileResult(ACTION_SKIPPED, ineligible_reason)
         comments_path = f"repos/{self._repository}/issues/{pull.number}/comments"
         issue_comments = self._github_api.get_items(f"{comments_path}?per_page=100")
-        if self._config.evidence_rules and self._evidence_evaluator.evaluate(
-            issue_comments, pull.head_sha
-        ).is_present:
+        if self._evidence_evaluator.evaluate(issue_comments, pull.head_sha).is_present:
             return ReconcileResult(ACTION_SKIPPED, "completion evidence already exists for this head")
         posting_account = PostingAccount.from_api(self._github_api.get_object("user"))
         now = self._clock()
