@@ -242,6 +242,13 @@ Modules are the right boundary for grouping related classes and functions; using
 - **One home for every rule.** Each rule, policy or default is written in exactly one place. Every
   other document, config comment or template refers to that place by name or link and never restates
   it, so a change to the rule is made once and cannot drift.
+- **What counts as a rule.** A rule is any statement a reader acts on: a default, a value, an order
+  between steps or stages, a limit, a required step, a permission, or a status (shipped, planned,
+  target). Each rule's content is written only in its one home. Anywhere else a document may **name**
+  the subject and **link** to its home, but never state the content, not even in passing, in a
+  diagram, or as an example. Before a docs change is pushed, every rule it touches is listed with its
+  home, and each changed sentence is checked against that list. A review finding about a sentence
+  that only names a subject and links to its home is declined as style.
 - **Keep the set minimal.** Do not create a new document when an existing one is the right home.
   Fewer, clearer files beat many overlapping ones.
 - **Simple names and content.** File names and headings are as plain and descriptive as the body. If
