@@ -316,7 +316,6 @@ Also observed:
 - Results created by GitHub Actions itself (App id 15368) never started a `check_run` workflow:
   about 20 such results during the test, against 19 wake-ups that all came from SonarCloud and
   CodeQL. A GitHub Actions producer is therefore woken through `workflow_run` instead (fact 7).
-- The check-run wake-ups above come from Apps other than GitHub Actions, the Stagr App included (fact 8).
 
 If a fact turns out false, this document is corrected first, then the code.
 
