@@ -136,9 +136,6 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 (a Codex review stage and a Codex security stage), and `.github/workflows/` are the hand-written
 **reference implementation** the GitHub renderer (`stagr/platforms/github/`) is modelled on:
 
-- **Claude implements** (`claude-code-implementor.yml`, manual dispatch) and **Codex implements**
-  (`authorized-engineering-task.yml`, on the `codex-engineering` issue label) via an
-  untrusted-implement → validate → trusted-publish (remediation) flow.
 - **Codex reviews** — code and security — is re-requested on every push
   (`request-codex-review-on-push.yml`); the deterministic router (`fast-ai-code-review.yml`)
   routes every PR to Codex (the fast path is disabled here, so docs are reviewed too).
@@ -151,7 +148,7 @@ This repository runs the pattern on itself. `.agentic/config.yml` is its declara
 > Status: **neutral core + GitHub renderer, dogfooded.** The platform-neutral stage-graph schema,
 > profiles, provider/backend/model resolution, and the GitHub renderer (per-stage, routing, and
 > governance workflows) and the `stagr plan` / `stagr apply` commands are in place, alongside the
-> toolkit's own live Claude+Codex automation. Next: the `init`/`doctor` commands, more stage types, more platform renderers, and the
+> toolkit's own live Codex review automation. Next: the `init`/`doctor` commands, more stage types, more platform renderers, and the
 > front-door skill (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) roadmap).
 
 ## License
