@@ -307,6 +307,7 @@ is built (item S below). Throwaway workflows ran on 2026-09-30 in the test repos
 | 5 | A `check_run` created, rerequested or completed event from a foreign producer starts a workflow for the pull request | **Verified for created and completed**, from SonarCloud and CodeQL ([created](https://github.com/exepex/spring-angular-book-management/actions/runs/36749001079), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36749059157)). Rerequested was not exercised |
 | 6 | `cancel-in-progress` accepts an expression | **Verified.** A push cancelled the older head's work; a manual run and a re-run cancelled nothing ([cancelled run](https://github.com/exepex/spring-angular-book-management/actions/runs/36749940333)) |
 | 7 | A `workflow_run` completed event starts a workflow when a GitHub Actions producer finishes on a pull request (added by owner decision 17, #265) | **Verified** on 2026-10-01. The event named the producer's head and `pull_requests=[15]` ([run](https://github.com/exepex/spring-angular-book-management/actions/runs/36828554910)) |
+| 8 | A result written by the Stagr App starts a `check_run` workflow (section 8, capability 7) | **Verified** on 2026-10-01. Both created and completed started the workflow within about three seconds, naming the pull request ([write](https://github.com/exepex/spring-angular-book-management/actions/runs/36836277797), [created](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298185), [completed](https://github.com/exepex/spring-angular-book-management/actions/runs/36836298452)). The App needs the Checks read and write permission to write results |
 
 Also observed:
 
@@ -315,7 +316,7 @@ Also observed:
 - Results created by GitHub Actions itself (App id 15368) never started a `check_run` workflow:
   about 20 such results during the test, against 19 wake-ups that all came from SonarCloud and
   CodeQL. A GitHub Actions producer is therefore woken through `workflow_run` instead (fact 7).
-- Results the Stagr App writes (capability 7) were not exercised; the test used no App token.
+- The check-run wake-ups above come from Apps other than GitHub Actions, the Stagr App included (fact 8).
 
 If a fact turns out false, this document is corrected first, then the code.
 
