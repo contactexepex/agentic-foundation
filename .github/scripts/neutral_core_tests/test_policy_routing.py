@@ -144,7 +144,7 @@ def test_routing_policy_absent_enabled_key_uses_default() -> None:
 
     assert result.fast_path is not None, (
         "Absent enabled key must default to true; expected fast_path to be populated, "
-        f"got fast_path=None"
+        "got fast_path=None"
     )
     assert "docs/**" in result.fast_path.match.paths, (
         f"expected 'docs/**' in match.paths, got {result.fast_path.match.paths!r}"

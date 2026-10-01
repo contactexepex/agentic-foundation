@@ -51,7 +51,6 @@ profile: custom
 # Required. The renderer uses this to select the correct PlatformRenderer.
 platform:
   type: github              # target platform id (e.g. github, gitlab, bitbucket)
-  default_branch: main      # branch the governance artifact targets for merges
   trusted_roles:            # AuthorRole[] for TrustPolicy
     - owner
     - member
@@ -202,7 +201,6 @@ version: 2
 profile: standard
 platform:
   type: github
-  default_branch: main
 build:
   preset: maven
 ```

@@ -137,7 +137,7 @@ def test_dag_does_not_mutate_input() -> None:
         f"stage_a was mutated: was {original_a_snapshot}, now {stage_a}"
     )
     assert stage_a["depends_on"] == original_a_deps_snapshot, (
-        f"stage_a depends_on list was mutated"
+        "stage_a depends_on list was mutated"
     )
     assert stage_b == original_b_snapshot, (
         f"stage_b was mutated: was {original_b_snapshot}, now {stage_b}"

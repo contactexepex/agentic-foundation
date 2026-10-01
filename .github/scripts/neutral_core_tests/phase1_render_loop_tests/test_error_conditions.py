@@ -1,7 +1,7 @@
 """Tests for Phase 1 error conditions (issue #193).
 
-Covers: missing BackendRenderer raises BackendRendererNotFoundError; unresolvable
-secret alias raises SecretAliasResolutionError before any PlatformRenderer call.
+Covers: missing BackendRenderer raises BackendRendererNotFoundError; a secret alias with no
+mapping resolves by convention.
 """
 from __future__ import annotations
 
@@ -45,8 +45,7 @@ def test_phase1_alias_with_no_mapping_resolves_by_convention() -> None:
 
     Design-doc 03: the secrets block is optional in V1 when convention-based
     resolution is sufficient (alias == platform secret name).  run_phase1 must
-    NOT raise SecretAliasResolutionError for an unmapped alias; instead it
-    passes the alias through as the env_name so operators do not need to
+    not fail for an unmapped alias; instead it passes the alias through as the env_name so operators do not need to
     duplicate identity mappings.
     """
     from stagr.core.render_loop import run_phase1

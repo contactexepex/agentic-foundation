@@ -5,6 +5,18 @@ contract (every render method returns RenderedArtifact values; none writes files
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from stagr.core.models import (
+        ExecutionPlan,
+        NormalizedStage,
+        RenderContext,
+        RenderedArtifact,
+        StageRender,
+        StageResultSpec,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -39,7 +51,7 @@ def _build_minimal_execution_plan():
 
     return ExecutionPlan(
         stage_id="test-stage",
-        invocation=Invocation(kind=InvocationKind.API_CALL),
+        invocation=Invocation(kind=InvocationKind.CI_COMPONENT),
         gate_disposition=GateDispositionSpec(
             kind=GateDispositionKind.ALWAYS_PASS,
             selector="always",
@@ -77,7 +89,6 @@ def _build_minimal_render_context():
         merge_policy=merge_policy,
         trust_policy=trust_policy,
         platform="github",
-        config_version="1",
     )
 
 
@@ -107,10 +118,10 @@ class _StubPlatformRenderer:
 
     def render_stage(
         self,
-        plan: "ExecutionPlan",  # noqa: F821
-        stage: "NormalizedStage",  # noqa: F821
-        render_context: "RenderContext",  # noqa: F821
-    ) -> "StageRender":  # noqa: F821
+        plan: "ExecutionPlan",
+        stage: "NormalizedStage",
+        render_context: "RenderContext",
+    ) -> "StageRender":
         from stagr.core.models import RenderedArtifact, StageRender
 
         return StageRender(
@@ -118,16 +129,16 @@ class _StubPlatformRenderer:
             artifact=RenderedArtifact(path=f"stages/{stage.id}.yml", content="# stub artifact\n"),
         )
 
-    def render_routing(self, render_context: "RenderContext") -> "RenderedArtifact":  # noqa: F821
+    def render_routing(self, render_context: "RenderContext") -> "RenderedArtifact":
         from stagr.core.models import RenderedArtifact
 
         return RenderedArtifact(path="routing.yml", content="# stub routing\n")
 
     def render_governance(
         self,
-        result_specs: "tuple[StageResultSpec, ...]",  # noqa: F821
-        render_context: "RenderContext",  # noqa: F821
-    ) -> "RenderedArtifact":  # noqa: F821
+        result_specs: "tuple[StageResultSpec, ...]",
+        render_context: "RenderContext",
+    ) -> "RenderedArtifact":
         from stagr.core.models import RenderedArtifact
 
         return RenderedArtifact(path="governance.yml", content="# stub governance\n")

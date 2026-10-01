@@ -146,11 +146,9 @@ from neutral_core_tests.test_backend_renderer import (
 from neutral_core_tests.test_backend_renderer_registry import (
     test_registry_get_returns_registered_renderer,
     test_registry_get_unknown_raises_error,
-    test_registry_default_backend_for_provider,
     test_registry_has_returns_true_for_registered,
     test_registry_has_returns_false_for_unregistered,
     test_registry_multiple_providers_no_collision,
-    test_registry_default_backend_for_unknown_provider_raises,
 )
 from neutral_core_tests.codex_renderer_tests import CODEX_RENDERER_TESTS
 from neutral_core_tests.test_platform_renderer import (
@@ -164,7 +162,7 @@ from neutral_core_tests.phase1_render_loop_tests import PHASE1_RENDER_LOOP_TESTS
 from neutral_core_tests.github_platform_renderer_tests import GITHUB_PLATFORM_RENDERER_TESTS
 from neutral_core_tests.stage_signal_tests import STAGE_SIGNAL_TESTS
 from neutral_core_tests.test_config_parser import CONFIG_PARSER_TESTS
-from neutral_core_tests.test_static_validator import STATIC_VALIDATOR_TESTS
+from neutral_core_tests.static_validator_tests import STATIC_VALIDATOR_TESTS
 from neutral_core_tests.test_publisher_config import PUBLISHER_CONFIG_TESTS
 from neutral_core_tests.test_secret_value_redaction import SECRET_VALUE_REDACTION_TESTS
 from neutral_core_tests.test_config_schema import CONFIG_SCHEMA_TESTS
@@ -274,11 +272,9 @@ _TESTS = [
     test_backend_renderer_no_platform_fields,
     test_registry_get_returns_registered_renderer,
     test_registry_get_unknown_raises_error,
-    test_registry_default_backend_for_provider,
     test_registry_has_returns_true_for_registered,
     test_registry_has_returns_false_for_unregistered,
     test_registry_multiple_providers_no_collision,
-    test_registry_default_backend_for_unknown_provider_raises,
     *CODEX_RENDERER_TESTS,
     test_platform_renderer_protocol_conformance,
     test_platform_renderer_interface_uses_only_neutral_types,

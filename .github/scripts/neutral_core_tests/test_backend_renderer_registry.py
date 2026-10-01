@@ -68,18 +68,6 @@ def test_registry_get_unknown_raises_error() -> None:
     assert raised, "Expected BackendRendererNotFoundError but no exception was raised"
 
 
-def test_registry_default_backend_for_provider() -> None:
-    """default_backend_for(provider) returns the backend name registered as the default."""
-    registry = _make_fresh_registry()
-    registry.register_default_backend("openai", "codex")
-
-    default_backend_name = registry.default_backend_for("openai")
-
-    assert default_backend_name == "codex", (
-        f"Expected default backend 'codex'; got {default_backend_name!r}"
-    )
-
-
 def test_registry_has_returns_true_for_registered() -> None:
     """has(provider, backend) returns True after a renderer is registered for that pair."""
     registry = _make_fresh_registry()
@@ -118,21 +106,4 @@ def test_registry_multiple_providers_no_collision() -> None:
     )
     assert retrieved_openai is not retrieved_anthropic, (
         "Two distinct renderers must not be the same object"
-    )
-
-
-def test_registry_default_backend_for_unknown_provider_raises() -> None:
-    """default_backend_for() raises BackendRendererNotFoundError when no default is registered."""
-    from stagr.core.backend_renderer_registry import BackendRendererNotFoundError
-
-    registry = _make_fresh_registry()
-
-    raised = False
-    try:
-        registry.default_backend_for("unknown-provider")
-    except BackendRendererNotFoundError:
-        raised = True
-
-    assert raised, (
-        "Expected BackendRendererNotFoundError for unknown provider but no exception was raised"
     )

@@ -90,5 +90,4 @@ def build_render_context(stage: NormalizedStage) -> RenderContext:
             human_merge_label="human-merge",
         ),
         platform="github",
-        config_version="2",
     )

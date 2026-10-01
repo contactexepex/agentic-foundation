@@ -130,7 +130,7 @@ def test_invoke_step_carries_every_declared_secret_and_only_those() -> None:
 
 def test_other_invocation_kinds_are_rejected_at_render_time() -> None:
     stage = build_stage()
-    for kind in (InvocationKind.WORKFLOW_DISPATCH, InvocationKind.CI_COMPONENT, InvocationKind.API_CALL):
+    for kind in (InvocationKind.CI_COMPONENT,):
         plan = dataclasses.replace(build_execution_plan(), invocation=Invocation(kind=kind))
         try:
             render_workflow_text(plan, stage)

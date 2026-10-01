@@ -5,13 +5,9 @@ from __future__ import annotations
 def test_render_context_construction() -> None:
     """RenderContext constructs with all required fields; no StageResultSpec[] field."""
     from stagr.core.models import (
-        DiscussionPolicy,
-        FastPathPolicy,
         MergePolicy,
         NormalizedStage,
-        PathMatchSpec,
         RenderContext,
-        RouteStageMap,
         RoutingPolicy,
         TrustPolicy,
     )
@@ -49,7 +45,6 @@ def test_render_context_construction() -> None:
         merge_policy=merge,
         trust_policy=trust,
         platform="github",
-        config_version="1",
     )
     assert ctx.platform == "github"
     assert len(ctx.stages) == 1
@@ -77,7 +72,6 @@ def test_render_context_is_immutable() -> None:
             human_merge_label="human-merge",
         ),
         platform="github",
-        config_version="1",
     )
     raised = False
     try:

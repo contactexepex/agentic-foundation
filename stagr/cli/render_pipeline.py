@@ -33,7 +33,8 @@ from stagr.platforms.github.renderer import GitHubPlatformRenderer
 
 CONFIG_RELATIVE_PATH = Path(".agentic") / "config.yml"
 
-# One entry per supported platform: adding a platform renderer means adding a line here.
+# One entry per supported platform: a new platform renderer adds a line here and its value to
+# the schema's platform.type enum.
 PLATFORM_RENDERER_CLASSES = {"github": GitHubPlatformRenderer}
 
 
@@ -58,15 +59,6 @@ def build_backend_registry() -> BackendRendererRegistry:
     return backend_registry
 
 
-def _select_platform_renderer_class(platform_type: str) -> type[GitHubPlatformRenderer]:
-    if platform_type not in PLATFORM_RENDERER_CLASSES:
-        raise ConfigError(
-            f"platform.type '{platform_type}' has no renderer; "
-            f"supported: {', '.join(sorted(PLATFORM_RENDERER_CLASSES))}"
-        )
-    return PLATFORM_RENDERER_CLASSES[platform_type]
-
-
 def find_dormant_routing_warnings(raw_config: dict[str, Any]) -> tuple[str, ...]:
     """V-S11: fast-path is disabled but routing keys are present. A warning, never an error."""
     fast_path_config = (raw_config.get("routing") or {}).get("fast_path") or {}
@@ -85,8 +77,8 @@ def load_render_inputs(project_root: Path) -> RenderInputs:
     """Read ``<project_root>/.agentic/config.yml`` and run every static check.
 
     Raises:
-        ConfigError: the config file is missing, the publisher block is missing or invalid, the
-            platform has no renderer, or a stage's provider or backend cannot be resolved.
+        ConfigError: the config file is missing, the publisher block is missing or invalid, or a
+            stage's provider or backend cannot be resolved.
         ConfigSyntaxError, ConfigVersionError, ConfigSchemaError, StaticValidationError,
             ValueError: from the front door (YAML syntax, V-S01 to V-S06) and the renderer checks
             (V-S07 to V-S09).
@@ -99,7 +91,7 @@ def load_render_inputs(project_root: Path) -> RenderInputs:
 
     publisher = derive_publisher_config(raw_config)
     platform_type = (raw_config.get("platform") or {}).get("type", "github")
-    platform_renderer_class = _select_platform_renderer_class(platform_type)
+    platform_renderer_class = PLATFORM_RENDERER_CLASSES[platform_type]
     normalized_stages = normalize_config(raw_config)
     if not normalized_stages:
         raise StaticValidationError("the config has no enabled stage; there is nothing to render")
@@ -119,7 +111,6 @@ def load_render_inputs(project_root: Path) -> RenderInputs:
         merge_policy=derive_merge_policy(raw_config, normalized_stages, trust_policy),
         trust_policy=trust_policy,
         platform=platform_type,
-        config_version=str(raw_config["version"]),
     )
     return RenderInputs(
         raw_config=raw_config,
@@ -135,7 +126,7 @@ def render_artifacts(render_inputs: RenderInputs) -> tuple[RenderedArtifact, ...
     The order is stable: stage workflows in dependency order, then routing, then governance.
     """
     render_context = render_inputs.render_context
-    platform_renderer_class = _select_platform_renderer_class(render_context.platform)
+    platform_renderer_class = PLATFORM_RENDERER_CLASSES[render_context.platform]
     platform_renderer = platform_renderer_class(
         render_inputs.publisher.app_id, render_inputs.publisher.private_key_secret
     )

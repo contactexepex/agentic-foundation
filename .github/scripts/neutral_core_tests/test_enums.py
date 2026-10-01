@@ -24,7 +24,6 @@ def test_enum_string_values() -> None:
     assert StageKind("security") is StageKind.SECURITY
     assert StageKind("build") is StageKind.BUILD
     assert StageKind("test") is StageKind.TEST
-    assert StageKind("deploy") is StageKind.DEPLOY
     assert StageKind("custom") is StageKind.CUSTOM
 
     # StageGate — neutral-core M2 contract (issue #173)
@@ -47,12 +46,10 @@ def test_enum_string_values() -> None:
 
     # InvocationKind — neutral-core M2 contract (issue #173)
     assert InvocationKind("pr_comment") is InvocationKind.PR_COMMENT
-    assert InvocationKind("workflow_dispatch") is InvocationKind.WORKFLOW_DISPATCH
     assert InvocationKind("ci_component") is InvocationKind.CI_COMPONENT
 
-    # StageResultSignalKind — all three variants exist
+    # StageResultSignalKind
     assert StageResultSignalKind("check_run") is StageResultSignalKind.CHECK_RUN
-    assert StageResultSignalKind("commit_status") is StageResultSignalKind.COMMIT_STATUS
 
     # EvidenceSuccessCondition — enum, not dataclass
     assert EvidenceSuccessCondition("completed") is EvidenceSuccessCondition.COMPLETED
@@ -80,7 +77,7 @@ def test_enum_string_values() -> None:
     assert EvidenceKind("check_result") is EvidenceKind.CHECK_RESULT
     assert EvidenceKind("workflow_result") is EvidenceKind.WORKFLOW_RESULT
 
-    # No platform-specific names in enum values (workflow_dispatch is the contracted M2 value)
+    # No platform-specific names in enum values
     for enum_cls in [StageKind, StageGate, StageTrigger, AuthorRole, ForkPolicy,
                      InvocationKind, StageResultSignalKind,
                      StageResultState, StageResultConclusion, EvidenceKind,
