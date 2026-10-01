@@ -6,11 +6,9 @@ name: Request Codex security review (final pre-merge)
 # security review is requested only here, so the two never run at the same time (AGENTS.md, "Git and
 # pull-request rules").
 #
-# IMPORTANT — the Codex App must be configured to run only the CODE review automatically, on PR open
-# and on new commits (not the security review). Whether the App auto-runs a security review on open is
-# a ChatGPT-side App setting this toolkit cannot render; if it is left on, the App's native security review runs at the
-# same time as the code review on every open, which this workflow exists to prevent.
-# This workflow is the SOLE trigger of the security review.
+# The Codex App settings this workflow depends on (code review automatic, the App's own security
+# review off) are set in AGENTS.md, "Git and pull-request rules". This workflow is the only trigger of
+# the security review.
 #
 # It runs on: comment activity (Codex edits its "Review Summary" comment to "Completed" when the code
 # review finishes), completed check suites, and a periodic schedule. The schedule is what re-evaluates
